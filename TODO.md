@@ -1,0 +1,33 @@
+# Pascrust TODO
+
+- [x] Figure out a name:
+  - [x] Pascrust
+- [x] Write a TODO.md file.
+- [ ] Have Fable fill out the TODO.md with the plan and make the core architectural decisions.
+- [ ] Opus can then read the plan and fill in the details.
+- [ ] Write a CLAUDE.md.
+- [x] Use an MIT license.
+- [ ] Figure out if I should aim to translate Pascal or Turbo Pascal:
+  - [ ] Is there an official spec and/or open source implementation for Turbo Pascal?
+  - [ ] Wasn't there some famous Pascal to C compiler? If so, carefully study how it's implemented. Take notes and save them into a file.
+  - [ ] Write a file called language_spec.md with a plan of what language constructs we want to support.
+- [ ] Make the core architectural decisions:
+  - [ ] Figure out what lexer and parser I should use.
+  - [ ] Maybe we should have a "virtual heap" that represents the Pascal heap in a somewhat safe way. (Passing around a heap object, embedding a Pascal engine in Rust, maybe a memory-mapped file; errors raise to the Rust container.)
+  - [ ] How should we represent arrays and strings in Pascal in Rust?
+  - [ ] How should we represent pointers and the heap?
+  - [ ] How should we represent records?
+  - [ ] How do we build a FFI to Rust?
+  - [ ] How do we build a FFI to C?
+  - [ ] Is it even possible to have a FFI to Pascal that's already been compiled? (Low priority; save ideas for later.)
+  - [ ] Can we skip implementing threads? Do Pascal / Turbo Pascal even have those built in?
+  - [ ] Write all of the core architectural decisions to a file named architecture.md.
+- [ ] Start building a battery of tests to verify we're compiling it correctly:
+  - [ ] Are there existing tests in other open source projects that we can use for inspiration?
+  - [ ] There should be tests that test what Pascal constructs translate into what Rust constructs.
+- [ ] How do we build at least a small standard library, including things like printing to stdout?
+  - [ ] There should be tests that compile Pascal to Rust and then run the Rust to generate expected output.
+- [ ] Is there an official standard library for Pascal or Turbo Pascal that has an interface that we can match?
+- [ ] If possible, copy all the code in ~/Dropbox/programming/turbo_pascal to an examples directory and get them working.
+  - [x] Copy the code into `examples/`.
+  - [ ] Get them working.
