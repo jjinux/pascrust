@@ -106,3 +106,11 @@ go with the default" needs no further action.
     it returns from that nested procedure only. Both are natural with the
     lifted-function design.
     **Default: yes, TP semantics.**
+
+## Answers (2026-10-27)
+
+- Q1: `i16` with wrapping — confirmed.
+- Q2: install Free Pascal and commit generated reference outputs — confirmed.
+- Q3: no TP-exact binary layout initially — confirmed.
+- Q8: Rust-style identifiers with the Pascal name in `///` comments — confirmed.
+- All other questions: going with the defaults unless the user says otherwise.
