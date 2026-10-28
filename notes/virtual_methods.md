@@ -1,9 +1,10 @@
 # Plan: virtual methods
 
-Status: not started. `virtual` is a parse error ("virtual methods are not
-supported yet"); `constructor` and `destructor` parse as plain procedures.
-None of the examples need it. This note records the design we'd build and
-what it costs. It was worked out by Claude Opus and reviewed by Claude Fable,
+Status: implemented (2026-10-28), as designed below, in well under the
+2-hour time box. Not done: `TypeOf`, a descendant hiding a static method
+that calls virtual ones (an error), a procedure nested in a method calling
+a virtual method of `Self` (an error). Tests: `tests/run/virtual_*.pas`.
+The design was worked out by Claude Opus and reviewed by Claude Fable,
 whose findings are folded in below.
 
 ## What Turbo Pascal does

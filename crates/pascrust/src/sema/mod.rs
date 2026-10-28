@@ -344,6 +344,35 @@ fn dispatch(a: &mut Analysis) -> Vec<Diagnostic> {
             }
         }
     }
+    // A method with the name of an ancestor's virtual method overrides it,
+    // and must be virtual too (TP requires it). One that hides a static
+    // method calling virtual ones would give two traits a method of the
+    // same name, which Rust can't tell apart.
+    let mut methods: Vec<(&(String, String), &ProcId)> = a.methods.iter().collect();
+    methods.sort_by_key(|(_, pid)| **pid);
+    for ((_, key), &pid) in methods {
+        let object = object_of(a, pid).unwrap();
+        for (ancestor, _) in object.lineage().into_iter().skip(1) {
+            let Some(&base) = a.methods.get(&(ancestor.rust_name.clone(), key.clone())) else { continue };
+            let (name, base_name) = (&a.procs[pid].name, &a.procs[base].name);
+            if a.virtuals.contains(&base) && !a.virtuals.contains(&pid) {
+                errors.push(Diagnostic::new(
+                    a.procs[pid].span,
+                    format!(
+                        "`{name}` overrides the virtual method `{base_name}`, so it must be declared `virtual` too"
+                    ),
+                ));
+            } else if a.dispatched.contains(&base) && !a.virtuals.contains(&base) {
+                errors.push(Diagnostic::new(
+                    a.procs[pid].span,
+                    format!(
+                        "`{name}` hides `{base_name}`, which calls virtual methods; pascrust doesn't support that yet (make `{base_name}` virtual)"
+                    ),
+                ));
+            }
+            break;
+        }
+    }
     // All versions of one virtual method share one Rust signature, the
     // trait's, so they must all receive the same captured globals. Making
     // each version "call" the others lets `lift` give them the union.

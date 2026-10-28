@@ -112,7 +112,12 @@ Objects (TP 5.5 OOP)
 - Single inheritance `object(Parent)`, inherited field and method access,
   passing a descendant where an ancestor is expected
 - `private` keyword accepted and ignored
-- No `virtual`, `constructor`, `destructor` (tier 3)
+- `virtual` methods: dispatch through `Self`, through `var` parameters of an
+  ancestor type, and through pointers (a pointer to an object may point to a
+  descendant); `constructor`/`destructor`, `inherited Method`,
+  `Ancestor.Method(...)`, `New(p, Init(...))`, `New(PType, Init(...))` as a
+  function, `Dispose(p, Done)`. Not yet: `TypeOf`, a descendant hiding a
+  static method that calls virtual ones
 
 Pointers
 
@@ -193,8 +198,8 @@ Later (real TP features, not in the examples, worth doing in order)
 
 1. `set of T`, set literals, `in`, `+ - *`, `<=`, `Include`/`Exclude`
 2. Variant records (flattened; no type punning)
-3. `virtual` methods, `constructor`/`destructor`, `New(p, Init)`,
-   `Dispose(p, Done)`, polymorphic pointers to objects
+3. (Done, now in tier 2: `virtual` methods, constructors and destructors,
+   polymorphic pointers to objects.)
 4. Procedural types and procedure parameters (`type Func = function(x: real):
    real`), `@proc`
 5. `goto` / `label` (only the structured uses: jump forward out of nested

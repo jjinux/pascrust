@@ -515,8 +515,8 @@ Nested procedures inside object methods that use `Self` fields (the examples'
 
 ## 16. Objects (Turbo Pascal 5.5 OOP)
 
-The examples use `object` types heavily, always with static methods (no
-`virtual`, `constructor` or `destructor`).
+The examples use `object` types heavily, always with static methods. Virtual
+methods are supported too (below).
 
 - `TypeName = object ... end` → `struct TypeName { fields }` plus
   `impl TypeName { fn method(&mut self, ...) }`. (Methods that never write
@@ -531,13 +531,25 @@ The examples use `object` types heavily, always with static methods (no
 - Objects declared as variables and never "created" (`var Board: BoardType;
   Board.Create;`) are `let mut board = BoardType::default();` followed by
   `board.create();`, which is exactly what TP does.
-- Virtual methods and constructors/destructors (tier 3): a trait per
-  hierarchy holding the virtual methods and the methods that call them, so
-  `Self` dispatch works without `dyn`; `&mut dyn Trait` for `var`
-  parameters; and an enum of the hierarchy's objects that every pointer
-  into it points to, which implements the trait by `match`ing. The plan
-  and its cost are in `notes/virtual_methods.md`. Not needed for the examples.
-  `private` sections are a no-op.
+- **Virtual methods** (the design and its reasoning are in
+  `notes/virtual_methods.md`). Each object in a hierarchy with a virtual
+  method gets a trait, `TCircleMethods: TShapeMethods`, holding an
+  accessor for its part of the object (`fn t_circle(&mut self) -> &mut
+  TCircle`), the virtual methods it introduces, and, as default methods,
+  its method bodies that must see the real object: the virtual versions
+  (`t_circle_draw`) and static methods that call a virtual one (sema's
+  `dispatched` fixed point). In a default method `self` is whatever object
+  the method was called on, so `self.draw()` runs that object's version.
+  Every object implements its ancestors' traits, choosing the nearest
+  version of each virtual method. Plain variables use static dispatch; a
+  `var` parameter of the base type is `&mut dyn TShapeMethods`; every
+  pointer type into the hierarchy is `Ptr<AnyShape>`, an enum with a variant
+  per object, which implements the root's trait by `match`ing. All versions
+  of a virtual method receive the same lifted globals, since they share the
+  trait's signature. Constructors and destructors are ordinary methods: the
+  enum variant, set when the record is allocated, plays the role of TP's
+  hidden table pointer.
+- `private` sections are a no-op.
 
 Rejected: a `Deref` to `base` trick to make inherited fields look flat. It
 hides what is going on, and intermediate Rust programmers are warned off
