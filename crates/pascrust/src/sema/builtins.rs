@@ -28,7 +28,7 @@ builtins! {
     // Ordinals
     Ord => "ord", Chr => "chr", Odd => "odd", Succ => "succ", Pred => "pred",
     Inc => "inc", Dec => "dec", Hi => "hi", Lo => "lo", High => "high", Low => "low",
-    Swap => "swap", SizeOf => "sizeof",
+    Swap => "swap", SizeOf => "sizeof", FillChar => "fillchar", Move => "move",
     // Arithmetic
     Abs => "abs", Sqr => "sqr", Sqrt => "sqrt", Sin => "sin", Cos => "cos",
     ArcTan => "arctan", Ln => "ln", Exp => "exp", Trunc => "trunc",
@@ -90,6 +90,8 @@ impl Builtin {
                 | Readln
                 | Halt
                 | RunError
+                | FillChar
+                | Move
                 | Exit
                 | Break
                 | Continue

@@ -49,6 +49,18 @@ impl PString {
         i16::from(self.bytes[0])
     }
 
+    /// Pascal `FillChar(s[start], count, c)`: set `count` bytes from
+    /// `start` to `c`. Byte 0 is the length, so `FillChar(s, SizeOf(s), c)`
+    /// is `s.fill(0, SizeOf(s), c)` and sets the length to `c` too, as in TP.
+    pub fn fill(&mut self, start: impl Ordinal, count: impl Into<i32>, c: u8) {
+        let count = count.into().max(0) as usize;
+        let start = string_index(start);
+        if start + count > 256 {
+            crate::rte(201, format!("Range check error: FillChar past the end of a string ({start} + {count})"));
+        }
+        self.bytes[start..start + count].fill(c);
+    }
+
     /// Keep at most `cap` characters: what assigning to a `string[cap]`
     /// variable does in Turbo Pascal.
     pub fn truncated(mut self, cap: u8) -> PString {

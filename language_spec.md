@@ -100,6 +100,11 @@ Built-ins (System unit)
 - `SizeOf` (TP's sizes: `Real` is 6 bytes, `string[n]` n+1, records
   unpadded), `High`/`Low` (arrays, strings, ordinal types), all three
   constants; `Swap`, `Assigned`, `RunError`
+- `FillChar` on a whole variable (`FillChar(x, SizeOf(x), 0)` resets it;
+  strings and arrays of bytes or chars may be filled with any value) or on
+  part of a string or byte array (`FillChar(s[1], n, ' ')`); `Move` between
+  two whole variables of the same type. Other uses are an error, since
+  pascrust can't copy raw bytes between unrelated types
 - `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`,
   `Val`
 - `High`, `Low`, `SizeOf` (of types with a defined Rust size)

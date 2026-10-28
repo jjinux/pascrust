@@ -1352,6 +1352,54 @@ impl Checker {
         Stmt { kind, span: s.span }
     }
 
+    /// Check `FillChar(x, count, value)` or `Move(source, dest, count)`.
+    /// Supported: the whole of a variable (`count` = `SizeOf(x)`), filled
+    /// with 0 or, for strings and arrays of bytes, any value, or copied to
+    /// a variable of the same type; and part of a string or byte array,
+    /// from an element (`FillChar(s[1], n, ' ')`).
+    fn fill_or_move(&mut self, e: &Expr, b: Builtin, args: &[Expr]) {
+        let (target, count) = if b == Builtin::FillChar { (&args[0], &args[1]) } else { (&args[1], &args[2]) };
+        let ty = self.place(target, true);
+        let source_ty = if b == Builtin::Move { self.place(&args[0], false) } else { ty.clone() };
+        self.int_arg(count);
+        if b == Builtin::FillChar {
+            let value_ty = self.expr(&args[2]);
+            if !matches!(value_ty.concrete(), Type::Int(_) | Type::Char | Type::Bool | Type::Error) {
+                self.error(args[2].span, format!("`FillChar` fills with a byte or a character, not a {value_ty}"));
+            }
+            if matches!(self.eval_const(&args[2]), Some(ConstVal::Int(0) | ConstVal::Bool(false)))
+                || matches!(self.eval_const(&args[2]), Some(ConstVal::Str(s)) if s == [0])
+            {
+                self.a.fill_zero.insert(callee_id(e));
+            }
+        }
+        if ty == Type::Error || source_ty == Type::Error {
+            return;
+        }
+        // Part of a string or byte array, from an element.
+        if b == Builtin::FillChar
+            && let ExprKind::Index(base, indexes) = &target.kind
+            && indexes.len() == 1
+            && self.place_type(base).is_some_and(|t| byte_sequence(&t))
+        {
+            return;
+        }
+        let whole = super::types::tp_size(&ty).is_some_and(|size| self.eval_const(count) == Some(ConstVal::Int(size)));
+        let ok = whole
+            && match b {
+                Builtin::Move => source_ty == ty,
+                _ => self.a.fill_zero.contains(&callee_id(e)) || byte_sequence(&ty),
+            };
+        if !ok {
+            let supported = if b == Builtin::Move {
+                "pascrust supports `Move` only between two whole variables of the same type, with `SizeOf`"
+            } else {
+                "pascrust supports `FillChar` on a whole variable (with `SizeOf`, filling with 0 unless it's a string or byte array), or on part of a string or byte array"
+            };
+            self.error(e.span, supported);
+        }
+    }
+
     /// The builtin `callee` names, if it's `SizeOf`, `High` or `Low`.
     fn type_query_builtin(&self, callee: &Expr) -> Option<Builtin> {
         let ExprKind::Name(id) = &callee.kind else { return None };
@@ -2383,6 +2431,13 @@ impl Checker {
                     }
                 }
             }
+            // TP copies raw bytes; we handle the safe, common cases.
+            FillChar | Move => {
+                if arity(&mut self.errors, span, args.len(), 3..=3, &name) {
+                    self.fill_or_move(e, b, args);
+                }
+                Type::Void
+            }
             Swap => self.unary_builtin(
                 span,
                 args,
@@ -2764,5 +2819,15 @@ fn callee_id(e: &Expr) -> NodeId {
     match &e.kind {
         ExprKind::Call { callee, .. } => callee.id,
         _ => e.id,
+    }
+}
+
+/// A string, or an array whose elements are single bytes (`Byte`, `Char`,
+/// `ShortInt`, `Boolean`): something `FillChar` can fill byte by byte.
+fn byte_sequence(ty: &Type) -> bool {
+    match ty {
+        Type::Str { .. } => true,
+        Type::Array(a) => matches!(a.elem, Type::Int(IntKind::Byte | IntKind::ShortInt) | Type::Char | Type::Bool),
+        _ => false,
     }
 }

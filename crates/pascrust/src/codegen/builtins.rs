@@ -179,6 +179,12 @@ impl<'a> Codegen<'a> {
                 Some(code) => format!("run_error({})", self.expr(code).0),
             },
             SizeOf | High | Low => unreachable!("sema folds these into constants"),
+            FillChar => self.fill_char(call_id, args),
+            Move => {
+                // Sema allows only a whole variable to one of the same type.
+                let ty = self.a.type_of(args[1].id).clone();
+                format!("{} = {};", self.place(&args[1]), self.coerce(&args[0], &ty).0)
+            }
             Lo => {
                 let t = ty(self, &args[0]).concrete();
                 format!("{} as u8", paren(self.coerce(&args[0], &t), prec::AS))
@@ -404,6 +410,61 @@ impl Codegen<'_> {
                 "self.type_name()".to_string()
             }
             _ => format!("\"{}\"", object.rust_name),
+        }
+    }
+}
+
+impl Codegen<'_> {
+    /// `FillChar(x, count, value)`, in the cases sema allows.
+    fn fill_char(&mut self, call_id: NodeId, args: &[Expr]) -> String {
+        let (target, count, value) = (&args[0], &args[1], &args[2]);
+        // Part of a string or array, from an element: `s[1]`, `a[i]`.
+        if let ExprKind::Index(base, indexes) = &target.kind
+            && indexes.len() == 1
+        {
+            let base_ty = self.a.type_of(base.id).clone();
+            if matches!(base_ty, Type::Str { .. }) {
+                let place = self.place_receiver(base);
+                let (start, count) = (self.expr(&indexes[0]).0, self.expr(count).0);
+                return format!("{place}.fill({start}, {count}, {});", self.fill_value(value, &Type::Char));
+            }
+            if let Type::Array(a) = &base_ty {
+                let place = self.place_receiver(base);
+                let (start, count) = (self.expr(&indexes[0]).0, self.expr(count).0);
+                return format!("{place}.fill_from({start}, {count}, {});", self.fill_value(value, &a.elem));
+            }
+        }
+        let ty = self.a.type_of(target.id).clone();
+        let zero = self.a.fill_zero.contains(&call_id);
+        match &ty {
+            Type::Str { .. } => {
+                let place = self.place_receiver(target);
+                format!("{place}.fill(0, {}, {});", self.expr(count).0, self.fill_value(value, &Type::Char))
+            }
+            // Filling with zeros is resetting to the default value.
+            _ if zero => format!("{} = {};", self.place(target), super::default_value(&ty)),
+            Type::Array(a) => {
+                let place = self.place_receiver(target);
+                format!("{place}.fill({});", self.fill_value(value, &a.elem))
+            }
+            _ => unreachable!("sema checked FillChar"),
+        }
+    }
+
+    /// A `FillChar` value as an element of type `elem`: `b' '` for a
+    /// `Char`, `value != 0` for a `Boolean`.
+    fn fill_value(&mut self, value: &Expr, elem: &Type) -> String {
+        match elem {
+            Type::Bool => match &value.kind {
+                ExprKind::Int(n) => (*n != 0).to_string(),
+                _ => format!("{} != 0", paren(self.expr(value), prec::CMP + 1)),
+            },
+            // A literal number is already a fine `u8`.
+            Type::Char if matches!(self.a.type_of(value.id), Type::IntLit(_)) => self.expr(value).0,
+            Type::Char if matches!(self.a.type_of(value.id), Type::Int(_)) => {
+                format!("{} as u8", paren(self.expr(value), prec::AS))
+            }
+            _ => self.coerce(value, elem).0,
         }
     }
 }

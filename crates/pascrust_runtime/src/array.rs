@@ -43,6 +43,26 @@ impl<T, const LO: i64, const N: usize> PArray<T, LO, N> {
     }
 }
 
+impl<T: Copy, const LO: i64, const N: usize> PArray<T, LO, N> {
+    /// Pascal `FillChar(a, SizeOf(a), v)` on an array of bytes or chars.
+    pub fn fill(&mut self, value: T) {
+        self.0.fill(value);
+    }
+
+    /// Pascal `FillChar(a[start], count, v)`: `count` elements from `start`.
+    /// Running past the end is runtime error 201, where TP would have
+    /// overwritten whatever came next in memory.
+    pub fn fill_from(&mut self, start: impl Ordinal, count: impl Into<i32>, value: T) {
+        let count = count.into().max(0) as usize;
+        if count == 0 {
+            return;
+        }
+        let first = Self::offset(start.ord());
+        Self::offset(start.ord() + count as i64 - 1);
+        self.0[first..first + count].fill(value);
+    }
+}
+
 /// Pascal leaves arrays uninitialized; we zero them by starting every
 /// element at its default. The standard library only implements `Default`
 /// for arrays of up to 32 elements, so build it with `std::array::from_fn`,
