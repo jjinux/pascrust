@@ -6,184 +6,184 @@
             FirstItem
    Please see filesys.pas for more info.}
 
-UNIT BSTUnit;
+unit BSTUnit;
 
-INTERFACE
-   TYPE
-       PeopleKeyPointer = ^PeopleKey;
-       PeopleKey = record
-                      ID:  LongInt;
-                      Location:  integer;
-                      before :  PeopleKeyPointer;
-                      after :  PeopleKeyPointer;
-                   end; {record}
-       BST = object
-          Root : PeopleKeyPointer;
-          Procedure Create;
-          Function IsEmpty:boolean;
-          Procedure Insert(var item:PeopleKey ; var successful:boolean);
-          Procedure Delete(item:PeopleKey ; var successful:boolean);
-          Procedure Search(var item:PeopleKey ; var found:boolean);
-          Procedure Traverse; {for testing purposes only}
-          Procedure FirstItem(var item:PeopleKey);
-          Procedure ShiftLocations(removed:integer);
-       end; {object}
+interface
+   type
+      PeopleKeyPointer = ^PeopleKey;
+      PeopleKey = record
+         ID: LongInt;
+         Location: integer;
+         Before: PeopleKeyPointer;
+         After: PeopleKeyPointer;
+      end; {record}
+      BST = object
+         root: PeopleKeyPointer;
+         procedure Create;
+         function IsEmpty: boolean;
+         procedure Insert(var item: PeopleKey; var successful: boolean);
+         procedure Delete(item: PeopleKey; var successful: boolean);
+         procedure Search(var item: PeopleKey; var found: boolean);
+         procedure Traverse; {for testing purposes only}
+         procedure FirstItem(var item: PeopleKey);
+         procedure ShiftLocations(removed: integer);
+      end; {object}
 
-IMPLEMENTATION
-   Procedure BST.Create;
+implementation
+   procedure BST.Create;
       begin
-         root:=nil;
+         root := nil;
       end; {.Create}
 
-   Function BST.IsEmpty:boolean;
+   function BST.IsEmpty: boolean;
       begin
-         IsEmpty:= root=nil;
+         IsEmpty := root = nil;
       end; {.IsEmpty}
 
-   Procedure BST.Insert(var item:PeopleKey ; var successful:boolean);
-      Procedure RecInsert(var root:PeopleKeyPointer ; var item:PeopleKey ;
-         var successful:boolean);
+   procedure BST.Insert(var item: PeopleKey; var successful: boolean);
+      procedure RecInsert(var root: PeopleKeyPointer; var item: PeopleKey;
+         var successful: boolean);
          begin
-            if root=nil then
-               begin
-                  new(root);
-                  root^.Id:=item.id;
-                  root^.Location:=item.Location;
-                  root^.Before:=nil;
-                  root^.After:=nil
-               end
+            if root = nil then
+            begin
+               new(root);
+               root^.ID := item.ID;
+               root^.Location := item.Location;
+               root^.Before := nil;
+               root^.After := nil
+            end
             else
-               if Item.Id<root^.id then
-                  recInsert(root^.before,Item,successful)
-               else if Item.Id > root^.Id then
-                  recInsert(root^.after,item,successful)
-               else successful:=false;           {item in tree}
-         end{recInsert};
+               if item.ID<root^.ID then
+                  RecInsert(root^.Before, item, successful)
+               else if item.ID > root^.ID then
+                  RecInsert(root^.After, item, successful)
+               else successful := false;         {item in tree}
+         end {recInsert};
       begin
-         successful:=true;                       {may change in recInsert}
-         RecInsert(root,item,successful);
+         successful := true;                     {may change in recInsert}
+         RecInsert(root, item, successful);
       end; {.Insert}
 
-   Procedure BST.Delete(item:PeopleKey ; var successful:boolean);
-      Procedure recDelete(var root:PeopleKeyPointer ; item:PeopleKey ;
-         var successful:boolean);
-         var tempPtr:PeopleKeyPointer;
+   procedure BST.Delete(item: PeopleKey; var successful: boolean);
+      procedure recDelete(var root: PeopleKeyPointer; item: PeopleKey;
+         var successful: boolean);
+         var TempPtr: PeopleKeyPointer;
          begin
-            if root=nil then         {empty tree/subtree, item not found}
-               successful:=false
+            if root = nil then       {empty tree/subtree, item not found}
+               successful := false
             else
-               if item.Id<root^.Id then
-                  recDelete(root^.Before,item,successful)
-               else if item.Id>root^.Id then
-                  recDelete(root^.After,item,successful)
+               if item.ID<root^.ID then
+                  recDelete(root^.Before, item, successful)
+               else if item.ID>root^.ID then
+                  recDelete(root^.After, item, successful)
                else                  {item found -- delete node}
-                  if Root^.Before=nil then
-                     begin           {no before}
-                        TempPtr:=Root^.After;
-                        dispose(root);
-                        Root:=TempPtr;
-                     end{if}
-                  else if Root^.After=nil then
-                     begin           {before, but no after}
-                        TempPtr:=Root^.Before;
-                        dispose(root);
-                        Root:=TempPtr
-                     end{else if}
+                  if root^.Before = nil then
+                  begin           {no before}
+                     TempPtr := root^.After;
+                     dispose(root);
+                     root := TempPtr;
+                  end {if}
+                  else if root^.After = nil then
+                  begin           {before, but no after}
+                     TempPtr := root^.Before;
+                     dispose(root);
+                     root := TempPtr
+                  end {else if}
                   else               {before and after exist}
-                     begin
-                        TempPtr:= Root^.After;
-                        while TempPtr^.Before<>nil do
-                           TempPtr:=TempPtr^.Before;
-                        {Copy only the successor's data.  Copying the whole
-                         record (Root^ := TempPtr^) would also copy its
-                         Before/After links and cut the tree apart.}
-                        Root^.ID:= TempPtr^.ID;
-                        Root^.Location:= TempPtr^.Location;
-                        recDelete(Root^.After,TempPtr^,successful);
-                     end;{else}
-         end{recDelete};
-      begin {.Delete}
-         successful:=true;
-         recDelete(root,item,successful);
+                  begin
+                     TempPtr := root^.After;
+                     while TempPtr^.Before <> nil do
+                        TempPtr := TempPtr^.Before;
+                     {Copy only the successor's data.  Copying the whole
+                      record (Root^ := TempPtr^) would also copy its
+                      Before/After links and cut the tree apart.}
+                     root^.ID := TempPtr^.ID;
+                     root^.Location := TempPtr^.Location;
+                     recDelete(root^.After, TempPtr^, successful);
+                  end; {else}
+         end {recDelete};
+      begin  {.Delete}
+         successful := true;
+         recDelete(root, item, successful);
       end; {.Delete}
 
-   Procedure BST.Search(var item:PeopleKey ; var found:boolean);
+   procedure BST.Search(var item: PeopleKey; var found: boolean);
       {will search the tree for item, and then put info in tree's item into
        the item to be sent back.  This is necessary in order to find the
        item's position in masterfile.}
-      Procedure RecSearch(var root:PeopleKeyPointer ; var item:PeopleKey ;
-         var found:boolean);
+      procedure recSearch(var root: PeopleKeyPointer; var item: PeopleKey;
+         var found: boolean);
          begin
-            if Root = nil then                   {empty tree}
-               found:=false
+            if root = nil then                   {empty tree}
+               found := false
             else
-               begin                 { there is a non empty tree to search}
-                  if item.ID < Root^.ID then           {descend before subtree}
-                     recSearch(Root^.Before,item,found)
-                  else if item.ID > Root^.ID then      {descend after subtree}
-                     recSearch(Root^.after,item,found)
-                  else                                 { ID found}
-                     item:= Root^;
-               end{else}
-         end{recSearch};
-      begin {.Search}
-         found:= true;
-         recSearch(root,item,found);
+            begin                 { there is a non empty tree to search}
+               if item.ID < root^.ID then           {descend before subtree}
+                  recSearch(root^.Before, item, found)
+               else if item.ID > root^.ID then      {descend after subtree}
+                  recSearch(root^.After, item, found)
+               else                                 { ID found}
+                  item := root^;
+            end {else}
+         end {recSearch};
+      begin  {.Search}
+         found := true;
+         recSearch(root, item, found);
       end; {.Search}
 
-   Procedure BST.Traverse; {for testing purposes only}
-      Procedure recTraverse(root:PeopleKeyPointer);
+   procedure BST.Traverse; {for testing purposes only}
+      procedure recTraverse(root: PeopleKeyPointer);
          begin
-             if root=nil then
-                {do nothing, this is our base case}
-             else
-                begin
-                   RecTraverse(root^.before);
-                   write(root^.id:8,'  ');
-                   writeln(root^.location);
-                   RecTraverse(root^.after);
-                end; {else}
+            if root = nil then
+            {do nothing, this is our base case}
+            else
+            begin
+               recTraverse(root^.Before);
+               write(root^.ID:8, '  ');
+               writeln(root^.Location);
+               recTraverse(root^.After);
+            end; {else}
          end; {recTraverse}
       begin {traverse}
          writeln;
          if IsEmpty then
             writeln('       TREE IS EMPTY')
          else
-            begin
+         begin
             writeln('ID        Position');
             recTraverse(root);
-            end; {else}
+         end; {else}
          writeln('Hit ENTER key to exit');
          readln;
       end; {BST.Traverse}
 
-   Procedure BST.FirstItem(var item:PeopleKey);
+   procedure BST.FirstItem(var item: PeopleKey);
       {will return the first item of the BST without changing its value}
-      Procedure RecFirstItem(var item:PeopleKey ; root:peopleKeyPointer);
+      procedure RecFirstItem(var item: PeopleKey; root: PeopleKeyPointer);
          begin
-            if (root^.before=nil) then  {base case}
-               Item:=root^
-            else recFirstItem(item,root^.before);
-         end{RecFirstItem};
-      begin {FirstItem}
-         if root=nil then
+            if (root^.Before = nil) then {base case}
+               item := root^
+            else RecFirstItem(item, root^.Before);
+         end {RecFirstItem};
+      begin  {FirstItem}
+         if root = nil then
             writeln('Error:  trying to get an item from an empty tree')
          else
-            RecFirstItem(item,root);
-      end{FirstItem};
+            RecFirstItem(item, root);
+      end {FirstItem};
 
-   Procedure BST.ShiftLocations(removed:integer);
+   procedure BST.ShiftLocations(removed: integer);
       {After the record at file position Removed is deleted from the master
        file, every later record is one position earlier.}
-      Procedure RecShift(root:PeopleKeyPointer);
+      procedure RecShift(root: PeopleKeyPointer);
          begin
-            if root<>nil then
-               begin
-                  if root^.Location>removed then
-                     dec(root^.Location);
-                  RecShift(root^.before);
-                  RecShift(root^.after);
-               end; {if}
+            if root <> nil then
+            begin
+               if root^.Location>removed then
+                  dec(root^.Location);
+               RecShift(root^.Before);
+               RecShift(root^.After);
+            end; {if}
          end; {RecShift}
       begin {ShiftLocations}
          RecShift(root);

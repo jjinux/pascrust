@@ -16,66 +16,66 @@ interface
    type
       QInteger = 0..maxsize;
 
-   Function QSize(Q : Queue) : QInteger;
-      {Returns the size of the Queue}
-   Procedure DumpQ(Q : Queue);
-      {Displays contents of the Queue from front to rear}
-   Procedure FrontOfQ(Q : Queue ; var FrontRec : QRec);
-      {Returns first record in queue without changing Queue}
-   Procedure RearOfQ(Q : Queue ; var RearRec : QRec);
-      {Returns the last record in queue WITHOUT changing Queue}
+   function Qsize(Q: Queue): QInteger;
+   {Returns the size of the Queue}
+   procedure DumpQ(Q: Queue);
+   {Displays contents of the Queue from front to rear}
+   procedure FrontOfQ(Q: Queue; var FrontRec: QRec);
+   {Returns first record in queue without changing Queue}
+   procedure RearOfQ(Q: Queue; var RearRec: QRec);
+{Returns the last record in queue WITHOUT changing Queue}
 
-Implementation
+implementation
 
-   Uses Crt;
+   uses Crt;
 
-   Function QSize(Q : Queue) : QInteger;
+   function Qsize(Q: Queue): QInteger;
       {Returns the size of the Queue}
       begin
-         If (Q.front+1 mod maxsize) = Q.rear then
-            QSize:= 0
+         if (Q.front+1 mod maxsize) = Q.rear then
+            Qsize := 0
          else if Q.front+1<Q.rear then
-            QSize:= Q.rear - Q.front - 1
+            Qsize := Q.rear - Q.front - 1
          else if (Q.front+1 mod maxsize) > Q.rear then
-            QSize:= MaxSize - (Q.front-Q.rear) - 1;
+            Qsize := maxsize - (Q.front-Q.rear) - 1;
       end; {QSize}
 
-   Procedure DumpQ(Q : Queue);        {not var}
+   procedure DumpQ(Q: Queue);         {not var}
       {Displays contents of the Queue from front to rear}
-      var                           
+      var
          item : QRec;                 {last item of Queue}
          a    : integer;
-      procedure displayTime(Minutes:timeType);
+      procedure displayTime(Minutes: TimeType);
          begin
-            write(minutes div 60, ':', minutes mod 60);
+            write(Minutes div 60, ':', Minutes mod 60);
          end;                         {display time in military format}
-      procedure Display(item : QRec);
+      procedure Display(item: QRec);
          begin
             writeln;
-            write(item.FlightNum);
-            gotoxy(13,wherey);  {aligns everything up}
+            write(item.flightNum);
+            gotoxy(13, wherey); {aligns everything up}
             displayTime(item.JoinQ);
-            gotoxy(21,wherey);
+            gotoxy(21, wherey);
             displayTime(item.LeaveQ);
          end; {Display - subProcedure of DumpQ}
       begin
-         for a:= 1 to QSize(Q) do
-            begin
+         for a := 1 to Qsize(Q) do
+         begin
             Q.removeQ(item);
-            display(item);             {a QRec}
-            end;
+            Display(item);             {a QRec}
+         end;
       end; {DumpQ}
 
-   Procedure FrontOfQ(Q : Queue ; var FrontRec : QRec);
+   procedure FrontOfQ(Q: Queue; var FrontRec: QRec);
       {Returns first record in queue without changing Queue}
       begin
-         FrontRec:= Q.QArray[Q.front];
+         FrontRec := Q.QArray[Q.front];
       end; {FrontOfQ}
 
-   Procedure RearOfQ(Q : Queue ; var RearRec : QRec);
+   procedure RearOfQ(Q: Queue; var RearRec: QRec);
       {Returns the last record in queue WITHOUT changing Queue}
       begin
-         RearRec:= Q.QArray[Q.rear]
+         RearRec := Q.QArray[Q.rear]
       end; {RearOfQ}
 
 begin {initialization}

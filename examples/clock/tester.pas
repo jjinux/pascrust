@@ -4,22 +4,22 @@
 Program Tester.  This is the executable version of the clock type.  Please see
 Clock for more details.}
 
-Program Tester;
-uses Graph,clock,Menu,Crt;
+program Tester;
+uses Graph, clock, Menu, Crt;
 const ClockSize = 1;
 var MyClock: ClockType;
-    key: char;
-Procedure InitializeGraphics;
-   var grDriver: Integer;
-       grMode: Integer;
+   key: char;
+procedure InitializeGraphics;
+   var grDriver: integer;
+      grMode: integer;
    begin
       grDriver := Detect;
-      InitGraph(grDriver, grMode,'a:\tictac');
+      InitGraph(grDriver, grMode, 'a:\tictac');
    end; {InitializeGraphics}
-Procedure Info;
+procedure Info;
    var MyMenu: MenuType;
    begin
-      MyMenu.create(1,1);
+      MyMenu.Create(1, 1);
       MyMenu.ChangeTitle('About Vector Clock');
       MyMenu.AddOption('t');
       MyMenu.AddOption(' ');
@@ -29,19 +29,19 @@ Procedure Info;
       MyMenu.AddOption('Please send questions and comments to');
       MyMenu.AddOption('210 Lofton Dr., Fayetteville, NC 28311.');
       MyMenu.WriteAsText;
-      Repeat until keypressed;
+      repeat until keypressed;
    end; {Info}
 begin
    InitializeGraphics;
-   MyClock.create(ClockSize);
+   MyClock.Create(ClockSize);
    repeat
       MyClock.Update;
       if keypressed then
-         begin
-         key:= upcase(readkey);
+      begin
+         key := upcase(readkey);
          if key = 'I' then
-            begin info; MyClock.Create(ClockSize); end;
-         end; {if}
-   until (key=chr(27)) or (key='E');
+         begin Info; MyClock.Create(ClockSize); end;
+      end; {if}
+   until (key = chr(27)) or (key = 'E');
    CloseGraph;
 end.

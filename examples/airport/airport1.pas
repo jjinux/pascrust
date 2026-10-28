@@ -8,15 +8,15 @@ basic element type and maximum size of a queue.}
 unit Airport1;
 
 interface
-const
-   maxsize = 100;
-type
-   TimeType= 0..1440;                   {1440 minutes in a day}
-   QRec    = record
-               flightnum : string[10];
-               JoinQ     : TimeType;
-               LeaveQ    : TimeType;
-             end; {record}
+   const
+      maxsize = 100;
+   type
+      TimeType = 0..1440;                  {1440 minutes in a day}
+      QRec    = record
+         flightNum : string[10];
+         JoinQ     : TimeType;
+         LeaveQ    : TimeType;
+      end; {record}
 implementation
 
 begin

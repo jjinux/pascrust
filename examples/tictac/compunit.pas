@@ -29,254 +29,254 @@ takes the second move:
 The goal is to create a strategy that is impossible to beat, and for a good
 player will always lead to a catsgame.}
 
-Unit CompUnit;
+unit CompUnit;
 
-INTERFACE
-Uses Crt,MainUnit;
-Const ComputerDelayTime=(1000);
-Type
-   OpponentType = (Player,Computer,JJ);
-   CompuType = object                   {public}
-      Procedure Create;
-      Procedure FirstMove(PlayersMove:char ; var Board:BoardType);
-      Procedure SelectMove(var board:boardType ; Opponent:OpponentType);
-                                        {protected}
-      Function TryCheckmate(var board:BoardType):boolean;
-      Function BlockCheckmate(var board:BoardType):boolean;
-      Function BlockDiagnolSituation(var board:BoardType):boolean;
-      Procedure GetGoodSpot(var board:BoardType ; Opponent:OpponentType);
+interface
+   uses Crt, MainUnit;
+   const ComputerDelayTime = (1000);
+   type
+      OpponentType = (player, computer, JJ);
+      CompuType = object                   {public}
+         procedure Create;
+         procedure FirstMove(PlayersMove: char; var Board: BoardType);
+         procedure SelectMove(var Board: BoardType; Opponent: OpponentType);
+         {protected}
+         function TryCheckmate(var Board: BoardType): boolean;
+         function BlockCheckmate(var Board: BoardType): boolean;
+         function BlockDiagnolSituation(var Board: BoardType): boolean;
+         procedure GetGoodSpot(var Board: BoardType; Opponent: OpponentType);
       end; {object}
 
-   HypotheticalBoard = Object(BoardType){descendent of board}
-      {Does everything that board does, without actually changing the graphics
-       screen.  Thus when a HypotheticalBoard is created, it is hypothetical}
-      Procedure HypExeMove(choice:char ; OTurn:boolean);
-      Function HypFinish : FinishType;
+      HypotheticalBoard = object(BoardType) {descendent of board}
+         {Does everything that board does, without actually changing the graphics
+          screen.  Thus when a HypotheticalBoard is created, it is hypothetical}
+         procedure HypExeMove(choice: char; Oturn: boolean);
+         function HypFinish: FinishType;
       end; {object}
 
-IMPLEMENTATION
-   Procedure CompuType.Create;
+implementation
+   procedure CompuType.Create;
       begin {none}
       end; {CompuType.Create}
 
-   Function CompuType.TryCheckmate(var board:BoardType):boolean;
+   function CompuType.TryCheckmate(var Board: BoardType): boolean;
       {Checks to see if there is anyway of checkmating the opponent.  It there
        is, execute that way and return true.  Otherwise, return false}
-      var a:char;
-          tempBoard:HypotheticalBoard;
-          tempReturn:boolean;
+      var a: char;
+         tempBoard: HypotheticalBoard;
+         tempReturn: boolean;
       begin
-         tempReturn:= false;
-         a:= '1';
-         while (a<='9') and not TempReturn do
-            begin
+         tempReturn := false;
+         a := '1';
+         while (a <= '9') and not tempReturn do
+         begin
             if Board.ValidMove(a) then
-               begin
+            begin
                tempBoard.spaces := Board.spaces;
-               tempBoard.HypExeMove(a,false);
-               if tempBoard.HypFinish=win then
-                  begin board.ExecuteMove(a,false); TempReturn:= true; end;
-               end; {if}
+               tempBoard.HypExeMove(a, false);
+               if tempBoard.HypFinish = win then
+               begin Board.ExecuteMove(a, false); tempReturn := true; end;
+            end; {if}
             inc(a);
-            end; {while}
-         TryCheckmate:= tempReturn;
+         end; {while}
+         TryCheckmate := tempReturn;
       end; {CompuType.TryCheckmate}
 
-   Function CompuType.BlockCheckmate(var board:BoardType):boolean;
+   function CompuType.BlockCheckmate(var Board: BoardType): boolean;
       {Check to see if there is anyway that the player can get checkmate on
        his next move.  If there is, block it and return true.  If not,
        return false.}
-      var a:char;
-          tempBoard:HypotheticalBoard;
-          tempReturn:boolean;
+      var a: char;
+         tempBoard: HypotheticalBoard;
+         tempReturn: boolean;
       begin
-         tempReturn:= false;
-         a:= '1';
-         while (a<='9') and not TempReturn do
-            begin
+         tempReturn := false;
+         a := '1';
+         while (a <= '9') and not tempReturn do
+         begin
             if Board.ValidMove(a) then
-               begin                        {true - pretend you're the player}
-               tempBoard.spaces:= Board.spaces;
-               tempBoard.HypExeMove(a,true);
-               if tempBoard.HypFinish=win then
-                  begin Board.ExecuteMove(a,false); TempReturn:= true; end;
-               end; {if}                {block it}
+            begin                        {true - pretend you're the player}
+               tempBoard.spaces := Board.spaces;
+               tempBoard.HypExeMove(a, true);
+               if tempBoard.HypFinish = win then
+               begin Board.ExecuteMove(a, false); tempReturn := true; end;
+            end; {if}                {block it}
             inc(a);
-            end; {while}
-         BlockCheckmate:= tempReturn;
+         end; {while}
+         BlockCheckmate := tempReturn;
       end; {CompuType.BlockCheckmate}
 
-   Function CompuType.BlockDiagnolSituation(var board:BoardType):boolean;
+   function CompuType.BlockDiagnolSituation(var Board: BoardType): boolean;
       {At the interface level, we must find out if we are in a situation
        in which spots (753) or (951) are taken.  It they are, pick a side
        and return true.  Otherwise, return false.}
       {Friend of Board}
-      Procedure BlockIt(var Board:BoardType);
+      procedure BlockIt(var Board: BoardType);
          begin
             case random(4) of      {pick a side}
-              0 : Board.ExecuteMove('8',false);
-              1 : Board.ExecuteMove('4',false);
-              2 : Board.ExecuteMove('6',false);
-              3 : Board.ExecuteMove('2',false);
+               0 : Board.ExecuteMove('8', false);
+               1 : Board.ExecuteMove('4', false);
+               2 : Board.ExecuteMove('6', false);
+               3 : Board.ExecuteMove('2', false);
             end; {case}
          end; {BlockIt}
       begin
-         if (board.spaces['1']=O) and (board.spaces['5']=X) and
-            (board.spaces['9']=O) then
-            begin BlockDiagnolSituation:= true; BlockIt(board); end
-         else if (board.spaces['7']=O) and (board.spaces['5']=X) and
-            (board.spaces['3']=O) then
-            begin BlockDiagnolSituation:= true; BlockIt(board); end
-         else BlockDiagnolSituation:= false;
+         if (Board.spaces['1'] = O) and (Board.spaces['5'] = X) and
+            (Board.spaces['9'] = O) then
+         begin BlockDiagnolSituation := true; BlockIt(Board); end
+         else if (Board.spaces['7'] = O) and (Board.spaces['5'] = X) and
+            (Board.spaces['3'] = O) then
+         begin BlockDiagnolSituation := true; BlockIt(Board); end
+         else BlockDiagnolSituation := false;
       end; {CompuType.BlockDiagnolSituation}
 
-   Procedure CompuType.GetGoodSpot(var board:BoardType ;
-      Opponent:OpponentType);
+   procedure CompuType.GetGoodSpot(var Board: BoardType;
+      Opponent: OpponentType);
       {This uses a points system in order to pick the best spot.  This is the
        last priority, so it is not a function.  If Opponent = computer, then
        BlockDoubleCheck is basically deactivated to make it easier for the
        player.}
-      Type SpotsType = array['1'..'9'] of integer;
-      var  a:char;
-           spots:SpotsType;
-      Function AccountForValidity(Board:BoardType ; Move:Char):integer;
+      type SpotsType = array['1'..'9'] of integer;
+      var  a: char;
+         spots: SpotsType;
+      function AccountForValidity(Board: BoardType; Move: char): integer;
          {All valid spots are given a 1, invalid ones are given nothing}
          begin
             if Board.ValidMove(Move) = true then
-               AccountForValidity:= 1
-            else AccountForValidity:= 0;
+               AccountForValidity := 1
+            else AccountForValidity := 0;
          end; {AccountForValidity}
-      Function CheckOutSpot(board:boardType ; a:char ; Oturn:boolean):integer;
+      function CheckOutSpot(Board: BoardType; a: char; Oturn: boolean): integer;
          {Given a player and his move, this F returns the amount of check
           situations for him on the board.}
-         var return:integer;
-             temp,temp2:HypotheticalBoard;
-             b:char;                    {The next hypothetical comp move}
+         var Return: integer;
+            temp, temp2: HypotheticalBoard;
+            b: char;                   {The next hypothetical comp move}
          begin
-            temp.spaces:= board.spaces; {The first hypothetical board}
-            temp.HypExeMove(a,Oturn);
-            return:= 0;
-            for b:= '1' to '9' do
+            temp.spaces := Board.spaces; {The first hypothetical board}
+            temp.HypExeMove(a, Oturn);
+            Return := 0;
+            for b := '1' to '9' do
+            begin
+               if temp.ValidMove(b) then
                begin
-               if temp.validmove(b) then
-                  begin
-                  temp2:= temp;         {The next step hypothetical board}
-                  temp2.HypExeMove(b,Oturn);
-                  if temp2.HypFinish=win then inc(return);
-                  end; {if}
-               end; {for}
-            CheckOutSpot:= return;
+                  temp2 := temp;        {The next step hypothetical board}
+                  temp2.HypExeMove(b, Oturn);
+                  if temp2.HypFinish = win then inc(Return);
+               end; {if}
+            end; {for}
+            CheckOutSpot := Return;
          end; {CheckOutSpot}
-      Function BlockDoubleCheck(Board:BoardType ; Move:Char):integer;
+      function BlockDoubleCheck(Board: BoardType; Move: char): integer;
          {Returns two points if a spot has the potential of being a double
           check for the opponent}
          begin
-            if CheckOutSpot(board,move,true)=2 then
-               BlockDoubleCheck:= 2 else
-            BlockDoubleCheck:= 0;
+            if CheckOutSpot(Board, Move, true) = 2 then
+               BlockDoubleCheck := 2 else
+               BlockDoubleCheck := 0;
          end; {BlockDoubleCheck}
-      Function NumOfChecks(Board:BoardType ; Move:Char):integer;
+      function NumOfChecks(Board: BoardType; Move: char): integer;
          {Returns one point per check given a particular move}
          begin
-            NumOfChecks:= CheckOutSpot(board,move,false);
+            NumOfChecks := CheckOutSpot(Board, Move, false);
          end; {NumOfChecks}
-      Function BestSpot(spots:SpotsType):char;
+      function BestSpot(spots: SpotsType): char;
          {Takes the array an returns the char corresponding to the space with
           the most points}
-         var GoodSpot:Record Points:integer; spot:char; end;
-             a:char;
+         var GoodSpot: record Points: integer; Spot: char; end;
+            a: char;
          begin
-            GoodSpot.Points:=0; GoodSpot.Spot:='1';
-            For a:= '1' to '9' do
+            GoodSpot.Points := 0; GoodSpot.Spot := '1';
+            for a := '1' to '9' do
                if (spots[a]>GoodSpot.Points) then
-                  begin GoodSpot.Points:=spots[a]; GoodSpot.Spot:=a; end;
-            BestSpot:= GoodSpot.Spot;
+               begin GoodSpot.Points := spots[a]; GoodSpot.Spot := a; end;
+            BestSpot := GoodSpot.Spot;
          end; {BestSpot}
       begin
-         for a:= '1' to '9' do
-            begin
-            spots[a]:= AccountForValidity(board,a);
-               if (spots[a]=1) and (Opponent=JJ) then
-                  spots[a]:= spots[a] +
-                  BlockDoubleCheck(board,a) +
-                  NumOfChecks(board,a)
-               else if (spots[a]=1) and (Opponent=Computer) then
-                  spots[a]:= spots[a] + NumOfChecks(board,a)
-            end; {for}
-         board.ExecuteMove(BestSpot(spots),false);
+         for a := '1' to '9' do
+         begin
+            spots[a] := AccountForValidity(Board, a);
+            if (spots[a] = 1) and (Opponent = JJ) then
+               spots[a] := spots[a] +
+                  BlockDoubleCheck(Board, a) +
+                  NumOfChecks(Board, a)
+            else if (spots[a] = 1) and (Opponent = computer) then
+               spots[a] := spots[a] + NumOfChecks(Board, a)
+         end; {for}
+         Board.ExecuteMove(BestSpot(spots), false);
       end; {CompuType.GetGoodSpot}
 
-   Procedure CompuType.FirstMove(PlayersMove:char ; var Board:BoardType);
+   procedure CompuType.FirstMove(PlayersMove: char; var Board: BoardType);
       {see notes at top of unit}
       begin
-         Delay(ComputerDelayTime);
+         delay(ComputerDelayTime);
          case PlayersMove of
-         {cm}     '7','9','1','3' : Board.ExecuteMove('5',false);
-         {ssOpp}  '8'             : Board.ExecuteMove('2',false);
-                  '4'             : Board.ExecuteMove('6',false);
-                  '6'             : Board.ExecuteMove('4',false);
-                  '2'             : Board.ExecuteMove('8',false);
-         {mc}     '5'             : Case Random(3) of
-                                       0 : Board.ExecuteMove('7',false);
-                                       1 : Board.ExecuteMove('9',false);
-                                       2 : Board.ExecuteMove('1',false);
-                                       3 : Board.ExecuteMove('3',false);
-                                    end; {inner case}
+            {cm}     '7', '9', '1', '3': Board.ExecuteMove('5', false);
+            {ssOpp}  '8': Board.ExecuteMove('2', false);
+            '4' : Board.ExecuteMove('6', false);
+            '6' : Board.ExecuteMove('4', false);
+            '2' : Board.ExecuteMove('8', false);
+               {mc}     '5': case random(3) of
+               0 : Board.ExecuteMove('7', false);
+               1 : Board.ExecuteMove('9', false);
+               2 : Board.ExecuteMove('1', false);
+               3 : Board.ExecuteMove('3', false);
+            end; {inner case}
          end; {case}
       end; {CompuType.FirstMove}
 
-   Procedure CompuType.SelectMove(var board:BoardType ;
-      Opponent:OpponentType);
+   procedure CompuType.SelectMove(var Board: BoardType;
+      Opponent: OpponentType);
       begin
-         Delay(ComputerDelayTime);
-         if TryCheckMate(board) then {exit}
-         else if BlockCheckMate(board) then {exit}
-         else if BlockDiagnolSituation(board) then {exit}
-         else GetGoodSpot(board,Opponent); {last alternative}
+         delay(ComputerDelayTime);
+         if TryCheckmate(Board) then {exit}
+         else if BlockCheckmate(Board) then {exit}
+         else if BlockDiagnolSituation(Board) then {exit}
+         else GetGoodSpot(Board, Opponent); {last alternative}
       end; {CompuType.SelectMove}
 
-   Procedure HypotheticalBoard.HypExeMove(choice:char ; Oturn:boolean);
+   procedure HypotheticalBoard.HypExeMove(choice: char; Oturn: boolean);
       {Enter it into the spaces array.}
       begin
-         if OTurn then spaces[choice]:= O
-            else spaces[choice]:= X;
+         if Oturn then spaces[choice] := O
+         else spaces[choice] := X;
       end; {HypotheticalBoard.HypExeMove}
 
-   Function HypotheticalBoard.HypFinish : FinishType;
-      Function Winner : Boolean;
+   function HypotheticalBoard.HypFinish: FinishType;
+      function Winner: boolean;
          begin
-            Winner:=
-            ((spaces['1']=spaces['2']) and (spaces['2']=spaces['3'])
-             and (spaces['3']<>nothing)) or
-            ((spaces['4']=spaces['5']) and (spaces['5']=spaces['6'])
-             and (spaces['6']<>nothing)) or
-            ((spaces['7']=spaces['8']) and (spaces['8']=spaces['9'])
-             and (spaces['9']<>nothing)) or
-            ((spaces['1']=spaces['4']) and (spaces['4']=spaces['7'])
-             and (spaces['7']<>nothing)) or
-            ((spaces['2']=spaces['5']) and (spaces['5']=spaces['8'])
-             and (spaces['8']<>nothing)) or
-            ((spaces['3']=spaces['6']) and (spaces['6']=spaces['9'])
-             and (spaces['9']<>nothing)) or
-            ((spaces['1']=spaces['5']) and (spaces['5']=spaces['9'])
-             and (spaces['9']<>nothing)) or
-            ((spaces['7']=spaces['5']) and (spaces['5']=spaces['3'])
-             and (spaces['3']<>nothing));
+            Winner :=
+               ((spaces['1'] = spaces['2']) and (spaces['2'] = spaces['3'])
+               and (spaces['3'] <> nothing)) or
+               ((spaces['4'] = spaces['5']) and (spaces['5'] = spaces['6'])
+               and (spaces['6'] <> nothing)) or
+               ((spaces['7'] = spaces['8']) and (spaces['8'] = spaces['9'])
+               and (spaces['9'] <> nothing)) or
+               ((spaces['1'] = spaces['4']) and (spaces['4'] = spaces['7'])
+               and (spaces['7'] <> nothing)) or
+               ((spaces['2'] = spaces['5']) and (spaces['5'] = spaces['8'])
+               and (spaces['8'] <> nothing)) or
+               ((spaces['3'] = spaces['6']) and (spaces['6'] = spaces['9'])
+               and (spaces['9'] <> nothing)) or
+               ((spaces['1'] = spaces['5']) and (spaces['5'] = spaces['9'])
+               and (spaces['9'] <> nothing)) or
+               ((spaces['7'] = spaces['5']) and (spaces['5'] = spaces['3'])
+               and (spaces['3'] <> nothing));
          end; {Winner}
-      Function CheckForCatsGame : Boolean;
-         var Return:boolean;
-             a:char;
+      function CheckForCatsGame: boolean;
+         var Return: boolean;
+            a: char;
          begin
-            Return:= true;
-            for a:= '1' to '9' do
-               if spaces[a]=Nothing then Return:= false;
-            CheckForCatsGame:= Return;
+            Return := true;
+            for a := '1' to '9' do
+               if spaces[a] = nothing then Return := false;
+            CheckForCatsGame := Return;
          end; {CheckForCatsGame}
       begin {BoardType.HypFinish}
          if Winner then
-            HypFinish:= win
-         else if CheckForCatsGame then HypFinish:= cat
-         else HypFinish:= no;
+            HypFinish := win
+         else if CheckForCatsGame then HypFinish := cat
+         else HypFinish := no;
       end; {BoardType.HypFinish}
 
 begin
