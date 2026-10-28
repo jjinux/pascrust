@@ -144,7 +144,7 @@ chosen so each step is testable with the previous ones.
   - [ ] Hoisting a deref argument evaluates it before earlier arguments with side effects (`Show(Bump, head^.value)`).
   - [ ] `x shl n` with `n` at least the type's width doesn't compile (constant) or panics (variable); TP gives 0.
   - [ ] `p^.x := p^.x + 1` hoists a temporary instead of becoming `p.get_mut().x += 1`.
-  - [ ] `Random(n)`: TP 7 may use only the high word of the seed, `(HiWord(seed) * n) shr 16`; ours uses all 32 bits, so some draws differ. Verify against TP before changing.
+  - [x] `Random(n)`: checked against a disassembly of TP's System unit (github.com/daelsepara/turbo-pascal-assembly): it uses the full 32-bit seed, `(seed * n) shr 32`, as we do. `n` is now truncated to a `Word`, as TP's parameter is. Not done: `RandSeed` as an assignable variable.
   - [ ] `{$I-}` and a real `IOResult`, `SeekEof`/`SeekEoln`, `LastMode` (were listed as done; they aren't).
   - [ ] `Val` corner cases: `Val('40000', i, code)` for an `Integer` is an error for us, wraps (code 0) in TP/FPC.
   - [ ] Graph: should `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners in the real BGI? `FExpand` ignores `ChDir`.

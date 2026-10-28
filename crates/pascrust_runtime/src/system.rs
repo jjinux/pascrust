@@ -13,9 +13,11 @@ thread_local! {
     static RAND_SEED: Cell<u32> = const { Cell::new(0) };
 }
 
-/// Turbo Pascal's random number generator: a linear congruential generator.
-/// Using the same formula (and the same starting seed, 0) means a program
-/// produces the same "random" sequence that it did under TP.
+/// Turbo Pascal's random number generator: a linear congruential generator,
+/// `seed * 134775813 + 1` (`$08088405`), wrapping at 32 bits. Using the same
+/// formula (and the same starting seed, 0) means a program produces the same
+/// "random" sequence that it did under TP. `Random(n)` and `Random` below
+/// follow a disassembly of TP's System unit, so they match it draw for draw.
 fn next_seed() -> u32 {
     RAND_SEED.with(|seed| {
         let next = seed.get().wrapping_mul(134775813).wrapping_add(1);
@@ -24,21 +26,25 @@ fn next_seed() -> u32 {
     })
 }
 
-/// Pascal `Random(n)`: an integer in `0..n`.
+/// Pascal `Random(n)`: an integer in `0..n`. TP multiplies the whole 32-bit
+/// seed by `n` and keeps the top 32 bits of the product, which is the same as
+/// `seed / 2^32 * n` rounded down. Its parameter is a `Word`, so `n` is
+/// truncated to 16 bits, as TP would do; `Random(0)` is 0.
 pub fn random(n: impl Into<i32>) -> i16 {
-    let n = n.into();
-    if n <= 0 {
-        return 0;
-    }
-    ((u64::from(next_seed()) * n as u64) >> 32) as i16
+    let n = n.into() as u16;
+    ((u64::from(next_seed()) * u64::from(n)) >> 32) as i16
 }
 
-/// Pascal `Random` without an argument: a real in `[0, 1)`.
+/// Pascal `Random` without an argument: a real in `[0, 1)`, the seed divided
+/// by 2^32. (With `{$N+}` TP computes it on the 8087 from the seed as a
+/// *signed* number, which swaps the two halves of the range. We follow the
+/// default, `{$N-}`.)
 pub fn random_real() -> f64 {
     f64::from(next_seed()) / 4294967296.0
 }
 
-/// Pascal `Randomize`: seed the generator from the clock.
+/// Pascal `Randomize`: seed the generator from the clock. (TP uses the DOS
+/// time of day; the exact value doesn't matter, only that it changes.)
 pub fn randomize() {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -238,6 +244,19 @@ mod tests {
         let found = dos_path(&format!("{}\\TICTAC\\new.dat", dir.display()));
         assert_eq!(found, dir.join("TicTac").join("new.dat"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn random_matches_turbo_pascal() {
+        // From seed 0 the seeds are 1, 134775814, -596792289 (as a LongInt),
+        // ... Each `Random(n)` is `seed * n` shifted right by 32 bits.
+        RAND_SEED.with(|seed| seed.set(0));
+        assert_eq!(random(100), 0);
+        assert_eq!(random(100), 3);
+        assert_eq!(random(100), 86);
+        RAND_SEED.with(|seed| seed.set(0));
+        next_seed();
+        assert_eq!(random_real(), 134775814.0 / 4294967296.0);
     }
 
     #[test]
