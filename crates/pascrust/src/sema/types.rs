@@ -313,6 +313,11 @@ impl Type {
             (Type::Char, Type::Char | Type::StrLit(1)) => true,
             (Type::Str { .. }, t) if t.is_stringish() => true,
             (Type::Pointer(_), Type::Nil) => true,
+            // A pointer to an object may point to any object descended from it.
+            (Type::Pointer(to), Type::Pointer(from)) if to != from => match (to.target(), from.target()) {
+                (Type::Object(to), Type::Object(from)) => from.lineage().iter().any(|(o, _)| *o == to),
+                _ => false,
+            },
             (a, b) => a == b,
         }
     }

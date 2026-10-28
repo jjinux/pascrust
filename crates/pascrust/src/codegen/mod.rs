@@ -371,7 +371,13 @@ impl<'a> Codegen<'a> {
                         self.line("/// heap record (an `Rc<RefCell<...>>` inside): using `nil` or a disposed");
                         self.line("/// record is a runtime error instead of undefined behaviour.");
                     }
-                    self.line(format!("{}type {alias} = Ptr<{}>;", self.vis, p.target().rust()));
+                    let pointee = match p.target() {
+                        // Pointers into a hierarchy with virtual methods point
+                        // to its enum (see `object_enum`).
+                        Type::Object(o) if self.in_dispatch(&o) => enum_name(&o.lineage().last().unwrap().0),
+                        target => target.rust(),
+                    };
+                    self.line(format!("{}type {alias} = Ptr<{pointee}>;", self.vis));
                 }
                 Type::Array(a) => {
                     let alias = a.alias.as_deref().expect("only named array types are emitted");
@@ -565,6 +571,9 @@ impl<'a> Codegen<'a> {
         self.self_expr = saved;
         self.indent -= 1;
         self.line("}");
+        if object.parent.is_none() && self.has_pointers(object) {
+            self.object_enum(object);
+        }
         // `impl AncestorMethods for Object` for this object and each ancestor.
         for (ancestor, path) in object.lineage() {
             self.blank();
@@ -594,6 +603,148 @@ impl<'a> Codegen<'a> {
             self.indent -= 1;
             self.line("}");
         }
+    }
+
+    /// The objects of the hierarchy whose root is `root`, root first.
+    fn hierarchy(&self, root: &Rc<ObjectType>) -> Vec<(Rc<ObjectType>, Span)> {
+        self.a
+            .type_defs
+            .iter()
+            .filter_map(|(ty, span)| match ty {
+                Type::Object(o) if o.lineage().last().unwrap().0 == *root => Some((o.clone(), *span)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Does the program have a pointer type to an object of `root`'s hierarchy?
+    fn has_pointers(&self, root: &Rc<ObjectType>) -> bool {
+        self.a.type_defs.iter().any(|(ty, _)| match ty {
+            Type::Pointer(p) => matches!(p.target(), Type::Object(o) if o.lineage().last().unwrap().0 == *root),
+            _ => false,
+        })
+    }
+
+    /// The Rust path to an object type declared at `span`, from the file
+    /// being written: `TCircle`, or `crate::circles::TCircle` if it's in
+    /// another file.
+    fn type_path(&self, object: &ObjectType, span: Span) -> String {
+        let file = self.map.file_index(span.start);
+        if file == self.file {
+            return object.rust_name.clone();
+        }
+        match self.a.units.iter().find(|u| self.map.file_index(u.span.start) == file) {
+            Some(unit) => format!("crate::{}::{}", unit.module, object.rust_name),
+            None => format!("crate::{}", object.rust_name),
+        }
+    }
+
+    /// The enum that every pointer into `root`'s hierarchy points to, with
+    /// accessors for each object's part and the virtual methods, which
+    /// `match` on the variant to find the version to run.
+    fn object_enum(&mut self, root: &Rc<ObjectType>) {
+        let members = self.hierarchy(root);
+        let name = enum_name(root);
+        let vis = self.vis;
+        self.blank();
+        self.line(format!("/// Every object of the `{}` hierarchy, for pointers: a pointer to a", root.rust_name));
+        self.line(format!("/// `{}` may point to any object descended from it, so all of the", root.rust_name));
+        self.line("/// hierarchy's pointer types point to this enum. The variant says which object");
+        self.line("/// the record really is, as Turbo Pascal's hidden table pointer did.");
+        self.line("#[derive(Clone, Debug)]");
+        self.line(format!("{vis}enum {name} {{"));
+        for (o, span) in &members {
+            self.line(format!("    {}({}),", variant_name(o), self.type_path(o, *span)));
+        }
+        self.line("}");
+        self.blank();
+        self.line(format!("impl Default for {name} {{"));
+        self.line("    fn default() -> Self {");
+        self.line(format!("        {name}::{}({}::default())", variant_name(root), root.rust_name));
+        self.line("    }");
+        self.line("}");
+        self.blank();
+        self.line(format!("impl {name} {{"));
+        self.indent += 1;
+        for (target, span) in &members {
+            let target_path = self.type_path(target, *span);
+            // The variants that contain a `target`: it and its descendants.
+            let arms: Vec<(String, Vec<String>)> = members
+                .iter()
+                .filter_map(|(o, _)| {
+                    let (_, path) = o.lineage().into_iter().find(|(a, _)| a == target)?;
+                    Some((variant_name(o), path))
+                })
+                .collect();
+            let all = arms.len() == members.len();
+            for mutable in [false, true] {
+                let (suffix, amp) = if mutable { ("_mut", "&mut ") } else { ("", "&") };
+                if !mutable {
+                    self.line(format!("/// The `{}` part of the record.", target.rust_name));
+                }
+                let accessor = accessor(target);
+                self.line(format!("{vis}fn as_{accessor}{suffix}({amp}self) -> {amp}{target_path} {{"));
+                self.line("    match self {");
+                for (variant, path) in &arms {
+                    let part = if path.is_empty() { "o".to_string() } else { format!("{amp}o.{}", path.join(".")) };
+                    self.line(format!("        {name}::{variant}(o) => {part},"));
+                }
+                if !all {
+                    self.line(format!(
+                        "        _ => rte(204, \"Invalid pointer operation: the record isn't a {}\"),",
+                        target.rust_name
+                    ));
+                }
+                self.line("    }");
+                self.line("}");
+            }
+        }
+        // Virtual methods introduced below the root: through a pointer to
+        // that object, `pc^.Area`.
+        for (target, _) in members.iter().skip(1) {
+            for slot in self.slots_introduced(target) {
+                let arms: Vec<String> = members
+                    .iter()
+                    .filter(|(o, _)| o.lineage().iter().any(|(a, _)| a == target))
+                    .map(|(o, _)| variant_name(o))
+                    .collect();
+                self.enum_dispatch(&name, slot, &arms, members.len(), vis);
+            }
+        }
+        self.indent -= 1;
+        self.line("}");
+        self.blank();
+        self.line(format!("impl {} for {name} {{", trait_name(root)));
+        self.indent += 1;
+        self.line(format!("fn {}(&mut self) -> &mut {} {{", accessor(root), root.rust_name));
+        self.line(format!("    self.as_{}_mut()", accessor(root)));
+        self.line("}");
+        let variants: Vec<String> = members.iter().map(|(o, _)| variant_name(o)).collect();
+        for slot in self.slots_introduced(root) {
+            self.enum_dispatch(&name, slot, &variants, members.len(), "");
+        }
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    /// A virtual method on the hierarchy's enum: run the version of the
+    /// object in the variant.
+    fn enum_dispatch(&mut self, name: &str, slot: ProcId, variants: &[String], total: usize, vis: &str) {
+        let (params, ret) = self.method_signature(slot);
+        let info = &self.a.procs[slot];
+        let mut args: Vec<String> = info.captures.iter().map(|c| self.a.var_name(slot, c.sym).to_string()).collect();
+        args.extend(info.params.iter().map(|&p| self.a.sym(p).rust_name.clone()));
+        let (method, args) = (info.rust_name.clone(), args.join(", "));
+        self.line(format!("{vis}fn {method}({params}){ret} {{"));
+        self.line("    match self {");
+        for variant in variants {
+            self.line(format!("        {name}::{variant}(o) => o.{method}({args}),"));
+        }
+        if variants.len() < total {
+            self.line(format!("        _ => rte(204, \"Invalid pointer operation: `{method}` on the wrong object\"),"));
+        }
+        self.line("    }");
+        self.line("}");
     }
 
     /// The virtual methods `object` declares that no ancestor has: the
@@ -1257,4 +1408,19 @@ pub(super) fn trait_name(object: &ObjectType) -> String {
 /// The trait method that reaches an object's part of `self`: `t_shape`.
 pub(super) fn accessor(object: &ObjectType) -> String {
     crate::sema::names::snake_case(&object.rust_name)
+}
+
+/// An object's name without TP's customary `T` prefix: `Circle` for `TCircle`.
+fn variant_name(object: &ObjectType) -> String {
+    let name = &object.rust_name;
+    match name.strip_prefix('T') {
+        Some(rest) if rest.starts_with(|c: char| c.is_ascii_uppercase()) => rest.to_string(),
+        _ => name.clone(),
+    }
+}
+
+/// The enum every pointer into the hierarchy rooted at `root` points to:
+/// `AnyShape` for `TShape`.
+pub(super) fn enum_name(root: &ObjectType) -> String {
+    format!("Any{}", variant_name(root))
 }

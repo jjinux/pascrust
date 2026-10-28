@@ -28,7 +28,7 @@ pub mod units;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use crate::ast::{NodeId, ParamMode, ProcKind, Program, Unit};
+use crate::ast::{Expr, NodeId, ParamMode, ProcKind, Program, Unit};
 use crate::diag::{Diagnostic, Span};
 pub use builtins::Builtin;
 pub use types::{IntKind, Type};
@@ -199,6 +199,11 @@ pub struct Analysis {
     /// Calls to one particular version of a method on `Self`, by callee id:
     /// `inherited Draw` or `TShape.Init(x, y)`. Never dispatched.
     pub static_calls: HashSet<NodeId>,
+    /// `New(p, Init(1))` and `Dispose(p, Done)`, by the `New`/`Dispose`
+    /// call's id: the constructor or destructor call, made up by sema as
+    /// the method call `p^.Init(1)`. For `New` used as a function,
+    /// `New(PCircle, Init(2))`, `p` is a new local variable.
+    pub object_calls: HashMap<NodeId, (Expr, Option<SymId>)>,
     /// (caller, callee) for every method call on `Self`.
     pub self_calls: Vec<(ProcId, ProcId)>,
     /// Method calls: the call's callee expression id → the method, and the

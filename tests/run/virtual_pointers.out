@@ -1,0 +1,7 @@
+square 3 side 30
+show: square 3 side 30
+circle 2 radius 21
+show: circle 2 radius 21
+shape 1
+show: shape 1
+freed 12

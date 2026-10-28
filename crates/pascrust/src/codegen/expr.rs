@@ -332,9 +332,17 @@ impl<'a> Codegen<'a> {
             ExprKind::Deref(base) => {
                 let method = if self.mutable_place { "get_mut" } else { "get" };
                 let saved = std::mem::replace(&mut self.mutable_place, false);
-                let base = self.selector_base(base);
+                let base_code = self.selector_base(base);
                 self.mutable_place = saved;
-                format!("{base}.{method}()")
+                match self.a.type_of(e.id) {
+                    // A pointer into a hierarchy with virtual methods points to
+                    // its enum; this picks out the object's part.
+                    Type::Object(o) if self.in_dispatch(o) => {
+                        let suffix = if self.mutable_place { "_mut" } else { "" };
+                        format!("{base_code}.{method}().as_{}{suffix}()", super::accessor(o))
+                    }
+                    _ => format!("{base_code}.{method}()"),
+                }
             }
             ExprKind::Field(base, field) => {
                 let path = match self.a.type_of(base.id).clone() {
@@ -413,7 +421,7 @@ impl<'a> Codegen<'a> {
             SymKind::Proc(p) => self.user_call(*p, args),
             SymKind::Builtin(b) => {
                 let b = *b;
-                let code = self.builtin(b, args);
+                let code = self.builtin(b, args, callee.id);
                 if b.is_io() { self.io_checked(code, callee.span) } else { code }
             }
             SymKind::UnitRoutine(r) => {
@@ -483,7 +491,17 @@ impl<'a> Codegen<'a> {
                 ExprKind::Name(_) if dispatched && self.is_dyn_param(receiver) => {
                     self.a.var_name(self.proc, self.a.refs[&receiver.id]).to_string()
                 }
-                _ => self.selector_base(receiver),
+                // `p^.Draw` through a pointer into the hierarchy: the enum
+                // finds the version.
+                ExprKind::Deref(pointer) if dispatched => format!("{}.get_mut()", self.selector_base(pointer)),
+                // The method takes `&mut self`, so borrow a record behind a
+                // pointer mutably.
+                _ => {
+                    let saved = std::mem::replace(&mut self.mutable_place, true);
+                    let code = self.selector_base(receiver);
+                    self.mutable_place = saved;
+                    code
+                }
             },
             _ => {
                 let self_sym = self.a.procs[self.proc_with_self()].self_param.as_ref().unwrap().1;

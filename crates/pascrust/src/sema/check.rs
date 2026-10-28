@@ -1142,6 +1142,27 @@ impl Checker {
         self.a.with_bodies.insert(s.span.start, rewritten);
     }
 
+    /// A new local variable for `New(PCircle, Init(2))` to make the record
+    /// in, named after the record's type (`circle`).
+    fn temp_pointer(&mut self, ty: &Type, span: Span) -> (Ident, SymId) {
+        let base = match ty {
+            Type::Pointer(p) => match p.target() {
+                Type::Object(o) => snake_case(o.rust_name.strip_prefix('T').unwrap_or(&o.rust_name)),
+                Type::Record(r) => snake_case(&r.rust_name),
+                _ => "record".to_string(),
+            },
+            _ => "record".to_string(),
+        };
+        let owner = self.cur();
+        let rust_name = self.unique_var_name(owner, base);
+        let key = format!("new#{}", self.a.symbols.len());
+        let sym = self.add_symbol(&key, rust_name, SymKind::Var(Var { ty: ty.clone(), owner, role: VarRole::Local }));
+        self.a.procs[owner].locals.push(sym);
+        self.scopes.last_mut().unwrap().insert(key.clone(), sym);
+        self.use_var(sym, true);
+        (Ident { name: key, span }, sym)
+    }
+
     /// A new local variable that holds the pointer a `with` record is
     /// reached through, named after the record's type (`node`). Its name
     /// isn't a Pascal identifier, so no Pascal code can refer to it.
@@ -2046,13 +2067,70 @@ impl Checker {
                 Type::Int(IntKind::Integer)
             }
             New | Dispose => {
-                if arity(&mut self.errors, span, args.len(), 1..=1, &name) {
-                    let ty = self.place(&args[0], true);
-                    if !matches!(ty, Type::Pointer(_) | Type::Error) {
-                        self.error(args[0].span, format!("`{name}` needs a pointer variable, found {ty}"));
-                    }
+                if !arity(&mut self.errors, span, args.len(), 1..=2, &name) {
+                    return Type::Void;
                 }
-                Type::Void
+                // `New(PCircle, Init(2))`: `New` as a function, making a
+                // record of the pointer type named.
+                let type_arg = match &args[0].kind {
+                    ExprKind::Name(id) if b == New => match self.resolve(&id.key()) {
+                        Some(Resolved::Sym(sym)) => match &self.a.symbols[sym].kind {
+                            SymKind::TypeName(ty @ Type::Pointer(_)) => Some(ty.clone()),
+                            _ => None,
+                        },
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let ty = match &type_arg {
+                    Some(ty) => ty.clone(),
+                    None => self.place(&args[0], true),
+                };
+                if !matches!(ty, Type::Pointer(_) | Type::Error) {
+                    self.error(args[0].span, format!("`{name}` needs a pointer variable, found {ty}"));
+                    return Type::Void;
+                }
+                if let Some(call) = args.get(1) {
+                    // The constructor or destructor: a method call on `p^`.
+                    let (pointer, temp) = match &type_arg {
+                        Some(ty) => {
+                            let (name, sym) = self.temp_pointer(ty, span);
+                            self.next_synthetic_id -= 1;
+                            (
+                                Expr { id: self.next_synthetic_id, kind: ExprKind::Name(name), span: args[0].span },
+                                Some(sym),
+                            )
+                        }
+                        None => (args[0].clone(), None),
+                    };
+                    let (method, method_args) = match &call.kind {
+                        ExprKind::Call { callee, args } => (callee.as_ref().clone(), args.clone()),
+                        _ => (call.clone(), Vec::new()),
+                    };
+                    let ExprKind::Name(method_name) = &method.kind else {
+                        self.error(call.span, format!("expected a constructor or destructor call in `{name}`"));
+                        return Type::Void;
+                    };
+                    let mut id = || {
+                        self.next_synthetic_id -= 1;
+                        self.next_synthetic_id
+                    };
+                    let deref = Expr { id: id(), kind: ExprKind::Deref(Box::new(pointer)), span: call.span };
+                    let callee =
+                        Expr { id: id(), kind: ExprKind::Field(Box::new(deref), method_name.clone()), span: call.span };
+                    let call = Expr {
+                        id: id(),
+                        kind: ExprKind::Call { callee: Box::new(callee), args: method_args },
+                        span: call.span,
+                    };
+                    self.call_statement(&call);
+                    self.a.object_calls.insert(callee_id(e), (call, temp));
+                } else if type_arg.is_some() {
+                    let (_, sym) = self.temp_pointer(&ty, span);
+                    let placeholder = Expr { id: e.id, kind: ExprKind::Nil, span };
+                    self.a.object_calls.insert(callee_id(e), (placeholder, Some(sym)));
+                }
+                if type_arg.is_some() { ty } else { Type::Void }
             }
             Exit | Break | Continue | Randomize => {
                 arity(&mut self.errors, span, args.len(), 0..=0, &name);
@@ -2434,5 +2512,14 @@ fn visit_stmt_exprs(s: &Stmt, f: &mut impl FnMut(&Expr)) {
             records.iter().for_each(&mut *f);
             visit_stmt_exprs(body, f);
         }
+    }
+}
+
+/// The id of a call's callee (`New` in `New(p, Init)`), which is also the
+/// call's own id for a bare name.
+fn callee_id(e: &Expr) -> NodeId {
+    match &e.kind {
+        ExprKind::Call { callee, .. } => callee.id,
+        _ => e.id,
     }
 }

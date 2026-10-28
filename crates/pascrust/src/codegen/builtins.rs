@@ -32,7 +32,8 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    pub(super) fn builtin(&mut self, b: Builtin, args: &[Expr]) -> String {
+    /// `call_id` is the callee's id, which sema's notes about the call use.
+    pub(super) fn builtin(&mut self, b: Builtin, args: &[Expr], call_id: NodeId) -> String {
         use Builtin::*;
         let ty = |g: &Self, e: &Expr| g.a.type_of(e.id).clone();
         match b {
@@ -198,11 +199,15 @@ impl<'a> Codegen<'a> {
                 None => "random_real()".to_string(),
             },
             Randomize => "randomize()".to_string(),
-            New => {
-                let place = self.place(&args[0]);
-                format!("{place} = Ptr::alloc();")
+            New => self.new_call(call_id, args),
+            Dispose => {
+                let dispose = format!("{}.dispose();", self.place_receiver(&args[0]));
+                match self.a.object_calls.get(&call_id) {
+                    // `Dispose(p, Done)`: the destructor first.
+                    Some((done, _)) => format!("{}; {dispose}", self.object_call(done)),
+                    None => dispose,
+                }
             }
-            Dispose => format!("{}.dispose();", self.place_receiver(&args[0])),
             UpCase => format!("{}.to_ascii_uppercase()", self.postfix(&args[0], &Type::Char)),
             Length => match ty(self, &args[0]) {
                 Type::StrLit(n) => n.to_string(),
@@ -301,6 +306,60 @@ impl<'a> Codegen<'a> {
                 self.a.var_name(self.proc, self.a.refs[&e.id]).to_string()
             }
             _ => self.place(e),
+        }
+    }
+}
+
+impl Codegen<'_> {
+    /// `New(p)`, `New(p, Init(1))`, or `New` as a function,
+    /// `New(PCircle, Init(2))`, which makes the record in a new variable.
+    fn new_call(&mut self, call_id: NodeId, args: &[Expr]) -> String {
+        match self.a.object_calls.get(&call_id) {
+            Some((init, Some(temp))) => {
+                let name = self.a.var_name(self.proc, *temp).to_string();
+                let alloc = self.alloc(&self.a.var(*temp).ty.clone());
+                self.pending.push(format!("{name} = {alloc};"));
+                if !matches!(init.kind, ExprKind::Nil) {
+                    let init = self.object_call(init);
+                    self.pending.push(format!("{init};"));
+                }
+                format!("{name}.clone()")
+            }
+            init => {
+                let place = self.place(&args[0]);
+                let alloc = self.alloc(&self.a.type_of(args[0].id).clone());
+                match init {
+                    Some((init, None)) => format!("{place} = {alloc}; {};", self.object_call(init)),
+                    _ => format!("{place} = {alloc};"),
+                }
+            }
+        }
+    }
+
+    /// A constructor or destructor call that sema made up for `New` or
+    /// `Dispose` (a method call on `p^`).
+    fn object_call(&mut self, call: &Expr) -> String {
+        let ExprKind::Call { callee, args } = &call.kind else { unreachable!("sema makes a call") };
+        self.call(callee, args)
+    }
+
+    /// A new record for a pointer of type `ty`. In a hierarchy with virtual
+    /// methods it's the enum's variant for the pointer's object.
+    fn alloc(&self, ty: &Type) -> String {
+        match ty {
+            Type::Pointer(p) => match p.target() {
+                Type::Object(o) if self.in_dispatch(&o) => {
+                    let root = o.lineage().last().unwrap().0.clone();
+                    format!(
+                        "Ptr::new({}::{}({}::default()))",
+                        super::enum_name(&root),
+                        super::variant_name(&o),
+                        o.rust_name
+                    )
+                }
+                _ => "Ptr::alloc()".to_string(),
+            },
+            _ => "Ptr::alloc()".to_string(),
         }
     }
 }
