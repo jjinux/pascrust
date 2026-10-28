@@ -6,7 +6,7 @@
 //! (`std::prelude`), which is why `Vec` and `Option` are always in scope.
 
 pub use crate::array::PArray;
-pub use crate::io::{FileRecord, PFile, PText, PasWrite, eof, eoln, w, wd};
+pub use crate::io::{FileRecord, PFile, PText, PasWrite, eof, eoln, seek_eof, seek_eoln, w, wd};
 pub use crate::ordinal::{Enumerated, Ordinal, enum_range};
 pub use crate::ptr::Ptr;
 pub use crate::run::{halt, io_result, io_unchecked, rte};

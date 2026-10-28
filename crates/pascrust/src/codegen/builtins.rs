@@ -87,8 +87,13 @@ impl<'a> Codegen<'a> {
             Seek => format!("{}.seek({});", self.place_receiver(&args[0]), self.expr(&args[1]).0),
             FilePos => format!("{}.file_pos()", self.place_receiver(&args[0])),
             FileSize => format!("{}.file_size()", self.place_receiver(&args[0])),
-            Eof | Eoln => {
-                let method = if b == Eof { "eof" } else { "eoln" };
+            Eof | Eoln | SeekEof | SeekEoln => {
+                let method = match b {
+                    Eof => "eof",
+                    Eoln => "eoln",
+                    SeekEof => "seek_eof",
+                    _ => "seek_eoln",
+                };
                 match args.first() {
                     Some(file) => format!("{}.{method}()", self.place_receiver(file)),
                     None => format!("{method}()"),

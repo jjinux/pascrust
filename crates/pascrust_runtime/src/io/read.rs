@@ -161,6 +161,23 @@ impl LineReader {
     pub(crate) fn eoln(&mut self) -> bool {
         !self.fill() || self.at_eoln()
     }
+
+    /// `SeekEof`: skip blanks, tabs and line breaks, then `Eof`. A loop
+    /// reading numbers uses it so trailing blanks don't count as more input.
+    pub(crate) fn seek_eof(&mut self) -> bool {
+        !self.skip_blanks()
+    }
+
+    /// `SeekEoln`: skip blanks and tabs on this line, then `Eoln`.
+    pub(crate) fn seek_eoln(&mut self) -> bool {
+        if !self.fill() {
+            return true;
+        }
+        while !self.at_eoln() && matches!(self.line[self.pos], b' ' | b'\t') {
+            self.pos += 1;
+        }
+        self.at_eoln()
+    }
 }
 
 /// A type that `Read` can read.
@@ -274,6 +291,16 @@ pub fn eof() -> bool {
 /// Pascal `Eoln` for standard input.
 pub fn eoln() -> bool {
     INPUT.with_borrow_mut(LineReader::eoln)
+}
+
+/// Pascal `SeekEof` for standard input.
+pub fn seek_eof() -> bool {
+    INPUT.with_borrow_mut(LineReader::seek_eof)
+}
+
+/// Pascal `SeekEoln` for standard input.
+pub fn seek_eoln() -> bool {
+    INPUT.with_borrow_mut(LineReader::seek_eoln)
 }
 
 /// Pascal `Read(a, b, ...)` from standard input. Arguments are `&mut`

@@ -101,7 +101,7 @@ chosen so each step is testable with the previous ones.
 
 ## Phase 3: Files, units, objects, pointers (tier 2 language)
 
-- [x] `Text` files: `PText` runtime type; `Assign`/`Reset`/`Rewrite`/`Append`/`Close`/`Eof`/`Eoln`/`Erase`/`Rename`/`Flush`; `read`/`write` variants taking a file. (`SeekEof`/`SeekEoln` and `{$I-}`/`IOResult`: see below.) Run tests that write then read a temp file.
+- [x] `Text` files: `PText` runtime type; `Assign`/`Reset`/`Rewrite`/`Append`/`Close`/`Eof`/`Eoln`/`Erase`/`Rename`/`Flush`; `read`/`write` variants taking a file. `SeekEof`/`SeekEoln`; `{$I-}`/`IOResult`. Run tests that write then read a temp file.
 - [x] Typed files: `PFile<T>` with a generated `PascalRecord` (serialize/deserialize) impl per record type; `Seek`/`FilePos`/`FileSize`/`Truncate`. Test with a `file of record` round trip and `Seek` to the middle.
 - [x] Units: driver locates `uses` targets (same directory, then `-I` paths), parses interface/implementation, emits one module per unit with `pub` visibility, `init()` for initialization sections called in `uses` order; name resolution across units with TP's later-unit-wins rule. Test: a program using two units with a name clash.
 - [x] Objects: `struct` + `impl`, `&self`/`&mut self` selection, implicit `Self` field access, nested procedures inside methods (`this: &mut T` lifting), inheritance by composition (`base` field, path rewriting, upcasting to `&mut child.base`), `private` ignored. Tests from `bstunit.pas` and `clock/menu.pas` patterns.
@@ -146,7 +146,8 @@ chosen so each step is testable with the previous ones.
   - [ ] `p^.x := p^.x + 1` hoists a temporary instead of becoming `p.get_mut().x += 1`.
   - [x] `Random(n)`: checked against a disassembly of TP's System unit (github.com/daelsepara/turbo-pascal-assembly): it uses the full 32-bit seed, `(seed * n) shr 32`, as we do. `n` is now truncated to a `Word`, as TP's parameter is. Not done: `RandSeed` as an assignable variable.
   - [x] `{$I-}` and a real `IOResult`.
-  - [ ] `SeekEof`/`SeekEoln`, `LastMode` (were listed as done; they aren't).
+  - [x] `SeekEof`/`SeekEoln`.
+  - [ ] `LastMode` (was listed as done; it isn't).
   - [ ] `Val` corner cases: `Val('40000', i, code)` for an `Integer` is an error for us, wraps (code 0) in TP/FPC.
   - [ ] Graph: should `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners in the real BGI? `FExpand` ignores `ChDir`.
   - [ ] `i16::MIN div -1` panics (runtime error 255); TP wraps.

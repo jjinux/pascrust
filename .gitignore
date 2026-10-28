@@ -2,3 +2,4 @@ target/
 out/
 *.swp
 .DS_Store
+*.snap.new

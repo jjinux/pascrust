@@ -42,7 +42,8 @@ builtins! {
     Assign => "assign", Reset => "reset", Rewrite => "rewrite", Append => "append",
     Close => "close", Erase => "erase", Rename => "rename", Flush => "flush",
     Truncate => "truncate", Seek => "seek", FilePos => "filepos", FileSize => "filesize",
-    Eof => "eof", Eoln => "eoln", IOResult => "ioresult",
+    Eof => "eof", Eoln => "eoln", SeekEof => "seekeof", SeekEoln => "seekeoln",
+    IOResult => "ioresult",
 }
 
 impl Builtin {
@@ -69,6 +70,8 @@ impl Builtin {
                 | FileSize
                 | Eof
                 | Eoln
+                | SeekEof
+                | SeekEoln
         )
     }
 

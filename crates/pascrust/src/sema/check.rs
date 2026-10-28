@@ -1768,10 +1768,10 @@ impl Checker {
                 }
                 Type::Int(IntKind::LongInt)
             }
-            Eof | Eoln => {
+            Eof | Eoln | SeekEof | SeekEoln => {
                 // No argument means standard input.
                 if arity(&mut self.errors, span, args.len(), 0..=1, &name) && args.len() == 1 {
-                    self.file_arg(&args[0], &name, b == Eoln);
+                    self.file_arg(&args[0], &name, b != Eof);
                 }
                 Type::Bool
             }

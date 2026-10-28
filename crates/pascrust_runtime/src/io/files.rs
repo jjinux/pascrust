@@ -146,6 +146,16 @@ impl PText {
         self.reader().eoln()
     }
 
+    /// Pascal `SeekEof(f)`.
+    pub fn seek_eof(&mut self) -> bool {
+        self.reader().seek_eof()
+    }
+
+    /// Pascal `SeekEoln(f)`.
+    pub fn seek_eoln(&mut self) -> bool {
+        self.reader().seek_eoln()
+    }
+
     /// One value for `Read(f, ...)`; used by the `fread!` macro.
     pub fn read_into<T: PasRead>(&mut self, target: &mut T) {
         target.pas_read(self.reader());

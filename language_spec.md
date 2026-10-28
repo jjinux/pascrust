@@ -123,10 +123,11 @@ Pointers
 Files
 
 - `Text` files: `Assign`, `Reset`, `Rewrite`, `Append`, `Close`, `Read`,
-  `Readln`, `Write`, `Writeln`, `Eof`, `Eoln`, `Erase`, `Rename`, `Flush`.
+  `Readln`, `Write`, `Writeln`, `Eof`, `Eoln`, `SeekEof`, `SeekEoln`,
+  `Erase`, `Rename`, `Flush`.
   `{$I-}` with `IOResult`: an I/O error (including a bad number in `Read`)
   sets `IOResult` instead of stopping the program, and further I/O is
-  skipped until `IOResult` is read. Not yet: `SeekEof`, `SeekEoln`
+  skipped until `IOResult` is read.
 - `file of T`: `Assign`, `Reset`, `Rewrite`, `Close`, `Read`, `Write`,
   `Seek`, `FilePos`, `FileSize`, `Eof`, `Erase`, `Truncate`; records with
   `string[n]`, integer and real fields serialized to a fixed-size layout
