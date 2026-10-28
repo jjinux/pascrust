@@ -74,26 +74,30 @@ lexer → parser → AST → sema → codegen → Cargo project → `cargo run`.
 Each bullet: parser + sema + codegen + a translate test + a run test. Order
 chosen so each step is testable with the previous ones.
 
-- [ ] Integer, real, boolean, char expressions with TP precedence and promotion rules; `div`/`mod`/`/`; `as` casts inserted by sema's type info. Decide and document `i16` wrapping (`architecture.md` §7).
-- [ ] `var` declarations with `Default` initialization; assignment; `if`/`else` (dangling else); `while`; `repeat`; `for to/downto` over integers.
-- [ ] `writeln`/`write` formatting: `:w`, `:w:d`, TP default real format, booleans. Run tests compare byte for byte.
-- [ ] `readln`/`read` from stdin for integers, reals, chars, strings (TP's lenient parsing). `.in` files in run tests.
-- [ ] Procedures and functions: value params, `var` params as `&mut`, function result variable, `Exit`, recursion, `forward`. Call-site `.clone()` insertion for non-Copy value args.
-- [ ] Nested procedures: lifting analysis in sema (free variables, transitive through calls, including recursion), codegen of lifted `fn outer_inner(captured..., params...)`. Tests: recursive nested proc, nested proc modifying an outer local, two levels of nesting, nested proc capturing an outer `var` parameter.
-- [ ] Globals lifted into `pascal_main` and threaded to procedures (same analysis). Test: a procedure that reads a global and is called from another procedure.
-- [ ] Alias detection in sema: same lvalue root passed twice (`Swap(x, x)`, `F(a, a[1])`, global passed by `var` to a procedure that uses it); report a transpile error with the Pascal position. Tests for each.
-- [ ] `PString`: runtime type (`[u8; 255]` + `len` + `cap`), `Index<i32>`, concatenation, comparison, `assign` with truncation, `pstr!` literal macro; string vs char coercions in sema. `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`, `Val`.
-- [ ] Enumerated types and `Ordinal` trait (generated impl per enum; runtime impls for integers, `u8`, `bool`); `Ord`, `Chr`, `Succ`, `Pred`, `Inc`, `Dec`, `Low`, `High`; `for` over enums and chars.
-- [ ] Subranges as host types; `--range-checks` flag.
-- [ ] `case` → `match` with lists, ranges, `else`, and no-match-is-no-op.
-- [ ] `PArray<T, LO, N>`: runtime type, `Index`/`IndexMut<i32>`, `Default` via `array::from_fn`, `Copy` when `T: Copy`; multi-dimensional sugar; char/enum indexes. Range-check panic message in TP style.
-- [ ] Records: struct generation, `Clone`/`Default`/`Copy` decisions, field access, record assignment, records in arrays, arrays in records, anonymous record types in `var`.
-- [ ] `const` section with constant folding; typed constants (array and scalar) as initialized variables.
-- [ ] Math and misc builtins: `Abs Sqr Sqrt Sin Cos ArcTan Ln Exp Trunc Round Int Frac Pi Odd Random Randomize Hi Lo Swap MaxInt`.
-- [ ] `Halt`, `Halt(n)`, exit codes; runtime `run()` with `catch_unwind`, TP-style "Runtime error NNN" messages and codes (200, 201, 204, ...), big-stack worker thread.
-- [ ] Naming: case-insensitive canonicalization, `snake_case`/`CamelCase` conversion, Rust keyword escaping, user declarations shadowing builtins (`procedure Exit`, `type ShortString`). Test with the examples' names.
-- [ ] `///` comments with the original Pascal declaration on every generated item; teaching comments at first use of `Ptr`, const generics, lifting, `catch_unwind`.
-- [ ] Milestone: `magic_square.pas` (minus `Crt`) and the tier-1 subset of `paper.pas` run.
+- [x] Integer, real, boolean, char expressions with TP precedence and promotion rules; `div`/`mod`/`/`; `as` casts inserted by sema's type info. Decide and document `i16` wrapping (`architecture.md` §7).
+- [x] `var` declarations with `Default` initialization; assignment; `if`/`else` (dangling else); `while`; `repeat`; `for to/downto` over integers.
+- [x] `writeln`/`write` formatting: `:w`, `:w:d`, TP default real format, booleans. Run tests compare byte for byte.
+- [x] `readln`/`read` from stdin for integers, reals, chars, strings (TP's lenient parsing). `.in` files in run tests.
+- [x] Procedures and functions: value params, `var` params as `&mut`, function result variable, `Exit`, recursion, `forward`. Call-site `.clone()` insertion for non-Copy value args.
+- [x] Nested procedures: lifting analysis in sema (free variables, transitive through calls, including recursion), codegen of lifted `fn outer_inner(captured..., params...)`. Tests: recursive nested proc, nested proc modifying an outer local, two levels of nesting, nested proc capturing an outer `var` parameter.
+- [x] Globals lifted into `pascal_main` and threaded to procedures (same analysis). Test: a procedure that reads a global and is called from another procedure.
+- [x] Alias detection in sema: same lvalue root passed twice (`Swap(x, x)`, `F(a, a[1])`, global passed by `var` to a procedure that uses it); report a transpile error with the Pascal position. Tests for each.
+  - [x] Alias *unification*: when every call passes the same outer variable for a `var` parameter that the callee also captures (`life.pas`'s `Pause`), use the parameter for both instead of rejecting the program.
+  - [ ] Copy-in/copy-out for `Swap(a[i], a[j])` on arrays of `Copy` elements (currently rejected because both roots are `a`).
+- [x] `PString`: runtime type (`[u8; 255]` + `len` + `cap`), `Index<i32>`, concatenation, comparison, `assign` with truncation, `pstr!` literal macro; string vs char coercions in sema. `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`, `Val`.
+- [x] Enumerated types and `Ordinal` trait (generated impl per enum; runtime impls for integers, `u8`, `bool`); `Ord`, `Chr`, `Succ`, `Pred`, `Inc`, `Dec`, `Low`, `High`; `for` over enums and chars.
+  - [ ] `Low`/`High`, and `Inc`/`Dec` on enums.
+- [x] Subranges as host types.
+  - [ ] `--range-checks` flag.
+- [x] `case` → `match` with lists, ranges, `else`, and no-match-is-no-op.
+- [x] `PArray<T, LO, N>`: runtime type, `Index`/`IndexMut<i32>`, `Default` via `array::from_fn`, `Copy` when `T: Copy`; multi-dimensional sugar; char/enum indexes. Range-check panic message in TP style.
+- [x] Records: struct generation, `Clone`/`Default`/`Copy` decisions, field access, record assignment, records in arrays, arrays in records, anonymous record types in `var`.
+- [x] `const` section with constant folding; typed constants (array and scalar) as initialized variables.
+- [x] Math and misc builtins: `Abs Sqr Sqrt Sin Cos ArcTan Ln Exp Trunc Round Int Frac Pi Odd Random Randomize Hi Lo Swap MaxInt`.
+- [x] `Halt`, `Halt(n)`, exit codes; runtime `run()` with `catch_unwind`, TP-style "Runtime error NNN" messages and codes (200, 201, 204, ...), big-stack worker thread.
+- [x] Naming: case-insensitive canonicalization, `snake_case`/`CamelCase` conversion, Rust keyword escaping, user declarations shadowing builtins (`procedure Exit`, `type ShortString`). Test with the examples' names.
+- [x] `///` comments with the original Pascal declaration on every generated item; teaching comments at first use of `Ptr`, const generics, lifting, `catch_unwind`.
+- [x] Milestone: `magic_square.pas` (minus `Crt`) and the tier-1 subset of `paper.pas` run.
 
 ## Phase 3: Files, units, objects, pointers (tier 2 language)
 
@@ -109,11 +113,12 @@ chosen so each step is testable with the previous ones.
 
 ## Phase 4: Crt, then the text-mode examples
 
-- [ ] `crt` feature: `crossterm`-backed terminal with TP state (`TextAttr`, `WindMin`/`WindMax`, `LastMode`), `ClrScr`, `ClrEol`, `GotoXY`, `WhereX`/`WhereY`, `TextColor`/`TextBackground`/`HighVideo`/`LowVideo`/`NormVideo`, `Window`, `InsLine`/`DelLine`, `TextMode`, `Delay`, `Sound`/`NoSound`, `KeyPressed`, `ReadKey` (with `#0` + scan codes for arrows/function keys), colour constants, `Blink`.
-- [ ] Route all `write` output through the Crt layer when the feature is on, so the cursor position tracks output and `Window` clipping works.
-- [ ] CP437 → Unicode output mapping; reverse mapping on input.
-- [ ] Plain mode when stdout is not a TTY or `PASCRUST_TERM=plain`: cursor ops are no-ops, `ReadKey` reads stdin bytes, `Delay` honours `PASCRUST_FAST`.
-- [ ] Scripted-input run tests: `*.keys` file fed to `ReadKey` in plain mode; compare stdout.
+- [x] `crt` feature: `crossterm`-backed terminal with TP state (`TextAttr`, `WindMin`/`WindMax`, `LastMode`), `ClrScr`, `ClrEol`, `GotoXY`, `WhereX`/`WhereY`, `TextColor`/`TextBackground`/`HighVideo`/`LowVideo`/`NormVideo`, `Window`, `InsLine`/`DelLine`, `TextMode`, `Delay`, `Sound`/`NoSound`, `KeyPressed`, `ReadKey` (with `#0` + scan codes for arrows/function keys), colour constants, `Blink`.
+- [x] Route all `write` output through the runtime (raw-mode `\r\n`, CP437).
+  - [ ] `Window` clipping and scrolling of output (currently `Window` only affects `ClrScr`/`GotoXY`/`WhereX`).
+- [x] CP437 → Unicode output mapping; reverse mapping on input.
+- [x] Plain mode when stdout is not a TTY or `PASCRUST_TERM=plain`: cursor ops are no-ops, `ReadKey` reads stdin bytes, `Delay` honours `PASCRUST_FAST`.
+- [x] Scripted-input run tests: in plain mode `ReadKey` reads the test's `.in` file; compare stdout (`tests/run/crt_plain.pas`).
 - [ ] Get working, one at a time, fixing transpiler bugs as found: `gmscode.pas`, `paper.pas`, `magic_square.pas`, `life.pas`, `blkjack.pas`, `menu.pas` (needs `Dos.Exec`, which may fail gracefully), `airport/` (four units).
 - [ ] CI builds every example; runs the non-interactive ones.
 
