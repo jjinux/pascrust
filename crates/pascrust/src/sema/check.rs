@@ -376,7 +376,7 @@ impl Checker {
     }
 
     fn decls(&mut self, decls: &[Decl]) {
-        for decl in decls {
+        for (i, decl) in decls.iter().enumerate() {
             match decl {
                 Decl::Const(c) => self.const_decl(c),
                 Decl::Type(t) if matches!(t.ty, TypeExpr::Object { .. }) => self.object_type(&t.name, &t.ty),
@@ -410,13 +410,19 @@ impl Checker {
                 }
                 Decl::Proc(p) => self.proc_decl(p),
             }
-            self.resolve_pointers();
+            // Wait for the end of a run of type declarations: in
+            // `type NodePtr = ^Node; Node = record ... end;` inside a
+            // procedure, `^Node` means the `Node` declared next, even if
+            // there's a global `Node` too.
+            if !matches!(decls.get(i + 1), Some(Decl::Type(_))) {
+                self.resolve_pointers();
+            }
         }
     }
 
     /// Point each pending `^Name` at its target, now that `Name` may have
     /// been declared. Pascal requires that by the end of the `type` section;
-    /// we check after every declaration and report leftovers at the end.
+    /// we check after each one and report leftovers at the end.
     fn resolve_pointers(&mut self) {
         let pending = std::mem::take(&mut self.pending_pointers);
         for (ptr, target) in pending {
