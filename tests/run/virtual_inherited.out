@@ -1,0 +1,12 @@
+base 1 (base)
+middle of size 20: base 2 (base middle)
+red leaf, middle of size 30: base 3 (base middle leaf)
+  leaf done red
+  middle done 30
+  base done 3
+blue leaf, middle of size 40: base 4 (base middle leaf)
+  leaf done blue
+  middle done 40
+  base done 4
+base 5 (base)
+  base done 5
