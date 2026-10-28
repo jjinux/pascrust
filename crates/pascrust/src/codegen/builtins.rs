@@ -8,6 +8,30 @@ use crate::sema::{Builtin, IntKind, Type};
 impl<'a> Codegen<'a> {
     /// Translate a builtin call. Statement-like builtins (`Inc`, `Exit`, ...)
     /// return code ending in `;` so the caller doesn't add another.
+    /// A variable for `Read` to fill in. A `string[n]` takes at most `n`
+    /// characters, which the runtime's `capped(n)` arranges.
+    fn read_target(&mut self, e: &Expr) -> String {
+        match self.a.type_of(e.id) {
+            Type::Str { cap } if *cap < 255 => {
+                let cap = *cap;
+                let place = match &e.kind {
+                    ExprKind::Name(_) if !self.a.self_fields.contains_key(&e.id) => {
+                        self.a.var_name(self.proc, self.a.refs[&e.id]).to_string()
+                    }
+                    _ => {
+                        // `p^` is the place `*p.get_mut()`, which needs
+                        // parentheses before `.capped`.
+                        let place = self.place(e);
+                        let p = if place.starts_with('*') { prec::UNARY } else { prec::POSTFIX };
+                        paren((place, p), prec::POSTFIX)
+                    }
+                };
+                format!("&mut {place}.capped({cap})")
+            }
+            _ => self.place_mut(e),
+        }
+    }
+
     pub(super) fn builtin(&mut self, b: Builtin, args: &[Expr]) -> String {
         use Builtin::*;
         let ty = |g: &Self, e: &Expr| g.a.type_of(e.id).clone();
@@ -41,12 +65,12 @@ impl<'a> Codegen<'a> {
                 }
                 Some(Type::Text) => {
                     let mut parts = vec![self.place_receiver(&args[0])];
-                    parts.extend(args[1..].iter().map(|a| self.place_mut(a)));
+                    parts.extend(args[1..].iter().map(|a| self.read_target(a)));
                     let mac = if b == Read { "fread!" } else { "freadln!" };
                     format!("{mac}({})", parts.join(", "))
                 }
                 _ => {
-                    let parts: Vec<String> = args.iter().map(|a| self.place_mut(a)).collect();
+                    let parts: Vec<String> = args.iter().map(|a| self.read_target(a)).collect();
                     let mac = if b == Read { "pread!" } else { "preadln!" };
                     format!("{mac}({})", parts.join(", "))
                 }

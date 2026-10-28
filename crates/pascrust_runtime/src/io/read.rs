@@ -201,14 +201,42 @@ impl PasRead for u8 {
 /// Reading a string takes the rest of the current line.
 impl PasRead for PString {
     fn pas_read(&mut self, input: &mut LineReader) {
-        *self = if input.fill() {
-            let s = PString::from_bytes(&input.line[input.pos..]);
-            input.pos = input.line.len();
-            s
-        } else {
-            PString::new()
-        };
+        read_string(self, 255, input);
     }
+}
+
+/// A `string[cap]` variable as a target for `Read`: see [`PString::capped`].
+pub struct Capped<'a> {
+    string: &'a mut PString,
+    cap: u8,
+}
+
+impl PString {
+    /// Read into this string as a `string[cap]`: `Read` takes at most `cap`
+    /// characters and leaves the rest of the line for the next `Read`.
+    /// (The returned value borrows `self` mutably until it's dropped.)
+    pub fn capped(&mut self, cap: u8) -> Capped<'_> {
+        Capped { string: self, cap }
+    }
+}
+
+impl PasRead for Capped<'_> {
+    fn pas_read(&mut self, input: &mut LineReader) {
+        read_string(self.string, self.cap, input);
+    }
+}
+
+/// `Read` into a string: the rest of the current line, up to `cap`
+/// characters.
+fn read_string(target: &mut PString, cap: u8, input: &mut LineReader) {
+    *target = if input.fill() {
+        let end = input.line.len().min(input.pos + usize::from(cap));
+        let s = PString::from_bytes(&input.line[input.pos..end]);
+        input.pos = end;
+        s
+    } else {
+        PString::new()
+    };
 }
 
 /// Read one value from standard input; used by the `pread!` and `preadln!`
