@@ -20,7 +20,15 @@ use crate::token::{Keyword, Token, TokenKind};
 
 /// Tokenize a whole source file. The last token is always [`TokenKind::Eof`].
 pub fn tokenize(source: &[u8]) -> Result<Vec<Token>, Diagnostic> {
-    let mut lexer = Lexer { src: source, pos: 0, tokens: Vec::new() };
+    let mut lexer = Lexer {
+        src: source,
+        pos: 0,
+        tokens: Vec::new(),
+        section: Section::Other,
+        nesting: 0,
+        const_type: false,
+        parens: 0,
+    };
     lexer.run()?;
     Ok(lexer.tokens)
 }
@@ -31,6 +39,24 @@ struct Lexer<'a> {
     src: &'a [u8],
     pos: usize,
     tokens: Vec<Token>,
+    // Just enough of the declaration structure to tell where a type can
+    // appear, for `^` (see `caret_is_control_char`).
+    section: Section,
+    /// How many `record`s or `object`s we are inside, in a declaration.
+    nesting: u32,
+    /// In a `const` section: between a typed constant's `:` and its `=`.
+    const_type: bool,
+    parens: u32,
+}
+
+/// The kind of declaration section the lexer is in.
+#[derive(Clone, Copy, PartialEq)]
+enum Section {
+    Type,
+    Var,
+    Const,
+    /// Statements, headings, `uses`, ...
+    Other,
 }
 
 impl<'a> Lexer<'a> {
@@ -50,7 +76,48 @@ impl<'a> Lexer<'a> {
     }
 
     fn push(&mut self, kind: TokenKind, start: usize) {
+        self.track_section(&kind);
         self.tokens.push(Token { kind, span: Span::new(start, self.pos) });
+    }
+
+    /// Follow the declaration sections as tokens go by (before `kind` is
+    /// pushed), so `caret_is_control_char` knows whether a type may appear.
+    fn track_section(&mut self, kind: &TokenKind) {
+        use crate::token::Keyword as K;
+        use TokenKind::*;
+        // `function` right after `=` or `:` is a procedural type, as in
+        // `TCompare = function(a, b: Integer): Boolean;`, not a new routine.
+        let after_eq_or_colon = matches!(self.tokens.last().map(|t| &t.kind), Some(Eq | Colon));
+        match kind {
+            Keyword(K::Record | K::Object) if self.section != Section::Other => self.nesting += 1,
+            Keyword(K::End) if self.nesting > 0 => self.nesting -= 1,
+            // Inside a record or object, `var` and `procedure` belong to its
+            // fields and methods; the section goes on.
+            _ if self.nesting > 0 => {}
+            Keyword(K::Type) => self.section = Section::Type,
+            Keyword(K::Var) => self.section = Section::Var,
+            Keyword(K::Const) => {
+                self.section = Section::Const;
+                self.const_type = false;
+            }
+            Keyword(K::Procedure | K::Function) if after_eq_or_colon => {}
+            Keyword(
+                K::Begin
+                | K::Procedure
+                | K::Function
+                | K::Constructor
+                | K::Destructor
+                | K::Label
+                | K::Uses
+                | K::Interface
+                | K::Implementation,
+            ) => self.section = Section::Other,
+            LParen => self.parens += 1,
+            RParen => self.parens = self.parens.saturating_sub(1),
+            Colon if self.parens == 0 => self.const_type = true,
+            Eq | Semi if self.parens == 0 => self.const_type = false,
+            _ => {}
+        }
     }
 
     fn run(&mut self) -> Result<(), Diagnostic> {
@@ -190,17 +257,25 @@ impl<'a> Lexer<'a> {
     }
 
     /// Decide whether `^` starts a control-character literal (`^M` is
-    /// `#13`) or is the pointer symbol (`^Node`, `p^`). Turbo Pascal treats it
-    /// as a character when it can't be a dereference (the previous token isn't
-    /// something you could dereference) and exactly one letter follows.
+    /// `#13`) or is the pointer symbol (`^Node`, `p^`). Like Free Pascal, we
+    /// read it as the pointer symbol where a type can appear (in `type` and
+    /// `var` sections, and in a typed constant's type), so `var p: ^T` is a
+    /// pointer to `T`, and after something you could dereference (`p^`,
+    /// `a[i]^`). Elsewhere `^` and exactly one letter is a character.
     fn caret_is_control_char(&self) -> bool {
+        let in_type = match self.section {
+            Section::Type | Section::Var => true,
+            Section::Const => self.const_type,
+            Section::Other => false,
+        };
         let after_value = matches!(
             self.tokens.last().map(|t| &t.kind),
             Some(TokenKind::Ident(_) | TokenKind::RParen | TokenKind::RBracket | TokenKind::Caret)
         );
         let letter = self.peek_at(1);
         let next = self.peek_at(2);
-        !after_value
+        !in_type
+            && !after_value
             && (letter.is_ascii_alphabetic() || matches!(letter, b'@' | b'[' | b'\\' | b']' | b'_'))
             && !(next.is_ascii_alphanumeric() || next == b'_')
     }
@@ -327,6 +402,7 @@ impl<'a> Lexer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::token::Keyword as K;
     use TokenKind::*;
 
     /// Tokenize and drop the spans and the final `Eof`, for compact asserts.
@@ -390,7 +466,22 @@ mod tests {
     fn caret_characters_vs_pointers() {
         assert_eq!(kinds("x := ^M;"), vec![ident("x"), Assign, Str(vec![13]), Semi]);
         assert_eq!(kinds("p^.next"), vec![ident("p"), Caret, Dot, ident("next")]);
-        assert_eq!(kinds("T = ^Node;"), vec![ident("T"), Eq, Caret, ident("Node"), Semi]);
+        assert_eq!(kinds("type T = ^Node;"), vec![Keyword(K::Type), ident("T"), Eq, Caret, ident("Node"), Semi]);
+    }
+
+    #[test]
+    fn caret_before_one_letter_type_name() {
+        // Where a type can appear, `^T` is a pointer to `T`, as in Free Pascal.
+        let caret_t = |src: &str| kinds(src).windows(2).any(|w| w == [Caret, ident("T")]);
+        assert!(caret_t("type P = ^T;"));
+        assert!(caret_t("var p: ^T;"));
+        assert!(caret_t("type R = record next: ^T; end; Q = ^T;"));
+        assert!(caret_t("type F = function: Integer; P = ^T;"));
+        assert!(caret_t("const p: ^T = nil;"));
+        // In constants and statements it's still the character.
+        assert!(!caret_t("const Tab = ^T;"));
+        assert!(!caret_t("var c: Char; begin c := ^T; end"));
+        assert!(!caret_t("procedure Q(var c: Char); begin c := ^T; end"));
     }
 
     #[test]
