@@ -112,6 +112,9 @@ pub struct ProcInfo {
     pub captures: Vec<Capture>,
     /// Whether a body has been seen (for `forward` declarations).
     pub has_body: bool,
+    /// For a method: the object it belongs to, and the implicit `Self`
+    /// parameter (`&mut self` in Rust).
+    pub self_param: Option<(std::rc::Rc<types::ObjectType>, SymId)>,
     pub span: Span,
 }
 
@@ -168,6 +171,15 @@ pub struct Analysis {
     /// the outer variable is reached through the parameter, because every
     /// call passes exactly that variable for it. See `lift::unify_aliases`.
     pub capture_aliases: HashMap<(ProcId, SymId), SymId>,
+    /// Methods by (object type's Rust name, lowercase method name).
+    pub methods: HashMap<(String, String), ProcId>,
+    /// `Name` expressions that are fields of `Self` inside a method: the
+    /// `Self` symbol and the Rust path from it (`["base", "x"]`).
+    pub self_fields: HashMap<NodeId, (SymId, Vec<String>)>,
+    /// Method calls: the call's callee expression id → the method, and the
+    /// path from the receiver to the object that defines it (`["base"]`
+    /// for an inherited method).
+    pub method_calls: HashMap<NodeId, (ProcId, Vec<String>)>,
     /// The user units, in dependency order.
     pub units: Vec<UnitInfo>,
     /// The value of every `case` label, computed at compile time.
@@ -209,6 +221,11 @@ impl Analysis {
     /// aliasing `var` parameter (see [`Analysis::capture_aliases`]).
     pub fn var_name(&self, proc: ProcId, sym: SymId) -> &str {
         let sym = self.capture_aliases.get(&(proc, sym)).copied().unwrap_or(sym);
+        // A method's `self` is called `this` when a nested procedure
+        // receives it: only methods may have a parameter named `self`.
+        if self.symbols[sym].rust_name == "self" && self.var(sym).owner != proc {
+            return "this";
+        }
         &self.symbols[sym].rust_name
     }
 

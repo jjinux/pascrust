@@ -5,9 +5,26 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::names::{self, screaming_snake_case, snake_case};
-use super::types::{ArrayType, EnumType, Field, RecordType};
+use super::types::{ArrayType, EnumType, Field, ObjectType, RecordType};
 use super::*;
 use crate::ast::*;
+
+/// What a name refers to.
+enum Resolved {
+    Sym(SymId),
+    /// A field of `Self`, inside a method.
+    SelfField {
+        self_sym: SymId,
+        path: Vec<String>,
+        ty: Type,
+    },
+    /// A method of `Self`, inside a method.
+    SelfMethod {
+        self_sym: SymId,
+        pid: ProcId,
+        path: Vec<String>,
+    },
+}
 
 /// One `for` loop, remembered so the lifting pass can decide whether its
 /// variable can be scoped to the loop.
@@ -37,6 +54,9 @@ pub(super) struct Checker {
     used_fn_names: HashSet<String>,
     used_const_names: HashSet<String>,
     used_type_names: HashSet<String>,
+    /// For each method body we're inside: the index of its scope in
+    /// `scopes` and the method's procedure.
+    method_scopes: Vec<(usize, ProcId)>,
     /// The Rust module name of the unit being checked, if any.
     current_unit: Option<String>,
     /// Each user unit's interface: what a `uses` clause makes visible.
@@ -65,6 +85,7 @@ impl Checker {
             declaring_type: false,
             unit_exports: HashMap::new(),
             current_unit: None,
+            method_scopes: Vec::new(),
             subrange_types: HashMap::new(),
             errors: Vec::new(),
             call_sites: Vec::new(),
@@ -83,6 +104,7 @@ impl Checker {
             calls: Default::default(),
             captures: Vec::new(),
             has_body: true,
+            self_param: None,
             span: Span::default(),
         });
         checker.declare_builtins();
@@ -126,6 +148,40 @@ impl Checker {
 
     fn lookup(&self, key: &str) -> Option<SymId> {
         self.scopes.iter().rev().find_map(|scope| scope.get(key).copied())
+    }
+
+    /// Look up a name the way a statement sees it: like [`Checker::lookup`],
+    /// except that inside a method, the object's fields and methods are in
+    /// scope too (Turbo Pascal's implicit `with Self do`). They come after the
+    /// method's own parameters and locals but before anything outside it.
+    fn resolve(&self, key: &str) -> Option<Resolved> {
+        let method = self.method_scopes.last().copied();
+        for (depth, scope) in self.scopes.iter().enumerate().rev() {
+            if let Some(&sym) = scope.get(key) {
+                return Some(Resolved::Sym(sym));
+            }
+            if let Some((method_depth, pid)) = method
+                && depth == method_depth
+            {
+                let (object, self_sym) = self.a.procs[pid].self_param.clone().expect("a method has a Self");
+                if let Some((path, ty)) = object.field_path(key) {
+                    return Some(Resolved::SelfField { self_sym, path, ty });
+                }
+                if let Some((pid, path)) = self.find_method(&object, key) {
+                    return Some(Resolved::SelfMethod { self_sym, pid, path });
+                }
+            }
+        }
+        None
+    }
+
+    /// A method of `object` or one of its ancestors, with the path to the
+    /// ancestor that defines it.
+    fn find_method(&self, object: &Rc<ObjectType>, key: &str) -> Option<(ProcId, Vec<String>)> {
+        object
+            .lineage()
+            .into_iter()
+            .find_map(|(o, path)| self.a.methods.get(&(o.rust_name.clone(), key.to_string())).map(|&pid| (pid, path)))
     }
 
     /// Pick a Rust name not yet used in `proc` (or any procedure enclosing
@@ -269,6 +325,7 @@ impl Checker {
                 calls: Default::default(),
                 captures: Vec::new(),
                 has_body: true,
+                self_param: None,
                 span: unit.name.span,
             });
             self.used_names.push(HashSet::new());
@@ -299,6 +356,7 @@ impl Checker {
         for decl in decls {
             match decl {
                 Decl::Const(c) => self.const_decl(c),
+                Decl::Type(t) if matches!(t.ty, TypeExpr::Object { .. }) => self.object_type(&t.name, &t.ty),
                 Decl::Type(t) => {
                     let bounds = match &t.ty {
                         TypeExpr::Subrange { .. } => self.subrange(&t.ty),
@@ -416,8 +474,7 @@ impl Checker {
 
     fn proc_decl(&mut self, d: &ProcDecl) {
         if d.owner.is_some() {
-            self.error(d.name.span, "object methods are not supported yet");
-            return;
+            return self.method_body(d);
         }
         let parent = self.cur();
         // A procedure declared `forward` earlier in this scope gets its body
@@ -450,12 +507,111 @@ impl Checker {
         self.scopes.pop();
     }
 
+    /// `Name = object(Parent) fields; method headings; end`.
+    fn object_type(&mut self, name: &Ident, t: &TypeExpr) {
+        let TypeExpr::Object { parent, fields, methods, span } = t else { unreachable!() };
+        let parent = parent.as_ref().and_then(|p| match self.lookup(&p.key()).map(|s| &self.a.symbols[s].kind) {
+            Some(SymKind::TypeName(Type::Object(o))) => Some(o.clone()),
+            _ => {
+                self.error(p.span, format!("`{}` is not an object type", p.name));
+                None
+            }
+        });
+        let rust_name = self.type_name(&name.name);
+        let mut resolved = Vec::new();
+        for group in fields {
+            let ty = self.resolve_type(&group.ty);
+            for n in &group.names {
+                resolved.push(Field { name: n.name.clone(), rust_name: snake_case(&n.name), ty: ty.clone() });
+            }
+        }
+        let object = Rc::new(ObjectType { rust_name: rust_name.clone(), parent, fields: resolved });
+        let ty = Type::Object(object.clone());
+        // Bind the type's name before looking at the methods, whose
+        // parameters may mention the type itself.
+        let sym = self.add_symbol(&name.name, rust_name.clone(), SymKind::TypeName(ty.clone()));
+        self.bind(name, sym);
+        self.a.type_defs.push((ty, *span));
+        for method in methods {
+            let pid = self.new_proc_inner(method, MAIN, false);
+            let self_sym = self.add_symbol(
+                "Self",
+                "self".to_string(),
+                SymKind::Var(Var {
+                    ty: Type::Object(object.clone()),
+                    owner: pid,
+                    role: VarRole::Param(ParamMode::Var),
+                }),
+            );
+            self.used_names[pid].insert("self".to_string());
+            let info = &mut self.a.procs[pid];
+            info.self_param = Some((object.clone(), self_sym));
+            info.name = format!("{}.{}", name.name, method.name.name);
+            // Methods live in their type's namespace, so they don't need the
+            // globally unique names that free functions do.
+            self.used_fn_names.remove(&info.rust_name);
+            info.rust_name = snake_case(&method.name.name);
+            if self.a.methods.insert((rust_name.clone(), method.name.key()), pid).is_some() {
+                self.error(method.name.span, format!("`{}` is declared twice in `{}`", method.name.name, name.name));
+            }
+        }
+    }
+
+    /// `procedure Queue.AddQ(...); begin ... end;`: a method's body.
+    fn method_body(&mut self, d: &ProcDecl) {
+        let owner = d.owner.as_ref().unwrap();
+        let object = match self.lookup(&owner.key()).map(|s| &self.a.symbols[s].kind) {
+            Some(SymKind::TypeName(Type::Object(o))) => o.clone(),
+            _ => {
+                self.error(owner.span, format!("`{}` is not an object type", owner.name));
+                return;
+            }
+        };
+        let Some(&pid) = self.a.methods.get(&(object.rust_name.clone(), d.name.key())) else {
+            self.error(d.name.span, format!("`{}` has no method `{}`", owner.name, d.name.name));
+            return;
+        };
+        let ProcBody::Block(body) = &d.body else {
+            self.error(d.name.span, "a method implementation needs a body");
+            return;
+        };
+        if self.a.procs[pid].has_body {
+            self.error(d.name.span, format!("method `{}.{}` is defined twice", owner.name, d.name.name));
+        }
+        self.a.proc_decls.insert(d.name.span.start, pid);
+        self.a.procs[pid].has_body = true;
+        self.scopes.push(HashMap::new());
+        for &param in &self.a.procs[pid].params.clone() {
+            let key = self.a.symbols[param].name.to_ascii_lowercase();
+            self.scopes.last_mut().unwrap().insert(key, param);
+        }
+        let self_sym = self.a.procs[pid].self_param.as_ref().unwrap().1;
+        self.scopes.last_mut().unwrap().insert("self".to_string(), self_sym);
+        self.method_scopes.push((self.scopes.len() - 1, pid));
+        self.proc_stack.push(pid);
+        self.block(body);
+        self.proc_stack.pop();
+        self.method_scopes.pop();
+        self.scopes.pop();
+    }
+
     fn new_proc(&mut self, d: &ProcDecl, parent: ProcId) -> ProcId {
+        self.new_proc_inner(d, parent, true)
+    }
+
+    /// Create a procedure's `ProcInfo` and parameters. Methods aren't bound
+    /// in the enclosing scope (`bind` is false): they're reached through
+    /// their object.
+    fn new_proc_inner(&mut self, d: &ProcDecl, parent: ProcId, bind: bool) -> ProcId {
         let pid = self.a.procs.len();
         // Nested procedures are named after their parents: `Visit` inside
         // `Report` becomes `report_visit`, so lifted names never collide.
         let base = if parent == MAIN {
             snake_case(&d.name.name)
+        } else if let Some((object, _)) = &self.a.procs[parent].self_param {
+            // Nested inside a method: `Queue.AddQ`'s `Helper` becomes
+            // `queue_add_q_helper`.
+            format!("{}_{}_{}", snake_case(&object.rust_name), self.a.procs[parent].rust_name, snake_case(&d.name.name))
         } else {
             format!("{}_{}", self.a.procs[parent].rust_name, snake_case(&d.name.name))
         };
@@ -484,6 +640,7 @@ impl Checker {
             calls: Default::default(),
             captures: Vec::new(),
             has_body: false,
+            self_param: None,
             span: d.name.span,
         });
         // Each procedure has its own namespace for variables. If a lifted
@@ -493,7 +650,9 @@ impl Checker {
         self.used_names[pid].insert("result".to_string());
 
         let sym = self.add_symbol(&d.name.name, rust_name, SymKind::Proc(pid));
-        self.bind(&d.name, sym);
+        if bind {
+            self.bind(&d.name, sym);
+        }
 
         // Parameters are declared in a throwaway scope here; `proc_decl`
         // re-binds them in the body's scope.
@@ -884,7 +1043,7 @@ impl Checker {
     fn call_statement(&mut self, e: &Expr) {
         let (callee, args): (&Expr, &[Expr]) = match &e.kind {
             ExprKind::Call { callee, args } => (callee, args),
-            ExprKind::Name(_) => (e, &[]),
+            ExprKind::Name(_) | ExprKind::Field(..) => (e, &[]),
             _ => {
                 self.error(e.span, "expected a procedure call");
                 return;
@@ -924,9 +1083,18 @@ impl Checker {
             ExprKind::Str(s) => Type::StrLit(s.len()),
             ExprKind::Nil => Type::Nil,
             ExprKind::Name(ident) => {
-                let Some(sym) = self.lookup(&ident.key()) else {
-                    self.error(ident.span, format!("unknown identifier `{}`", ident.name));
-                    return Type::Error;
+                let sym = match self.resolve(&ident.key()) {
+                    None => {
+                        self.error(ident.span, format!("unknown identifier `{}`", ident.name));
+                        return Type::Error;
+                    }
+                    Some(Resolved::SelfField { self_sym, path, ty }) => {
+                        self.a.self_fields.insert(e.id, (self_sym, path));
+                        self.use_var(self_sym, false);
+                        return ty;
+                    }
+                    Some(Resolved::SelfMethod { .. }) => return self.call(e, e, &[]),
+                    Some(Resolved::Sym(sym)) => sym,
                 };
                 self.a.refs.insert(e.id, sym);
                 match self.a.symbols[sym].kind.clone() {
@@ -970,6 +1138,12 @@ impl Checker {
             }
             ExprKind::Field(base, field) => {
                 let base_ty = self.expr(base);
+                // `obj.FullQ` with no parentheses is a method call too.
+                if let Type::Object(object) = &base_ty
+                    && object.field_path(&field.name).is_none()
+                {
+                    return self.call(e, e, &[]);
+                }
                 self.select_field(base_ty, field)
             }
             ExprKind::Index(base, indexes) => {
@@ -1015,12 +1189,31 @@ impl Checker {
     /// through, which doesn't happen yet.
     fn place(&mut self, e: &Expr, write: bool) -> Type {
         let ty = match &e.kind {
-            ExprKind::Name(ident) => match self.lookup(&ident.key()) {
+            ExprKind::Name(ident) => match self.resolve(&ident.key()) {
                 None => {
                     self.error(ident.span, format!("unknown identifier `{}`", ident.name));
                     Type::Error
                 }
-                Some(sym) => match self.a.symbols[sym].kind.clone() {
+                Some(Resolved::SelfField { self_sym, path, ty }) => {
+                    self.a.self_fields.insert(e.id, (self_sym, path));
+                    self.use_var(self_sym, write);
+                    ty
+                }
+                // Inside a method function, assigning to the method's name
+                // sets its result, as for ordinary functions.
+                Some(Resolved::SelfMethod { pid, .. })
+                    if self.proc_stack.contains(&pid) && self.a.procs[pid].result.is_some() =>
+                {
+                    let result = self.a.procs[pid].result.unwrap();
+                    self.a.refs.insert(e.id, result);
+                    self.use_var(result, write);
+                    self.a.procs[pid].ret.clone().unwrap()
+                }
+                Some(Resolved::SelfMethod { .. }) => {
+                    self.error(e.span, format!("cannot assign to `{}`", ident.name));
+                    Type::Error
+                }
+                Some(Resolved::Sym(sym)) => match self.a.symbols[sym].kind.clone() {
                     SymKind::Var(v) => {
                         self.a.refs.insert(e.id, sym);
                         self.use_var(sym, write);
@@ -1058,6 +1251,13 @@ impl Checker {
 
     fn select_field(&mut self, base: Type, field: &Ident) -> Type {
         match &base {
+            Type::Object(o) => match o.field_path(&field.name) {
+                Some((_, ty)) => ty,
+                None => {
+                    self.error(field.span, format!("`{}` has no field `{}`", o.rust_name, field.name));
+                    Type::Error
+                }
+            },
             Type::Record(r) => match r.field(&field.name) {
                 Some(f) => f.ty.clone(),
                 None => {
@@ -1113,13 +1313,30 @@ impl Checker {
     /// Check a call to a procedure, function, builtin or type cast. `e` is
     /// the whole call expression (used to record its type).
     fn call(&mut self, e: &Expr, callee: &Expr, args: &[Expr]) -> Type {
+        // `obj.Method(args)`: a method call on an object.
+        if let ExprKind::Field(receiver, method) = &callee.kind {
+            return self.method_call(e, callee, receiver, method, args);
+        }
         let ExprKind::Name(ident) = &callee.kind else {
             self.error(callee.span, "expected the name of a procedure or function");
             return Type::Error;
         };
-        let Some(sym) = self.lookup(&ident.key()) else {
-            self.error(ident.span, format!("unknown identifier `{}`", ident.name));
-            return Type::Error;
+        let sym = match self.resolve(&ident.key()) {
+            None => {
+                self.error(ident.span, format!("unknown identifier `{}`", ident.name));
+                return Type::Error;
+            }
+            // A sibling method called from inside a method: `self.method()`.
+            Some(Resolved::SelfMethod { self_sym, pid, path }) => {
+                self.a.method_calls.insert(callee.id, (pid, path));
+                self.use_var(self_sym, true);
+                return self.user_call(e, pid, args);
+            }
+            Some(Resolved::SelfField { .. }) => {
+                self.error(ident.span, format!("`{}` is a field, not a method", ident.name));
+                return Type::Error;
+            }
+            Some(Resolved::Sym(sym)) => sym,
         };
         self.a.refs.insert(callee.id, sym);
         match self.a.symbols[sym].kind.clone() {
@@ -1177,7 +1394,37 @@ impl Checker {
         r.ret.map_or(Type::Void, |ret| ret.ty())
     }
 
+    fn method_call(&mut self, e: &Expr, callee: &Expr, receiver: &Expr, method: &Ident, args: &[Expr]) -> Type {
+        // The receiver is passed as `&mut self`, so it counts as a write.
+        let receiver_ty = self.place(receiver, true);
+        let Type::Object(object) = &receiver_ty else {
+            if receiver_ty != Type::Error {
+                self.error(method.span, format!("a {receiver_ty} value has no methods"));
+            }
+            return Type::Error;
+        };
+        let Some((pid, path)) = self.find_method(object, &method.key()) else {
+            self.error(method.span, format!("`{}` has no method `{}`", object.rust_name, method.name));
+            return Type::Error;
+        };
+        self.a.method_calls.insert(callee.id, (pid, path));
+        // Remember the receiver like a `var` argument, for the aliasing
+        // check: `board.Finish` where `Finish` also uses the global `board`
+        // would be two mutable references.
+        let receiver_arg = self.place_root(receiver).map(|root| VarArg {
+            param: self.a.procs[pid].self_param.as_ref().unwrap().1,
+            root,
+            whole: matches!(receiver.kind, ExprKind::Name(_)),
+            span: receiver.span,
+        });
+        self.user_call_with(e, pid, args, receiver_arg)
+    }
+
     fn user_call(&mut self, e: &Expr, p: ProcId, args: &[Expr]) -> Type {
+        self.user_call_with(e, p, args, None)
+    }
+
+    fn user_call_with(&mut self, e: &Expr, p: ProcId, args: &[Expr], receiver: Option<VarArg>) -> Type {
         let cur = self.cur();
         self.a.procs[cur].calls.insert(p);
         let params = self.a.procs[p].params.clone();
@@ -1186,7 +1433,7 @@ impl Checker {
             self.error(e.span, format!("`{name}` takes {} argument(s) but {} were given", params.len(), args.len()));
             return self.a.procs[p].ret.clone().unwrap_or(Type::Void);
         }
-        let mut var_args = Vec::new();
+        let mut var_args: Vec<VarArg> = receiver.into_iter().collect();
         for (&param, arg) in params.iter().zip(args) {
             let Var { ty, role, .. } = self.a.var(param).clone();
             if role == VarRole::Param(ParamMode::Var) {

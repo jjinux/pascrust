@@ -68,9 +68,12 @@ pub(super) fn lift(a: &mut Analysis) {
             .iter()
             .filter(|&&v| is_ancestor(a, owner(a, v), p))
             .map(|&sym| {
+                // A method's `self` is never copied: a read-only capture of it
+                // is a shared reference, `this: &Queue`.
+                let is_self = a.sym(sym).rust_name == "self";
                 let mode = if write_need[p].contains(&sym) {
                     CaptureMode::RefMut
-                } else if a.var(sym).ty.is_copy() {
+                } else if a.var(sym).ty.is_copy() && !is_self {
                     CaptureMode::Value
                 } else {
                     CaptureMode::Ref

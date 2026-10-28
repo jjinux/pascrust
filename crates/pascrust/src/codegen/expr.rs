@@ -56,12 +56,21 @@ impl<'a> Codegen<'a> {
             }
             ExprKind::Binary { op, lhs, rhs } => self.binary(e, *op, lhs, rhs),
             ExprKind::Format { value, .. } => self.expr(value),
+            ExprKind::Field(..) if self.a.method_calls.contains_key(&e.id) => (self.call(e, &[]), prec::POSTFIX),
             ExprKind::Field(..) | ExprKind::Index(..) => (self.selector(e), prec::POSTFIX),
             _ => unreachable!("sema rejects this expression"),
         }
     }
 
     fn name(&mut self, e: &Expr) -> Code {
+        // Inside a method, a bare field name means `self.field`, and a bare
+        // method name is a call on `self`.
+        if let Some((self_sym, path)) = self.a.self_fields.get(&e.id) {
+            return (format!("{}.{}", self.a.var_name(self.proc, *self_sym), path.join(".")), prec::POSTFIX);
+        }
+        if self.a.method_calls.contains_key(&e.id) {
+            return (self.call(e, &[]), prec::POSTFIX);
+        }
         let sym = self.a.refs[&e.id];
         let symbol = self.a.sym(sym);
         match &symbol.kind {
@@ -188,6 +197,9 @@ impl<'a> Codegen<'a> {
 
     /// The Rust place expression for an assignment target.
     pub(super) fn place(&mut self, e: &Expr) -> String {
+        if let Some((self_sym, path)) = self.a.self_fields.get(&e.id) {
+            return format!("{}.{}", self.a.var_name(self.proc, *self_sym), path.join("."));
+        }
         match &e.kind {
             ExprKind::Name(_) => self.var_place(self.a.refs[&e.id]),
             ExprKind::Field(..) | ExprKind::Index(..) => self.selector(e),
@@ -200,9 +212,12 @@ impl<'a> Codegen<'a> {
     fn selector(&mut self, e: &Expr) -> String {
         match &e.kind {
             ExprKind::Field(base, field) => {
-                let Type::Record(r) = self.a.type_of(base.id).clone() else { unreachable!("sema checked the field") };
-                let field = r.field(&field.name).expect("sema checked the field");
-                format!("{}.{}", self.selector_base(base), field.rust_name)
+                let path = match self.a.type_of(base.id).clone() {
+                    Type::Record(r) => r.field(&field.name).expect("sema checked the field").rust_name.clone(),
+                    Type::Object(o) => o.field_path(&field.name).expect("sema checked the field").0.join("."),
+                    _ => unreachable!("sema checked the field"),
+                };
+                format!("{}.{path}", self.selector_base(base))
             }
             ExprKind::Index(base, indexes) => {
                 let mut ty = self.a.type_of(base.id).clone();
@@ -229,7 +244,10 @@ impl<'a> Codegen<'a> {
     /// The left side of `.field` or `[index]`. Rust dereferences
     /// automatically there, so a variable we hold by reference can be used
     /// as is (`grid[c][r]`, not `(*grid)[c][r]`).
-    fn selector_base(&mut self, base: &Expr) -> String {
+    pub(super) fn selector_base(&mut self, base: &Expr) -> String {
+        if let Some((self_sym, path)) = self.a.self_fields.get(&base.id) {
+            return format!("{}.{}", self.a.var_name(self.proc, *self_sym), path.join("."));
+        }
         match &base.kind {
             ExprKind::Name(_) if matches!(self.a.sym(self.a.refs[&base.id]).kind, SymKind::Var(_)) => {
                 self.a.var_name(self.proc, self.a.refs[&base.id]).to_string()
@@ -243,7 +261,7 @@ impl<'a> Codegen<'a> {
     /// just `x` if we already hold `x` as a reference (Rust "reborrows" it).
     pub(super) fn place_mut(&mut self, e: &Expr) -> String {
         match &e.kind {
-            ExprKind::Name(_) => {
+            ExprKind::Name(_) if !self.a.self_fields.contains_key(&e.id) => {
                 let sym = self.a.refs[&e.id];
                 let name = self.a.var_name(self.proc, sym).to_string();
                 match self.a.access(self.proc, sym) {
@@ -257,6 +275,9 @@ impl<'a> Codegen<'a> {
 
     /// A call to a user procedure, a builtin or a type cast.
     pub(super) fn call(&mut self, callee: &Expr, args: &[Expr]) -> String {
+        if let Some((pid, path)) = self.a.method_calls.get(&callee.id).cloned() {
+            return self.method_call(callee, pid, &path, args);
+        }
         let sym = self.a.refs[&callee.id];
         match &self.a.sym(sym).kind {
             SymKind::Proc(p) => self.user_call(*p, args),
@@ -288,6 +309,42 @@ impl<'a> Codegen<'a> {
     }
 
     pub(super) fn user_call(&mut self, p: usize, args: &[Expr]) -> String {
+        let args = self.call_args(p, args);
+        format!("{}({args})", self.a.procs[p].rust_name)
+    }
+
+    /// `receiver.method(args)`. The receiver is the object before the dot
+    /// (`queue.add_q(item)`), or `self` for a call from a sibling method;
+    /// `path` reaches an inherited method's object (`board.base.show()`).
+    fn method_call(&mut self, callee: &Expr, pid: usize, path: &[String], args: &[Expr]) -> String {
+        let mut receiver = match &callee.kind {
+            ExprKind::Field(receiver, _) => self.selector_base(receiver),
+            _ => {
+                let self_sym = self.a.procs[self.proc_with_self()].self_param.as_ref().unwrap().1;
+                self.a.var_name(self.proc, self_sym).to_string()
+            }
+        };
+        for step in path {
+            receiver.push('.');
+            receiver.push_str(step);
+        }
+        let args = self.call_args(pid, args);
+        format!("{receiver}.{}({args})", self.a.procs[pid].rust_name)
+    }
+
+    /// The method we're in (or nested inside), whose `Self` a bare method
+    /// call uses.
+    fn proc_with_self(&self) -> usize {
+        let mut p = self.proc;
+        while self.a.procs[p].self_param.is_none() {
+            p = self.a.procs[p].parent.expect("a bare method call happens inside a method");
+        }
+        p
+    }
+
+    /// The argument list for a call: captured outer variables first, then
+    /// the Pascal arguments.
+    fn call_args(&mut self, p: usize, args: &[Expr]) -> String {
         let info = &self.a.procs[p];
         let mut parts = Vec::new();
         // Captured variables first, in the callee's order.
@@ -313,7 +370,7 @@ impl<'a> Codegen<'a> {
                 parts.push(self.coerce(arg, &ty).0);
             }
         }
-        format!("{}({})", self.a.procs[p].rust_name, parts.join(", "))
+        parts.join(", ")
     }
 
     /// The Rust literal for a constant of type `ty`.

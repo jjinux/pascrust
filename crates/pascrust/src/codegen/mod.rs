@@ -128,6 +128,7 @@ impl<'a> Codegen<'a> {
         self.consts(&program.block.decls);
         self.type_defs();
         self.procs(&program.block.decls);
+        self.impls(&program.block.decls);
 
         self.blank();
         self.line(format!("/// The main program: the `begin ... end.` block of `{}`.", program.name.name));
@@ -172,6 +173,7 @@ impl<'a> Codegen<'a> {
         self.consts(&decls);
         self.type_defs();
         self.procs(&decls);
+        self.impls(&decls);
         if let Some(init) = info.init {
             self.proc = init;
             self.blank();
@@ -228,7 +230,18 @@ impl<'a> Codegen<'a> {
                 continue;
             }
             self.blank();
-            self.line(format!("/// Pascal: `{}`", self.pascal_text(*span)));
+            // Quote short declarations whole; for records and objects, just
+            // the opening.
+            let text = self.pascal_text(*span);
+            let text = match ty {
+                Type::Record(r) if text.len() > 60 => format!("{} = record ... end", r.rust_name),
+                Type::Object(o) if text.len() > 60 => match &o.parent {
+                    Some(parent) => format!("{} = object({}) ... end", o.rust_name, parent.rust_name),
+                    None => format!("{} = object ... end", o.rust_name),
+                },
+                _ => text,
+            };
+            self.line(format!("/// Pascal: `{text}`"));
             match ty {
                 Type::Enum(e) => {
                     self.line("#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]");
@@ -264,6 +277,28 @@ impl<'a> Codegen<'a> {
                     }
                     self.line("}");
                 }
+                Type::Object(o) => {
+                    let derives = if ty.is_copy() { "Clone, Copy, Debug, Default" } else { "Clone, Debug, Default" };
+                    self.line(format!("#[derive({derives})]"));
+                    self.line(format!("{}struct {} {{", self.vis, o.rust_name));
+                    if let Some(parent) = &o.parent {
+                        if self.first_time("inheritance") {
+                            self.line(format!(
+                                "    /// The inherited part: `{}` descends from `{}`. Rust has no struct",
+                                o.rust_name, parent.rust_name
+                            ));
+                            self.line(
+                                "    /// inheritance, so the parent object is embedded as a field, and inherited",
+                            );
+                            self.line("    /// fields and methods are reached through it (`self.base.x`).");
+                        }
+                        self.line(format!("    {}base: {},", self.vis, parent.rust_name));
+                    }
+                    for field in &o.fields {
+                        self.line(format!("    {}{}: {},", self.vis, field.rust_name, field.ty.rust()));
+                    }
+                    self.line("}");
+                }
                 Type::Array(a) => {
                     let alias = a.alias.as_deref().expect("only named array types are emitted");
                     self.line(format!("{}type {alias} = {};", self.vis, a.rust_unaliased()));
@@ -280,9 +315,53 @@ impl<'a> Codegen<'a> {
         for decl in decls {
             if let Decl::Proc(p) = decl
                 && let ProcBody::Block(body) = &p.body
+                && p.owner.is_none()
             {
                 self.proc_fn(p, body);
                 self.procs(&body.decls);
+            }
+        }
+    }
+
+    /// An `impl` block for each object type, holding its methods. Procedures
+    /// nested inside a method follow the block as free functions.
+    fn impls(&mut self, decls: &[Decl]) {
+        let methods: Vec<&ProcDecl> = decls
+            .iter()
+            .filter_map(|d| match d {
+                Decl::Proc(p) if p.owner.is_some() => Some(p),
+                _ => None,
+            })
+            .collect();
+        let mut owners: Vec<String> = Vec::new();
+        for m in &methods {
+            let key = m.owner.as_ref().unwrap().key();
+            if !owners.contains(&key) {
+                owners.push(key);
+            }
+        }
+        for owner in owners {
+            let group: Vec<&&ProcDecl> = methods.iter().filter(|m| m.owner.as_ref().unwrap().key() == owner).collect();
+            let pid = self.a.proc_decls[&group[0].name.span.start];
+            let type_name = self.a.procs[pid].self_param.as_ref().unwrap().0.rust_name.clone();
+            self.blank();
+            if self.first_time("impl") {
+                self.line("// A Pascal object's methods go in an `impl` block. Each takes `&mut self`,");
+                self.line("// which is Pascal's implicit `Self` parameter.");
+            }
+            self.line(format!("impl {type_name} {{"));
+            self.indent += 1;
+            for m in &group {
+                if let ProcBody::Block(body) = &m.body {
+                    self.proc_fn(m, body);
+                }
+            }
+            self.indent -= 1;
+            self.line("}");
+            for m in &group {
+                if let ProcBody::Block(body) = &m.body {
+                    self.procs(&body.decls);
+                }
             }
         }
     }
@@ -324,7 +403,10 @@ impl<'a> Codegen<'a> {
             self.line("/// variable, and Rust doesn't allow two references to one variable.");
         }
 
-        let params = self.signature_params(pid);
+        let mut params = self.signature_params(pid);
+        if info.self_param.is_some() {
+            params = if params.is_empty() { "&mut self".to_string() } else { format!("&mut self, {params}") };
+        }
         let ret = match &info.ret {
             Some(ty) => format!(" -> {}", ty.rust()),
             None => String::new(),
@@ -698,7 +780,7 @@ fn default_value(ty: &Type) -> String {
         // zero-filled memory would hold too.
         Type::Enum(e) => format!("{}::{}", e.rust_name, e.variants[0]),
         Type::Array(a) if a.alias.is_none() => "PArray::default()".to_string(),
-        Type::Array(_) | Type::Record(_) => format!("{}::default()", ty.rust()),
+        Type::Array(_) | Type::Record(_) | Type::Object(_) => format!("{}::default()", ty.rust()),
         Type::Nil | Type::Void | Type::Error => "()".to_string(),
     }
 }

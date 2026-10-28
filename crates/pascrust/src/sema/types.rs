@@ -82,6 +82,8 @@ pub enum Type {
     /// `array[lo..hi] of T`. A multi-dimensional array is an array of arrays.
     Array(Rc<ArrayType>),
     Record(Rc<RecordType>),
+    /// A Turbo Pascal 5.5 `object` type.
+    Object(Rc<ObjectType>),
     /// The type of `nil`.
     Nil,
     /// The "type" of a procedure call, which has no value.
@@ -133,6 +135,57 @@ pub struct Field {
     pub ty: Type,
 }
 
+/// An object type. Its methods are recorded in the [`super::Analysis`]
+/// (`methods`), because they're procedures with bodies of their own.
+#[derive(Debug, Clone)]
+pub struct ObjectType {
+    pub rust_name: String,
+    /// The object type this one inherits from. In Rust the parent becomes a
+    /// field named `base`, since Rust has no struct inheritance.
+    pub parent: Option<Rc<ObjectType>>,
+    /// The fields declared by this type itself (not the inherited ones).
+    pub fields: Vec<Field>,
+}
+
+/// Object types are equal when they're the same declaration.
+impl PartialEq for ObjectType {
+    fn eq(&self, other: &ObjectType) -> bool {
+        self.rust_name == other.rust_name
+    }
+}
+
+impl ObjectType {
+    /// Find a field, own or inherited. Returns the Rust path to it from the
+    /// object (`["base", "x"]` for a field inherited from the parent) and its
+    /// type.
+    pub fn field_path(&self, name: &str) -> Option<(Vec<String>, Type)> {
+        if let Some(f) = self.fields.iter().find(|f| f.name.eq_ignore_ascii_case(name)) {
+            return Some((vec![f.rust_name.clone()], f.ty.clone()));
+        }
+        let (mut path, ty) = self.parent.as_ref()?.field_path(name)?;
+        path.insert(0, "base".to_string());
+        Some((path, ty))
+    }
+
+    /// This type and its ancestors, nearest first, each with the path to it
+    /// (`[]`, `["base"]`, `["base", "base"]`, ...).
+    pub fn lineage(self: &Rc<ObjectType>) -> Vec<(Rc<ObjectType>, Vec<String>)> {
+        let mut result = Vec::new();
+        let mut current = Some(self.clone());
+        let mut path = Vec::new();
+        while let Some(o) = current {
+            result.push((o.clone(), path.clone()));
+            path.push("base".to_string());
+            current = o.parent.clone();
+        }
+        result
+    }
+
+    pub fn is_copy(&self) -> bool {
+        self.fields.iter().all(|f| f.ty.is_copy()) && self.parent.as_ref().is_none_or(|p| p.is_copy())
+    }
+}
+
 impl RecordType {
     pub fn field(&self, name: &str) -> Option<&Field> {
         self.fields.iter().find(|f| f.name.eq_ignore_ascii_case(name))
@@ -181,6 +234,7 @@ impl Type {
             Type::Str { .. } | Type::StrLit(_) => "PString".to_string(),
             Type::Enum(e) => e.rust_name.clone(),
             Type::Record(r) => r.rust_name.clone(),
+            Type::Object(o) => o.rust_name.clone(),
             Type::Array(a) => match &a.alias {
                 Some(alias) => alias.clone(),
                 None => a.rust_unaliased(),
@@ -195,6 +249,7 @@ impl Type {
         match self {
             Type::Array(a) => a.elem.is_copy(),
             Type::Record(r) => r.fields.iter().all(|f| f.ty.is_copy()),
+            Type::Object(o) => o.is_copy(),
             _ => true,
         }
     }
@@ -235,6 +290,7 @@ impl fmt::Display for Type {
             Type::Str { cap } => write!(f, "String[{cap}]"),
             Type::Enum(e) => write!(f, "{}", e.rust_name),
             Type::Record(r) => write!(f, "{}", r.rust_name),
+            Type::Object(o) => write!(f, "{}", o.rust_name),
             Type::Array(a) => write!(f, "array[{}..{}] of {}", a.lo, a.hi, a.elem),
             Type::Nil => write!(f, "Pointer"),
             Type::Void => write!(f, "no value"),
