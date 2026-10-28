@@ -101,16 +101,19 @@ fn delete(root: &mut KeyPtr, item: Key, successful: &mut bool) {
         }
         let value = temp.get().clone();
         *root.get_mut() = value;
-        delete(&mut root.get_mut().after, temp.get().clone(), successful);
+        let item_arg = temp.get().clone();
+        delete(&mut root.get_mut().after, item_arg, successful);
     }
 }
 
 /// Pascal: `procedure Traverse(root: KeyPtr);`
 fn traverse(root: KeyPtr) {
     if !root.is_nil() {
-        traverse(root.get().before.clone());
+        let root_arg = root.get().before.clone();
+        traverse(root_arg);
         pwrite!(root.get().id, " ");
-        traverse(root.get().after.clone());
+        let root_arg = root.get().after.clone();
+        traverse(root_arg);
     }
 }
 

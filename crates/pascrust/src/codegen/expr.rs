@@ -431,8 +431,14 @@ impl<'a> Codegen<'a> {
                 // `f(&mut x, x.size)` borrows `x` mutably and then reads it,
                 // which Rust rejects; Pascal evaluates the argument first
                 // anyway. Compute it into a temporary before the call.
-                if borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root)) {
-                    let temp = self.a.sym(*param).rust_name.clone();
+                //
+                // The same goes for an argument that reads through a pointer
+                // (`f(p^)` is `f(p.get().clone())`): the borrow guard that
+                // `get()` returns would live until the end of the statement,
+                // keeping the record borrowed while `f` runs, so `f` couldn't
+                // modify or dispose it.
+                if borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root)) || derefs(arg) {
+                    let temp = self.temp_name(&self.a.sym(*param).rust_name.clone());
                     self.pending.push(format!("let {temp} = {code};"));
                     parts.push(temp);
                 } else {
@@ -441,6 +447,18 @@ impl<'a> Codegen<'a> {
             }
         }
         parts.join(", ")
+    }
+
+    /// A name for a temporary that holds an argument: the parameter's name,
+    /// unless that would shadow one of the caller's variables.
+    fn temp_name(&self, param: &str) -> String {
+        let info = &self.a.procs[self.proc];
+        let visible = info.locals.iter().chain(&info.params).chain(info.captures.iter().map(|c| &c.sym));
+        if visible.into_iter().any(|sym| self.a.var_name(self.proc, *sym) == param) {
+            format!("{param}_arg")
+        } else {
+            param.to_string()
+        }
     }
 
     /// The Rust literal for a constant of type `ty`.
@@ -479,6 +497,19 @@ fn mentions(e: &Expr, key: &str) -> bool {
         ExprKind::Unary { operand, .. } => mentions(operand, key),
         ExprKind::Binary { lhs, rhs, .. } => mentions(lhs, key) || mentions(rhs, key),
         ExprKind::Format { value, .. } => mentions(value, key),
+        _ => false,
+    }
+}
+
+/// Does `e` read through a pointer (`p^`)?
+fn derefs(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Deref(_) => true,
+        ExprKind::Field(base, _) => derefs(base),
+        ExprKind::Index(base, indexes) => derefs(base) || indexes.iter().any(derefs),
+        ExprKind::Call { args, .. } => args.iter().any(derefs),
+        ExprKind::Unary { operand, .. } => derefs(operand),
+        ExprKind::Binary { lhs, rhs, .. } => derefs(lhs) || derefs(rhs),
         _ => false,
     }
 }

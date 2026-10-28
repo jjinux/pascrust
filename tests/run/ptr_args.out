@@ -1,0 +1,3 @@
+value is now 42
+freed node 42 (count 42)
+head is nil: TRUE
