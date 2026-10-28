@@ -593,6 +593,9 @@ impl Checker {
         self.a.type_defs.push((ty, *span));
         for method in methods {
             let pid = self.new_proc_inner(method, MAIN, false);
+            if method.is_virtual {
+                self.a.virtuals.insert(pid);
+            }
             let self_sym = self.add_symbol(
                 "Self",
                 "self".to_string(),
@@ -1653,6 +1656,7 @@ impl Checker {
             // A sibling method called from inside a method: `self.method()`.
             Some(Resolved::SelfMethod { self_sym, pid, path }) => {
                 self.a.method_calls.insert(callee.id, (pid, path));
+                self.a.self_calls.push((self.cur(), pid));
                 self.use_var(self_sym, true);
                 return self.user_call(e, pid, args);
             }
@@ -1737,6 +1741,19 @@ impl Checker {
     }
 
     fn method_call(&mut self, e: &Expr, callee: &Expr, receiver: &Expr, method: &Ident, args: &[Expr]) -> Type {
+        // `inherited Draw` and `TShape.Init(x, y)` call one particular
+        // version of a method on `Self`.
+        if let ExprKind::Name(id) = &receiver.kind {
+            if id.key() == "inherited" {
+                return self.static_method_call(e, callee, None, method, args);
+            }
+            if let Some(Resolved::Sym(sym)) = self.resolve(&id.key())
+                && let SymKind::TypeName(Type::Object(object)) = &self.a.symbols[sym].kind
+            {
+                let object = object.clone();
+                return self.static_method_call(e, callee, Some(object), method, args);
+            }
+        }
         // The receiver is passed as `&mut self`, so it counts as a write.
         let receiver_ty = self.place(receiver, true);
         let Type::Object(object) = &receiver_ty else {
@@ -1764,6 +1781,50 @@ impl Checker {
         self.user_call_with(e, pid, args, receiver_arg)
     }
 
+    /// `inherited Method(args)` (when `ancestor` is `None`) or
+    /// `Ancestor.Method(args)` inside a method: that version of the method,
+    /// called on `Self`, with no dispatch.
+    fn static_method_call(
+        &mut self,
+        e: &Expr,
+        callee: &Expr,
+        ancestor: Option<Rc<ObjectType>>,
+        method: &Ident,
+        args: &[Expr],
+    ) -> Type {
+        let Some(&(_, mpid)) = self.method_scopes.last() else {
+            self.error(callee.span, "`inherited` and calls like `Parent.Method` only work inside a method");
+            return Type::Error;
+        };
+        let (object, self_sym) = self.a.procs[mpid].self_param.clone().unwrap();
+        let ancestor = match ancestor {
+            Some(a) => a,
+            None => match &object.parent {
+                Some(parent) => parent.clone(),
+                None => {
+                    self.error(callee.span, format!("`{}` has no parent object to inherit from", object.rust_name));
+                    return Type::Error;
+                }
+            },
+        };
+        let Some((_, path)) = object.lineage().into_iter().find(|(o, _)| *o == ancestor) else {
+            self.error(
+                callee.span,
+                format!("`{}` isn't `{}` or one of its ancestors", ancestor.rust_name, object.rust_name),
+            );
+            return Type::Error;
+        };
+        let Some((pid, rest)) = self.find_method(&ancestor, &method.key()) else {
+            self.error(method.span, format!("`{}` has no method `{}`", ancestor.rust_name, method.name));
+            return Type::Error;
+        };
+        self.a.method_calls.insert(callee.id, (pid, [path, rest].concat()));
+        self.a.static_calls.insert(callee.id);
+        self.a.self_calls.push((self.cur(), pid));
+        self.use_var(self_sym, true);
+        self.user_call(e, pid, args)
+    }
+
     fn user_call(&mut self, e: &Expr, p: ProcId, args: &[Expr]) -> Type {
         self.user_call_with(e, p, args, None)
     }
@@ -1782,7 +1843,12 @@ impl Checker {
             let Var { ty, role, .. } = self.a.var(param).clone();
             if role == VarRole::Param(ParamMode::Var) {
                 let arg_ty = self.place(arg, true);
-                if arg_ty != ty && arg_ty != Type::Error && ty != Type::Error {
+                // An object may be passed where an ancestor is expected.
+                let descendant = match (&arg_ty, &ty) {
+                    (Type::Object(arg), Type::Object(param)) => arg.lineage().iter().any(|(o, _)| o == param),
+                    _ => false,
+                };
+                if arg_ty != ty && !descendant && arg_ty != Type::Error && ty != Type::Error {
                     self.error(
                         arg.span,
                         format!("a `var` parameter of type {ty} needs a variable of exactly that type, found {arg_ty}"),

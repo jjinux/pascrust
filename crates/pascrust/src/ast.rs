@@ -184,6 +184,9 @@ pub struct ProcDecl {
     pub ret: Option<TypeExpr>,
     pub body: ProcBody,
     pub span: Span,
+    /// Declared `virtual` (in an object type): calls choose the version for
+    /// the object's real type at run time.
+    pub is_virtual: bool,
     /// The span of the heading alone (`procedure Push(var list: NodePtr; v: integer);`),
     /// which codegen copies into a doc comment.
     pub header_span: Span,

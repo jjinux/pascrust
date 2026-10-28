@@ -122,7 +122,7 @@ impl Parser {
                 ExprKind::AddrOf(Box::new(self.designator()?))
             }
             TokenKind::LBracket => self.set_constructor()?,
-            TokenKind::Ident(_) => return self.designator(),
+            TokenKind::Ident(_) | TokenKind::Keyword(Keyword::Inherited) => return self.designator(),
             _ => return Err(self.expected("an expression")),
         };
         Ok(self.mk_expr(kind, start.to(self.prev_span())))
@@ -153,9 +153,19 @@ impl Parser {
     /// and `(arguments)`. Examples: `grid[c, r]`, `p^.next^.value`,
     /// `Copy(s, 1, 3)`.
     pub(super) fn designator(&mut self) -> PResult<Expr> {
-        let name = self.expect_ident()?;
-        let span = name.span;
-        let mut expr = self.mk_expr(ExprKind::Name(name), span);
+        let span = self.span();
+        let mut expr = if self.eat_keyword(Keyword::Inherited) {
+            // `inherited Draw` calls the parent object's `Draw`. It's kept as
+            // the field `inherited.Draw`; `inherited` is a keyword, so no
+            // variable can have that name, and sema recognizes it.
+            let keyword = Ident { name: "inherited".to_string(), span };
+            let receiver = self.mk_expr(ExprKind::Name(keyword), span);
+            let method = self.expect_ident()?;
+            self.mk_expr(ExprKind::Field(Box::new(receiver), method), span.to(self.prev_span()))
+        } else {
+            let name = self.expect_ident()?;
+            self.mk_expr(ExprKind::Name(name), span)
+        };
         loop {
             let kind = match self.peek() {
                 TokenKind::Dot => {

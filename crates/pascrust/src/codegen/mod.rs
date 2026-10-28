@@ -14,8 +14,11 @@
 mod builtins;
 mod expr;
 
+use std::rc::Rc;
+
 use crate::ast::*;
 use crate::diag::{SourceMap, Span};
+use crate::sema::types::ObjectType;
 use crate::sema::{Access, Analysis, Builtin, CaptureMode, MAIN, ProcId, SymId, SymKind, Type, VarRole};
 
 /// Generate the Rust source for a program and its units: one file per
@@ -42,6 +45,7 @@ pub fn generate(
         pending: Vec::new(),
         loops: Vec::new(),
         io_unchecked,
+        self_expr: None,
     };
     g.program(program);
     files.push(("main.rs".to_string(), std::mem::take(&mut g.out)));
@@ -81,6 +85,10 @@ struct Codegen<'a> {
     /// The parts of the source compiled with `{$I-}`, where I/O errors go
     /// to `IOResult` instead of stopping the program.
     io_unchecked: &'a [Span],
+    /// While writing a trait's default method (see `object_traits`): how
+    /// the body reaches its own object's fields, `self.t_shape()`, since
+    /// `self` there is any object descended from it.
+    self_expr: Option<String>,
 }
 
 /// Labels for a `repeat ... until` loop whose body uses `Continue`.
@@ -463,30 +471,175 @@ impl<'a> Codegen<'a> {
                 owners.push(key);
             }
         }
+        let mut with_traits = Vec::new();
         for owner in owners {
             let group: Vec<&&ProcDecl> = methods.iter().filter(|m| m.owner.as_ref().unwrap().key() == owner).collect();
             let pid = self.a.proc_decls[&group[0].name.span.start];
-            let type_name = self.a.procs[pid].self_param.as_ref().unwrap().0.rust_name.clone();
-            self.blank();
-            if self.first_time("impl") {
-                self.line("// A Pascal object's methods go in an `impl` block. Each takes `&mut self`,");
-                self.line("// which is Pascal's implicit `Self` parameter.");
-            }
-            self.line(format!("impl {type_name} {{"));
-            self.indent += 1;
-            for m in &group {
-                if let ProcBody::Block(body) = &m.body {
-                    self.proc_fn(m, body);
+            let object = self.a.procs[pid].self_param.as_ref().unwrap().0.clone();
+            // Methods that must see the object's real type go in its trait.
+            let (dispatched, inherent): (Vec<&ProcDecl>, Vec<&ProcDecl>) = group
+                .iter()
+                .map(|m| **m)
+                .partition(|m| self.a.dispatched.contains(&self.a.proc_decls[&m.name.span.start]));
+            if !inherent.is_empty() {
+                self.blank();
+                if self.first_time("impl") {
+                    self.line("// A Pascal object's methods go in an `impl` block. Each takes `&mut self`,");
+                    self.line("// which is Pascal's implicit `Self` parameter.");
                 }
+                self.line(format!("impl {} {{", object.rust_name));
+                self.indent += 1;
+                for m in &inherent {
+                    if let ProcBody::Block(body) = &m.body {
+                        self.proc_fn(m, body);
+                    }
+                }
+                self.indent -= 1;
+                self.line("}");
             }
-            self.indent -= 1;
-            self.line("}");
+            if self.in_dispatch(&object) {
+                self.object_traits(&object, &dispatched);
+                with_traits.push(object.rust_name.clone());
+            }
             for m in &group {
                 if let ProcBody::Block(body) = &m.body {
                     self.procs(&body.decls);
                 }
             }
         }
+        // Objects in a hierarchy with virtual methods that have no method
+        // bodies of their own still need their trait and impls.
+        let others: Vec<_> = self
+            .a
+            .type_defs
+            .iter()
+            .filter(|(_, span)| self.map.file_index(span.start) == self.file)
+            .filter_map(|(ty, _)| match ty {
+                Type::Object(o) if self.in_dispatch(o) && !with_traits.contains(&o.rust_name) => Some(o.clone()),
+                _ => None,
+            })
+            .collect();
+        for object in others {
+            self.object_traits(&object, &[]);
+        }
+    }
+
+    /// Is `object` part of a hierarchy with virtual methods?
+    pub(super) fn in_dispatch(&self, object: &Rc<ObjectType>) -> bool {
+        self.a.dispatch_roots.contains(&object.lineage().last().unwrap().0.rust_name)
+    }
+
+    /// The trait for an object in a hierarchy with virtual methods, and its
+    /// impls (see `notes/virtual_methods.md`). `bodies` are the object's
+    /// methods that must see the real object; they become default methods,
+    /// so in them `self` is whatever object descended from this one the
+    /// method was called on, and `self.draw()` runs that object's `Draw`.
+    fn object_traits(&mut self, object: &Rc<ObjectType>, bodies: &[&ProcDecl]) {
+        let name = &object.rust_name;
+        let supertrait = match &object.parent {
+            Some(parent) => format!(": {}", trait_name(parent)),
+            None => String::new(),
+        };
+        self.blank();
+        if self.first_time("virtual") {
+            self.line("// Turbo Pascal finds a virtual method's version at run time, from the");
+            self.line("// object's real type. Here each object type in the hierarchy has a trait");
+            self.line("// like this one: its default methods are written once but run with `self`");
+            self.line("// being the real object, so a call to a virtual method inside them goes to");
+            self.line("// the right version. Each object implements the traits of its ancestors.");
+        }
+        self.line(format!("{}trait {}{supertrait} {{", self.vis, trait_name(object)));
+        self.indent += 1;
+        self.line(format!("/// The `{name}` part of the object, for its fields."));
+        self.line(format!("fn {}(&mut self) -> &mut {name};", accessor(object)));
+        for slot in self.slots_introduced(object) {
+            let (params, ret) = self.method_signature(slot);
+            self.line(format!("fn {}({params}){ret};", self.a.procs[slot].rust_name));
+        }
+        let saved = self.self_expr.replace(format!("self.{}()", accessor(object)));
+        for m in bodies {
+            if let ProcBody::Block(body) = &m.body {
+                self.proc_fn(m, body);
+            }
+        }
+        self.self_expr = saved;
+        self.indent -= 1;
+        self.line("}");
+        // `impl AncestorMethods for Object` for this object and each ancestor.
+        for (ancestor, path) in object.lineage() {
+            self.blank();
+            self.line(format!("impl {} for {name} {{", trait_name(&ancestor)));
+            self.indent += 1;
+            let part = if path.is_empty() { "self".to_string() } else { format!("&mut self.{}", path.join(".")) };
+            self.line(format!("fn {}(&mut self) -> &mut {} {{", accessor(&ancestor), ancestor.rust_name));
+            self.line(format!("    {part}"));
+            self.line("}");
+            for slot in self.slots_introduced(&ancestor) {
+                // The nearest version of the method, from this object up.
+                let key = self.a.procs[slot].name.rsplit('.').next().unwrap().to_ascii_lowercase();
+                let version = object
+                    .lineage()
+                    .into_iter()
+                    .find_map(|(o, _)| self.a.methods.get(&(o.rust_name.clone(), key.clone())).copied())
+                    .unwrap_or(slot);
+                let (params, ret) = self.method_signature(slot);
+                let info = &self.a.procs[slot];
+                let mut args: Vec<String> =
+                    info.captures.iter().map(|c| self.a.var_name(slot, c.sym).to_string()).collect();
+                args.extend(info.params.iter().map(|&p| self.a.sym(p).rust_name.clone()));
+                self.line(format!("fn {}({params}){ret} {{", info.rust_name));
+                self.line(format!("    self.{}({})", self.body_name(version), args.join(", ")));
+                self.line("}");
+            }
+            self.indent -= 1;
+            self.line("}");
+        }
+    }
+
+    /// The virtual methods `object` declares that no ancestor has: the
+    /// trait methods every object in the hierarchy must provide.
+    fn slots_introduced(&self, object: &Rc<ObjectType>) -> Vec<ProcId> {
+        let mut slots: Vec<ProcId> = self
+            .a
+            .virtuals
+            .iter()
+            .copied()
+            .filter(|&p| {
+                let (owner, _) = self.a.procs[p].self_param.as_ref().unwrap();
+                let key = self.a.procs[p].name.rsplit('.').next().unwrap().to_ascii_lowercase();
+                owner == object
+                    && object.parent.as_ref().is_none_or(|parent| {
+                        !parent
+                            .lineage()
+                            .iter()
+                            .any(|(o, _)| self.a.methods.contains_key(&(o.rust_name.clone(), key.clone())))
+                    })
+            })
+            .collect();
+        slots.sort();
+        slots
+    }
+
+    /// The Rust name of a method's body: a virtual method's versions are
+    /// named after their object (`t_circle_draw`), since the trait method
+    /// `draw` picks one of them.
+    pub(super) fn body_name(&self, pid: ProcId) -> String {
+        let info = &self.a.procs[pid];
+        match &info.self_param {
+            Some((object, _)) if self.a.virtuals.contains(&pid) => format!("{}_{}", accessor(object), info.rust_name),
+            _ => info.rust_name.clone(),
+        }
+    }
+
+    /// A method's parameter list (with `&mut self`) and return type.
+    fn method_signature(&self, pid: ProcId) -> (String, String) {
+        let params = self.signature_params(pid);
+        let params = if params.is_empty() { "&mut self".to_string() } else { format!("&mut self, {params}") };
+        let ret = match &self.a.procs[pid].ret {
+            Some(ty) => format!(" -> {}", ty.rust()),
+            None => String::new(),
+        };
+        (params, ret)
     }
 
     fn proc_fn(&mut self, decl: &ProcDecl, body: &Block) {
@@ -539,7 +692,9 @@ impl<'a> Codegen<'a> {
             Some(ty) => format!(" -> {}", ty.rust()),
             None => String::new(),
         };
-        self.line(format!("{}fn {}({params}){ret} {{", self.vis, info.rust_name));
+        // Trait methods take no `pub`.
+        let vis = if self.self_expr.is_some() { "" } else { self.vis };
+        self.line(format!("{vis}fn {}({params}){ret} {{", self.body_name(pid)));
         self.indent += 1;
         self.locals(pid);
         self.stmts(&body.body);
@@ -568,8 +723,13 @@ impl<'a> Codegen<'a> {
             let name = &self.a.sym(param).rust_name;
             let var = self.a.var(param);
             let ty = var.ty.rust();
-            params.push(match var.role {
-                VarRole::Param(ParamMode::Var) => format!("{name}: &mut {ty}"),
+            params.push(match (&var.role, &var.ty) {
+                // A `var` parameter of an object type with virtual methods
+                // takes any object descended from it.
+                (VarRole::Param(ParamMode::Var), Type::Object(o)) if self.in_dispatch(o) => {
+                    format!("{name}: &mut dyn {}", trait_name(o))
+                }
+                (VarRole::Param(ParamMode::Var), _) => format!("{name}: &mut {ty}"),
                 _ if self.a.mutated.contains(&param) => format!("mut {name}: {ty}"),
                 _ => format!("{name}: {ty}"),
             });
@@ -1087,4 +1247,14 @@ fn value_is_ascii(value: &crate::sema::ConstVal) -> bool {
         crate::sema::ConstVal::Str(s) => s.iter().all(|&b| b.is_ascii()),
         _ => true,
     }
+}
+
+/// The trait of an object in a hierarchy with virtual methods: `TShapeMethods`.
+pub(super) fn trait_name(object: &ObjectType) -> String {
+    format!("{}Methods", object.rust_name)
+}
+
+/// The trait method that reaches an object's part of `self`: `t_shape`.
+pub(super) fn accessor(object: &ObjectType) -> String {
+    crate::sema::names::snake_case(&object.rust_name)
 }

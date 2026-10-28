@@ -1,0 +1,7 @@
+shape: shape at 1,2
+circle: circle at 3,4 radius 5
+circle: ring, inside a circle at 6,7 radius 8
+shape at 1,2
+circle at 3,4 radius 5
+ring, inside a circle at 6,7 radius 8
+6 drawn

@@ -374,9 +374,10 @@ impl Parser {
     /// (as in a unit interface or an `object` type).
     pub(super) fn proc_decl(&mut self, heading_only: bool) -> PResult<ProcDecl> {
         let start = self.span();
-        // Constructors and destructors only matter for virtual methods, which
-        // need a hidden table pointer set up; for the static objects pascrust
-        // supports they're ordinary procedures.
+        // In Turbo Pascal a constructor also sets up the object's table of
+        // virtual methods. pascrust's objects carry no such table (see
+        // `notes/virtual_methods.md`), so constructors and destructors are
+        // ordinary procedures.
         let kind = match self.bump().kind {
             TokenKind::Keyword(Keyword::Function) => ProcKind::Function,
             TokenKind::Keyword(Keyword::Procedure | Keyword::Constructor | Keyword::Destructor) => ProcKind::Procedure,
@@ -399,6 +400,7 @@ impl Parser {
         // Directives after the header. `far` and `near` were about 16-bit
         // x86 memory models and mean nothing to us, so they're skipped.
         let mut body = None;
+        let mut is_virtual = false;
         loop {
             if self.peek().is_ident("forward") {
                 self.bump();
@@ -409,7 +411,13 @@ impl Parser {
             } else if self.peek().is_ident("far") || self.peek().is_ident("near") {
                 self.bump();
             } else if self.peek().is_ident("virtual") {
-                return Err(Diagnostic::new(self.span(), "virtual methods are not supported yet"));
+                self.bump();
+                is_virtual = true;
+                // TP 5.5 allows a dynamic method index after `virtual`
+                // (`virtual 100;`), for Windows message handlers.
+                if let TokenKind::Integer(_) = self.peek() {
+                    self.bump();
+                }
             } else {
                 break;
             }
@@ -424,7 +432,7 @@ impl Parser {
                 ProcBody::Block(Box::new(block))
             }
         };
-        Ok(ProcDecl { kind, owner, name, params, ret, body, span: start.to(self.prev_span()), header_span })
+        Ok(ProcDecl { kind, owner, name, params, ret, body, span: start.to(self.prev_span()), is_virtual, header_span })
     }
 
     fn param_list(&mut self) -> PResult<Vec<ParamGroup>> {

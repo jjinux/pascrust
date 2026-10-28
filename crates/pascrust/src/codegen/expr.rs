@@ -8,7 +8,7 @@
 
 use super::Codegen;
 use crate::ast::*;
-use crate::sema::{Access, ConstVal, IntKind, SymKind, Type, numeric_common};
+use crate::sema::{Access, ConstVal, IntKind, SymId, SymKind, Type, numeric_common};
 
 /// Rust operator precedence, loosest first. Only the relative order matters.
 pub(super) mod prec {
@@ -75,7 +75,7 @@ impl<'a> Codegen<'a> {
         // Inside a method, a bare field name means `self.field`, and a bare
         // method name is a call on `self`.
         if let Some((self_sym, path)) = self.a.self_fields.get(&e.id) {
-            return (format!("{}.{}", self.a.var_name(self.proc, *self_sym), path.join(".")), prec::POSTFIX);
+            return (format!("{}.{}", self.self_place(*self_sym), path.join(".")), prec::POSTFIX);
         }
         if self.a.method_calls.contains_key(&e.id) {
             return (self.call(e, &[]), prec::POSTFIX);
@@ -302,7 +302,7 @@ impl<'a> Codegen<'a> {
     /// The Rust place expression for an assignment target.
     pub(super) fn place(&mut self, e: &Expr) -> String {
         if let Some((self_sym, path)) = self.a.self_fields.get(&e.id) {
-            return format!("{}.{}", self.a.var_name(self.proc, *self_sym), path.join("."));
+            return format!("{}.{}", self.self_place(*self_sym), path.join("."));
         }
         match &e.kind {
             ExprKind::Name(_) => self.var_place(self.a.refs[&e.id]),
@@ -371,9 +371,14 @@ impl<'a> Codegen<'a> {
     /// as is (`grid[c][r]`, not `(*grid)[c][r]`).
     pub(super) fn selector_base(&mut self, base: &Expr) -> String {
         if let Some((self_sym, path)) = self.a.self_fields.get(&base.id) {
-            return format!("{}.{}", self.a.var_name(self.proc, *self_sym), path.join("."));
+            return format!("{}.{}", self.self_place(*self_sym), path.join("."));
         }
         match &base.kind {
+            // Fields through `shape: &mut dyn TShapeMethods`: `shape.t_shape().x`.
+            ExprKind::Name(_) if self.is_dyn_param(base) => {
+                let Type::Object(o) = self.a.type_of(base.id).clone() else { unreachable!() };
+                format!("{}.{}()", self.a.var_name(self.proc, self.a.refs[&base.id]), super::accessor(&o))
+            }
             ExprKind::Name(_) if matches!(self.a.sym(self.a.refs[&base.id]).kind, SymKind::Var(_)) => {
                 self.a.var_name(self.proc, self.a.refs[&base.id]).to_string()
             }
@@ -468,27 +473,66 @@ impl<'a> Codegen<'a> {
     /// (`queue.add_q(item)`), or `self` for a call from a sibling method;
     /// `path` reaches an inherited method's object (`board.base.show()`).
     fn method_call(&mut self, callee: &Expr, pid: usize, path: &[String], args: &[Expr]) -> String {
+        // `inherited Draw` or `TShape.Init(...)`: that version, on `Self`.
+        let static_call = self.a.static_calls.contains(&callee.id);
+        // A method of a trait (see `object_traits`) is called on the whole
+        // object, which picks the version; no path to an ancestor.
+        let dispatched = self.a.dispatched.contains(&pid);
         let mut receiver = match &callee.kind {
-            ExprKind::Field(receiver, _) => self.selector_base(receiver),
+            ExprKind::Field(receiver, _) if !static_call => match &receiver.kind {
+                ExprKind::Name(_) if dispatched && self.is_dyn_param(receiver) => {
+                    self.a.var_name(self.proc, self.a.refs[&receiver.id]).to_string()
+                }
+                _ => self.selector_base(receiver),
+            },
             _ => {
                 let self_sym = self.a.procs[self.proc_with_self()].self_param.as_ref().unwrap().1;
-                self.a.var_name(self.proc, self_sym).to_string()
+                if dispatched { self.a.var_name(self.proc, self_sym).to_string() } else { self.self_place(self_sym) }
             }
         };
-        for step in path {
-            receiver.push('.');
-            receiver.push_str(step);
+        if !dispatched {
+            for step in path {
+                receiver.push('.');
+                receiver.push_str(step);
+            }
         }
+        let name = if static_call { self.body_name(pid) } else { self.a.procs[pid].rust_name.clone() };
         // The receiver is borrowed (`&mut self`) for the whole call, so an
         // argument that uses the same object, `obj.Show(obj.Name)`, must be
         // computed first. With an implicit `Self`, any call in an argument
         // might be another method of the same object.
         let borrowed = match &callee.kind {
-            ExprKind::Field(receiver, _) => Receiver::Named(root_key(receiver)),
+            ExprKind::Field(receiver, _) if !static_call => Receiver::Named(root_key(receiver)),
             _ => Receiver::ImplicitSelf,
         };
         let (args, records) = self.call_args(pid, args, Some(borrowed));
-        wrap_with_mut(format!("{receiver}.{}({args})", self.a.procs[pid].rust_name), records)
+        wrap_with_mut(format!("{receiver}.{name}({args})"), records)
+    }
+
+    /// How code reaches `Self`'s fields: `self`, or in a trait's default
+    /// method `self.t_shape()` (see `object_traits`).
+    fn self_place(&self, self_sym: SymId) -> String {
+        match &self.self_expr {
+            Some(expr) => expr.clone(),
+            None => self.a.var_name(self.proc, self_sym).to_string(),
+        }
+    }
+
+    /// Is `e` a `var` parameter that takes any object of a hierarchy with
+    /// virtual methods (`shape: &mut dyn TShapeMethods`)?
+    fn is_dyn_param(&self, e: &Expr) -> bool {
+        let ExprKind::Name(_) = &e.kind else { return false };
+        let Some(&sym) = self.a.refs.get(&e.id) else { return false };
+        if self.a.sym(sym).rust_name == "self" {
+            return false;
+        }
+        match &self.a.sym(sym).kind {
+            SymKind::Var(v) => {
+                v.role == crate::sema::VarRole::Param(ParamMode::Var)
+                    && matches!(&v.ty, Type::Object(o) if self.in_dispatch(o))
+            }
+            _ => false,
+        }
     }
 
     /// The method we're in (or nested inside), whose `Self` a bare method
@@ -511,7 +555,12 @@ impl<'a> Codegen<'a> {
         let mut parts = Vec::new();
         // Captured variables first, in the callee's order.
         for cap in &info.captures {
-            let name = self.a.var_name(self.proc, cap.sym).to_string();
+            let mut name = self.a.var_name(self.proc, cap.sym).to_string();
+            if name == "self"
+                && let Some(expr) = &self.self_expr
+            {
+                name = expr.clone();
+            }
             let access = self.a.access(self.proc, cap.sym);
             parts.push(match (cap.mode, access) {
                 (crate::sema::CaptureMode::RefMut, Access::Direct) => format!("&mut {name}"),
@@ -542,7 +591,18 @@ impl<'a> Codegen<'a> {
         for ((param, arg), key) in params.iter().zip(args).zip(&heap) {
             let var = self.a.var(*param);
             let ty = var.ty.clone();
-            if var.role == crate::sema::VarRole::Param(ParamMode::Var) && shared(key) {
+            // An object passed where an ancestor is expected: its ancestor
+            // part, `&mut circle.base`. (With virtual methods, the parameter
+            // takes the whole object, `&mut dyn TShapeMethods`.)
+            let depth = match (&ty, self.a.type_of(arg.id)) {
+                (Type::Object(param), Type::Object(given)) if !self.in_dispatch(param) => {
+                    given.lineage().iter().position(|(o, _)| o == param).unwrap_or(0)
+                }
+                _ => 0,
+            };
+            if var.role == crate::sema::VarRole::Param(ParamMode::Var) && depth > 0 {
+                parts.push(format!("&mut {}{}", self.selector_base(arg), ".base".repeat(depth)));
+            } else if var.role == crate::sema::VarRole::Param(ParamMode::Var) && shared(key) {
                 // `&mut q.get_mut().x` becomes `&mut point.x`, where `point`
                 // is the record borrowed once by `with_mut`.
                 let place = self.place(arg);

@@ -187,6 +187,20 @@ pub struct Analysis {
     /// `with r do x := 1` → `r.x := 1`. Sema checks, and codegen emits, the
     /// rewritten statement.
     pub with_bodies: HashMap<usize, crate::ast::Stmt>,
+    /// Methods declared `virtual`.
+    pub virtuals: HashSet<ProcId>,
+    /// Methods that must see the object's real type: the virtual ones, and
+    /// those that call one on `Self` (directly or through other methods).
+    /// They become methods of a trait (see `notes/virtual_methods.md`).
+    pub dispatched: HashSet<ProcId>,
+    /// The Rust names of the root objects of hierarchies with virtual
+    /// methods. Every object descended from one of them gets a trait.
+    pub dispatch_roots: HashSet<String>,
+    /// Calls to one particular version of a method on `Self`, by callee id:
+    /// `inherited Draw` or `TShape.Init(x, y)`. Never dispatched.
+    pub static_calls: HashSet<NodeId>,
+    /// (caller, callee) for every method call on `Self`.
+    pub self_calls: Vec<(ProcId, ProcId)>,
     /// Method calls: the call's callee expression id → the method, and the
     /// path from the receiver to the object that defines it (`["base"]`
     /// for an inherited method).
@@ -284,10 +298,61 @@ pub fn analyze(program: &Program, units: &[Unit]) -> Result<Analysis, Vec<Diagno
     let mut checker = check::Checker::new();
     checker.program(program, units);
     let (mut analysis, mut errors, call_sites) = checker.finish();
+    errors.extend(dispatch(&mut analysis));
     lift::find_param_aliases(&mut analysis, &call_sites);
     lift::lift(&mut analysis);
     errors.extend(lift::check_aliasing(&analysis, &call_sites));
     if errors.is_empty() { Ok(analysis) } else { Err(errors) }
+}
+
+/// Work out which methods need dynamic dispatch (`Analysis::dispatched`) and
+/// the hierarchies they belong to.
+fn dispatch(a: &mut Analysis) -> Vec<Diagnostic> {
+    let mut errors = Vec::new();
+    let object_of = |a: &Analysis, p: ProcId| a.procs[p].self_param.as_ref().map(|(o, _)| o.clone());
+    let root_of = |o: &std::rc::Rc<types::ObjectType>| o.lineage().last().unwrap().0.rust_name.clone();
+    for &p in &a.virtuals {
+        let root = root_of(&object_of(a, p).expect("a virtual method has an object"));
+        a.dispatch_roots.insert(root);
+    }
+    // A method that calls a dispatched method on `Self` must itself see the
+    // real object, to pass it on: a fixed point, as in `lift`.
+    a.dispatched = a.virtuals.clone();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for &(caller, callee) in &a.self_calls {
+            if a.dispatched.contains(&callee) && !a.dispatched.contains(&caller) {
+                if a.procs[caller].self_param.is_none() {
+                    // A procedure nested inside a method.
+                    errors.push(Diagnostic::new(
+                        a.procs[caller].span,
+                        format!(
+                            "`{}` calls the virtual method `{}` of its method's object; pascrust doesn't support that from a nested procedure yet",
+                            a.procs[caller].name, a.procs[callee].name
+                        ),
+                    ));
+                    continue;
+                }
+                a.dispatched.insert(caller);
+                changed = true;
+            }
+        }
+    }
+    // All versions of one virtual method share one Rust signature, the
+    // trait's, so they must all receive the same captured globals. Making
+    // each version "call" the others lets `lift` give them the union.
+    let mut families: HashMap<(String, String), Vec<ProcId>> = HashMap::new();
+    for &p in &a.virtuals {
+        let root = root_of(&object_of(a, p).unwrap());
+        families.entry((root, a.procs[p].rust_name.clone())).or_default().push(p);
+    }
+    for family in families.values() {
+        for &p in family {
+            a.procs[p].calls.extend(family.iter().copied().filter(|&q| q != p));
+        }
+    }
+    errors
 }
 
 #[derive(Debug, Clone)]

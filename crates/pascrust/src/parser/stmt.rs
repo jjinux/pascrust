@@ -80,7 +80,7 @@ impl Parser {
             TokenKind::Keyword(Keyword::Goto) => {
                 return Err(Diagnostic::new(start, "`goto` is not supported"));
             }
-            TokenKind::Ident(_) => {
+            TokenKind::Ident(_) | TokenKind::Keyword(Keyword::Inherited) => {
                 let target = self.designator()?;
                 if self.eat(&TokenKind::Assign) {
                     StmtKind::Assign { target, value: self.expression()? }
