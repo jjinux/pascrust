@@ -224,6 +224,14 @@ end.
 }
 
 #[test]
+fn numeric_labels() {
+    check(
+        "program P;\nlabel 10, done;\nprocedure Q;\nbegin\nwriteln;\nend;\nbegin\ngoto 10;\n10: Q;\nend.\n",
+        "program P;\nlabel 10, done;\nprocedure Q;\n   begin\n      writeln;\n   end;\nbegin\n   goto 10;\n   10: Q;\nend.\n",
+    );
+}
+
+#[test]
 fn dos_line_endings() {
     let unix = "program P;\nbegin\n   writeln('hi');\nend.\n";
     assert_eq!(fmt(&unix.replace('\n', "\r\n")), unix);

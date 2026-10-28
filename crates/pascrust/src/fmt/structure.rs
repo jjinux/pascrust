@@ -11,7 +11,7 @@ use super::DIRECTIVES;
 use super::lines::Line;
 use crate::token::{Token, TokenKind};
 
-const SECTIONS: &[&str] = &["const", "type", "var", "label"];
+const SECTIONS: &[&str] = &["const", "type", "var"];
 const ROUTINES: &[&str] = &["procedure", "function", "constructor", "destructor"];
 
 /// The level of each code token that gets one, by code-token index.
@@ -167,7 +167,9 @@ impl Structure {
     /// unit's interface, routine headings have no `bodies`.
     fn decls(&mut self, level: usize, bodies: bool) {
         while !self.done() {
-            if self.peek() == "uses" {
+            // A `label` list can be numbers (`label 10, 20;`), which aren't
+            // names, so skip it like `uses` rather than as declarations.
+            if self.peek() == "uses" || self.peek() == "label" {
                 self.mark(level);
                 self.skip_until(&[";"]);
                 self.expect(";");
