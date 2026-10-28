@@ -374,15 +374,18 @@ parameters to the place representation. Tracked in `TODO.md` (tier 3).
 
 Enumerated types become `enum`s with
 `#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]`
-(`#[default]` on the first variant) and a generated `impl Ordinal`:
+(`#[default]` on the first variant) and generated impls of the runtime's
+two traits:
 
 ```rust
-pub trait Ordinal: Copy { fn ord(self) -> i32; fn from_ord(i: i32) -> Self; const LOW: Self; const HIGH: Self; }
+pub trait Ordinal: Copy { fn ord(self) -> i64; }
+pub trait Enumerated: Ordinal + 'static { const VALUES: &'static [Self]; /* from_ord, ... */ }
 ```
 
-`Ord`, `Succ`, `Pred`, `Inc`, `Dec`, `Low`, `High`, `for x := Lo to Hi` over
-enums, and enum-indexed arrays all go through this trait. `u8` (char), `bool`
-and the integer types implement it in the runtime.
+`Ordinal` turns a value into its position, and `u8` (char), `bool` and the
+integer types implement it too; `Enumerated` lists an enum's values in
+order, which is all that's needed to go back (`Color(2)`, `Succ`, `Pred`,
+`for x := Lo to Hi`). Enum-indexed arrays go through `Ordinal`.
 
 Subranges (`0..maxsize`, `'A'..'Z'`) are their host type; a `--range-checks`
 flag makes codegen wrap assignments into subrange variables with
@@ -506,8 +509,9 @@ The examples use `object` types heavily, always with static methods (no
 `virtual`, `constructor` or `destructor`).
 
 - `TypeName = object ... end` → `struct TypeName { fields }` plus
-  `impl TypeName { fn method(&mut self, ...) }`. Methods that never write
-  `Self` fields take `&self`. Implicit field access (`root := nil` inside
+  `impl TypeName { fn method(&mut self, ...) }`. (Methods that never write
+  `Self` fields could take `&self`; for now they all take `&mut self`, see
+  TODO.md.) Implicit field access (`root := nil` inside
   `BST.Create`) becomes `self.root = Ptr::nil()`.
 - Inheritance `Child = object(Parent)` → composition:
   `struct Child { base: Parent, own_fields }`. Inherited field and method

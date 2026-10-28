@@ -225,9 +225,6 @@ impl Analysis {
         self.types.get(&id).unwrap_or(&Type::Error)
     }
 
-    /// The Rust name for variable `sym` inside procedure `proc`. Usually the
-    /// variable's own name, unless the procedure reaches it through an
-    /// aliasing `var` parameter (see [`Analysis::capture_aliases`]).
     /// The variable `sym` always stands for: itself, unless it's a `var`
     /// parameter that every call binds to the same outer variable.
     pub fn canonical(&self, sym: SymId) -> SymId {
@@ -243,6 +240,9 @@ impl Analysis {
         self.capture_aliases.get(&(proc, self.canonical(sym))).copied()
     }
 
+    /// The Rust name for variable `sym` inside procedure `proc`. Usually the
+    /// variable's own name, unless the procedure reaches it through an
+    /// aliasing `var` parameter (see [`Analysis::capture_aliases`]).
     pub fn var_name(&self, proc: ProcId, sym: SymId) -> &str {
         let sym = self.alias_param(proc, sym).unwrap_or(sym);
         // A method's `self` is called `this` when a nested procedure
@@ -273,7 +273,6 @@ impl Analysis {
     }
 }
 
-/// Analyze a parsed program.
 /// Analyze a program and the units it uses. `units` must be in dependency
 /// order: each unit after the units it uses.
 pub fn analyze(program: &Program, units: &[Unit]) -> Result<Analysis, Vec<Diagnostic>> {

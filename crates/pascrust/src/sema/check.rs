@@ -1273,7 +1273,7 @@ impl Checker {
 
     /// Check an expression used as an assignment target (or `var` argument)
     /// and return its type. `write` is false for places that are only read
-    /// through, which doesn't happen yet.
+    /// through.
     fn place(&mut self, e: &Expr, write: bool) -> Type {
         let ty = match &e.kind {
             ExprKind::Name(ident) => match self.resolve(&ident.key()) {

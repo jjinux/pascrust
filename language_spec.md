@@ -122,8 +122,9 @@ Pointers
 Files
 
 - `Text` files: `Assign`, `Reset`, `Rewrite`, `Append`, `Close`, `Read`,
-  `Readln`, `Write`, `Writeln`, `Eof`, `Eoln`, `SeekEof`, `SeekEoln`, `Erase`,
-  `Rename`, `Flush`, `IOResult`, `{$I-}`/`{$I+}`
+  `Readln`, `Write`, `Writeln`, `Eof`, `Eoln`, `Erase`, `Rename`, `Flush`.
+  Not yet: `SeekEof`, `SeekEoln`, and `{$I-}` with `IOResult` (`IOResult`
+  is always 0, as I/O errors stop the program)
 - `file of T`: `Assign`, `Reset`, `Rewrite`, `Close`, `Read`, `Write`,
   `Seek`, `FilePos`, `FileSize`, `Eof`, `Erase`, `Truncate`; records with
   `string[n]`, integer and real fields serialized to a fixed-size layout
@@ -150,7 +151,7 @@ Crt unit (the whole examples set uses it)
 
 - `ClrScr`, `ClrEol`, `GotoXY`, `WhereX`, `WhereY`, `TextColor`,
   `TextBackground`, `Window`, `WindMin`, `WindMax`, `TextAttr`, `HighVideo`,
-  `LowVideo`, `NormVideo`, `TextMode`, `LastMode`, `ReadKey`, `KeyPressed`,
+  `LowVideo`, `NormVideo`, `TextMode`, `ReadKey`, `KeyPressed`,
   `Delay`, `Sound`, `NoSound`, `InsLine`, `DelLine`, `CheckBreak`,
   `DirectVideo` (ignored), colour constants `Black..White`, `Blink`
 - A non-TTY "plain" mode so scripted tests can drive these programs
