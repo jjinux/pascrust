@@ -169,6 +169,16 @@ impl<'a> Codegen<'a> {
                 let t = ty(self, &args[0]).concrete();
                 format!("({} >> 8) as u8", paren(self.coerce(&args[0], &t), prec::SHIFT + 1))
             }
+            Swap => {
+                let t = ty(self, &args[0]).concrete();
+                format!("{}.swap_bytes()", self.postfix(&args[0], &t))
+            }
+            Assigned => format!("!{}.is_nil()", self.selector_base(&args[0])),
+            RunError => match args.first() {
+                None => "run_error(0)".to_string(),
+                Some(code) => format!("run_error({})", self.expr(code).0),
+            },
+            SizeOf | High | Low => unreachable!("sema folds these into constants"),
             Lo => {
                 let t = ty(self, &args[0]).concrete();
                 format!("{} as u8", paren(self.coerce(&args[0], &t), prec::AS))

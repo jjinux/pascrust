@@ -30,6 +30,13 @@ pub fn rte(code: i32, message: impl Into<String>) -> ! {
     panic::panic_any(RuntimeError { code, message: message.into() })
 }
 
+/// Pascal `RunError(code)`: stop with runtime error `code`, as if the
+/// runtime had found one. (Declared to return `()`, like `halt`, so
+/// statements after it don't warn.)
+pub fn run_error(code: impl Into<i32>) {
+    rte(code.into(), "")
+}
+
 thread_local! {
     /// Turbo Pascal's `InOutRes`: the code of the last I/O error made with
     /// `{$I-}`, until `IOResult` reads it.
@@ -122,7 +129,11 @@ pub fn run(program: fn()) {
     crate::io::shutdown();
     if let Err(payload) = result {
         let err = to_runtime_error(payload);
-        eprintln!("Runtime error {}: {}", err.code, err.message);
+        if err.message.is_empty() {
+            eprintln!("Runtime error {}", err.code);
+        } else {
+            eprintln!("Runtime error {}: {}", err.code, err.message);
+        }
         std::process::exit(err.code);
     }
 }

@@ -122,6 +122,11 @@ impl Parser {
                 ExprKind::AddrOf(Box::new(self.designator()?))
             }
             TokenKind::LBracket => self.set_constructor()?,
+            // `string` is a keyword, but `SizeOf(string)` names the type.
+            TokenKind::Keyword(Keyword::String) => {
+                self.bump();
+                ExprKind::Name(Ident { name: "string".to_string(), span: start })
+            }
             TokenKind::Ident(_) | TokenKind::Keyword(Keyword::Inherited) => return self.designator(),
             _ => return Err(self.expected("an expression")),
         };

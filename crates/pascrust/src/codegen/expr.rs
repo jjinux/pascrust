@@ -38,6 +38,10 @@ pub(super) fn paren(code: Code, min: u8) -> String {
 impl<'a> Codegen<'a> {
     /// An expression in its natural Rust type.
     pub(super) fn expr(&mut self, e: &Expr) -> Code {
+        if let Some(value) = self.a.folded.get(&e.id) {
+            let ty = self.a.type_of(e.id).clone();
+            return (self.const_value(value, &ty), prec::ATOM);
+        }
         match &e.kind {
             ExprKind::Int(n) => (n.to_string(), prec::ATOM),
             ExprKind::Real(x) => (real_literal(*x), prec::ATOM),

@@ -24,9 +24,11 @@ builtins! {
     Write => "write", Writeln => "writeln", Read => "read", Readln => "readln",
     // Control flow
     Halt => "halt", Exit => "exit", Break => "break", Continue => "continue",
+    RunError => "runerror",
     // Ordinals
     Ord => "ord", Chr => "chr", Odd => "odd", Succ => "succ", Pred => "pred",
-    Inc => "inc", Dec => "dec", Hi => "hi", Lo => "lo",
+    Inc => "inc", Dec => "dec", Hi => "hi", Lo => "lo", High => "high", Low => "low",
+    Swap => "swap", SizeOf => "sizeof",
     // Arithmetic
     Abs => "abs", Sqr => "sqr", Sqrt => "sqrt", Sin => "sin", Cos => "cos",
     ArcTan => "arctan", Ln => "ln", Exp => "exp", Trunc => "trunc",
@@ -37,7 +39,7 @@ builtins! {
     Delete => "delete", Insert => "insert", UpCase => "upcase", Str => "str",
     Val => "val",
     // Pointers
-    New => "new", Dispose => "dispose",
+    New => "new", Dispose => "dispose", Assigned => "assigned",
     // Sets
     Include => "include", Exclude => "exclude",
     // Files
@@ -87,6 +89,7 @@ impl Builtin {
                 | Read
                 | Readln
                 | Halt
+                | RunError
                 | Exit
                 | Break
                 | Continue

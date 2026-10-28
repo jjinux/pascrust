@@ -155,6 +155,8 @@ pub struct Analysis {
     pub procs: Vec<ProcInfo>,
     /// The type of every expression node.
     pub types: HashMap<NodeId, Type>,
+    /// Calls sema worked out, by the call's id: `SizeOf`, `High`, `Low`.
+    pub folded: HashMap<NodeId, ConstVal>,
     /// The symbol each `Name` expression refers to.
     pub refs: HashMap<NodeId, SymId>,
     /// The symbol introduced by each declared identifier, keyed by the byte

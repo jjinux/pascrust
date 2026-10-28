@@ -369,6 +369,44 @@ impl fmt::Display for Type {
     }
 }
 
+/// The size in bytes Turbo Pascal gives a type, for `SizeOf`: `Integer` is
+/// 2, `Real` 6, `string[n]` n+1, a record the sum of its fields (TP doesn't
+/// pad). `None` for a type without a fixed size.
+pub fn tp_size(ty: &Type) -> Option<i64> {
+    Some(match ty {
+        Type::Int(IntKind::ShortInt | IntKind::Byte) | Type::Char | Type::Bool => 1,
+        Type::Int(IntKind::Integer | IntKind::Word) => 2,
+        Type::Int(IntKind::LongInt) => 4,
+        // `Double`, `Single` and `Extended` are all `Real` here, so they
+        // get `Real`'s 6 bytes too.
+        Type::Real => 6,
+        Type::Enum(e) => {
+            if e.variants.len() <= 256 {
+                1
+            } else {
+                2
+            }
+        }
+        Type::Str { cap } => i64::from(*cap) + 1,
+        Type::Array(a) => a.count() * tp_size(&a.elem)?,
+        Type::Record(r) => r.fields.iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()?,
+        Type::Object(o) => {
+            let own = o.fields.iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()?;
+            own + o.parent.as_ref().map_or(Some(0), |p| tp_size(&Type::Object(p.clone())))?
+        }
+        Type::Pointer(_) => 4,
+        // A set has a bit per value, up to 256 values (32 bytes).
+        Type::Set(elem) => match &**elem {
+            Type::Bool => 1,
+            Type::Enum(e) => (e.variants.len() as i64 + 7) / 8,
+            _ => 32,
+        },
+        Type::Text => 256,
+        Type::File(_) => 128,
+        _ => return None,
+    })
+}
+
 /// Can values of these two ordinal types mix, as set elements? Integers go
 /// with integers, characters with characters, an enum with itself.
 pub fn same_ordinal_kind(a: &Type, b: &Type) -> bool {

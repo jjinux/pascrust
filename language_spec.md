@@ -97,6 +97,9 @@ Built-ins (System unit)
   `Sin`, `Cos`, `ArcTan`, `Ln`, `Exp`, `Trunc`, `Round`, `Int`, `Frac`, `Pi`,
   `Random`, `Random(n)`, `Randomize` (the same sequence as TP; see
   References), `MaxInt`, `MaxLongInt`
+- `SizeOf` (TP's sizes: `Real` is 6 bytes, `string[n]` n+1, records
+  unpadded), `High`/`Low` (arrays, strings, ordinal types), all three
+  constants; `Swap`, `Assigned`, `RunError`
 - `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`,
   `Val`
 - `High`, `Low`, `SizeOf` (of types with a defined Rust size)

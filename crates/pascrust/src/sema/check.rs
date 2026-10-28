@@ -249,6 +249,9 @@ impl Checker {
             ("boolean", Type::Bool),
             ("char", Type::Char),
             ("text", Type::Text),
+            // Only reached as a value, as in `SizeOf(string)`: in a type,
+            // `string` is a keyword the parser handles.
+            ("string", Type::Str { cap: 255 }),
         ];
         for (name, ty) in types {
             let rust = ty.rust();
@@ -979,6 +982,11 @@ impl Checker {
                 SymKind::Const { value, .. } => Some(value.clone()),
                 _ => None,
             },
+            // `SizeOf`, `High` and `Low` are constants too.
+            ExprKind::Call { callee, args } if args.len() == 1 && self.type_query_builtin(callee).is_some() => {
+                let b = self.type_query_builtin(callee)?;
+                self.type_query(b, &args[0]).map(|(value, _)| value)
+            }
             ExprKind::Set(elems) => {
                 let ord = |e: &Expr| match self.eval_const(e)? {
                     Int(n) => u8::try_from(n).ok(),
@@ -1342,6 +1350,61 @@ impl Checker {
             }
         };
         Stmt { kind, span: s.span }
+    }
+
+    /// The builtin `callee` names, if it's `SizeOf`, `High` or `Low`.
+    fn type_query_builtin(&self, callee: &Expr) -> Option<Builtin> {
+        let ExprKind::Name(id) = &callee.kind else { return None };
+        match self.a.symbols[self.lookup(&id.key())?].kind {
+            SymKind::Builtin(b @ (Builtin::SizeOf | Builtin::High | Builtin::Low)) => Some(b),
+            _ => None,
+        }
+    }
+
+    /// `SizeOf(x)`, `High(x)` or `Low(x)`, where `x` is a type or a
+    /// variable: the value, and its type.
+    pub(super) fn type_query(&self, b: Builtin, arg: &Expr) -> Option<(ConstVal, Type)> {
+        // A type name, possibly a subrange (whose bounds matter here)...
+        let mut bounds = None;
+        let ty = match &arg.kind {
+            ExprKind::Name(id) => match self.resolve(&id.key()) {
+                Some(Resolved::Sym(sym)) => match &self.a.symbols[sym].kind {
+                    SymKind::TypeName(ty) => {
+                        bounds = self.subrange_types.get(&sym).map(|&(_, lo, hi)| (lo, hi));
+                        Some(ty.clone())
+                    }
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        };
+        // ...or a variable.
+        let ty = match ty {
+            Some(ty) => ty,
+            None => self.place_type(arg)?,
+        };
+        // An integer answer is typed like an integer literal, so it fits
+        // whatever it's compared with or assigned to.
+        if b == Builtin::SizeOf {
+            let size = super::types::tp_size(&ty)?;
+            return Some((ConstVal::Int(size), Type::IntLit(size)));
+        }
+        let (lo, hi, ty) = match &ty {
+            Type::Array(a) => (a.lo, a.hi, a.index.clone()),
+            Type::Str { cap } => (0, i64::from(*cap), Type::Int(IntKind::Byte)),
+            Type::Int(kind) => {
+                let (lo, hi) = bounds.unwrap_or(kind.range());
+                (lo, hi, ty.clone())
+            }
+            Type::Char => (0, 255, Type::Char),
+            Type::Bool => return Some((ConstVal::Bool(b == Builtin::High), Type::Bool)),
+            Type::Enum(e) => (0, e.variants.len() as i64 - 1, ty.clone()),
+            _ => return None,
+        };
+        let value = if b == Builtin::High { hi } else { lo };
+        let ty = if ty.is_integer() { Type::IntLit(value) } else { ty };
+        Some((ConstVal::Int(value), ty))
     }
 
     /// Resolve a `for` loop's control variable and start tracking it.
@@ -2302,6 +2365,38 @@ impl Checker {
             Odd => self.unary_builtin(span, args, &name, |t| t.is_integer(), |_| Type::Bool),
             Succ | Pred => self.unary_builtin(span, args, &name, |t| t.is_ordinal(), |t| t.concrete()),
             Hi | Lo => self.unary_builtin(span, args, &name, |t| t.is_integer(), |_| Type::Int(IntKind::Byte)),
+            // Worked out now, as TP does: they're constants.
+            SizeOf | High | Low => {
+                if !arity(&mut self.errors, span, args.len(), 1..=1, &name) {
+                    return Type::Error;
+                }
+                match self.type_query(b, &args[0]) {
+                    Some((value, ty)) => {
+                        self.a.folded.insert(e.id, value);
+                        ty
+                    }
+                    None => {
+                        let wanted =
+                            if b == SizeOf { "a variable or a type" } else { "an ordinal type, an array or a string" };
+                        self.error(args[0].span, format!("`{name}` needs {wanted}"));
+                        Type::Error
+                    }
+                }
+            }
+            Swap => self.unary_builtin(
+                span,
+                args,
+                &name,
+                |t| matches!(t.concrete(), Type::Int(IntKind::Integer | IntKind::Word)),
+                |t| t.concrete(),
+            ),
+            Assigned => self.unary_builtin(span, args, &name, |t| matches!(t, Type::Pointer(_)), |_| Type::Bool),
+            RunError => {
+                if arity(&mut self.errors, span, args.len(), 0..=1, &name) && args.len() == 1 {
+                    self.int_arg(&args[0]);
+                }
+                Type::Void
+            }
             Abs | Sqr => self.unary_builtin(span, args, &name, |t| t.is_numeric(), |t| t.concrete()),
             Sqrt | Sin | Cos | ArcTan | Ln | Exp | Int | Frac => {
                 self.unary_builtin(span, args, &name, |t| t.is_numeric(), |_| Type::Real)

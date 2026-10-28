@@ -1,6 +1,8 @@
 [package]
 name = "pascrust"
 description = "A Turbo Pascal to Rust transpiler"
+# `src/bin/tpc.rs` is a second binary; `cargo run -p pascrust` means this one.
+default-run = "pascrust"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
