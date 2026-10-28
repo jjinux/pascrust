@@ -137,6 +137,7 @@ chosen so each step is testable with the previous ones.
 - [x] Consistent identifier casing in the examples.
 - [x] Consistent spacing in the examples: `pascrust fmt` (`crates/pascrust/src/fmt/`), a re-indenter that reuses the lexer; the examples are kept formatted by `tests/fmt_tests.rs`. Prototyped in Python, then ported.
 - [x] DOS and UNIX line endings both work: source, standard input and text files (`tests/run/crlf.pas`, stored with CRLF; see `.gitattributes`), and `fmt`.
+- [ ] Code review by Fable (a fresh pair of eyes): fix the straightforward findings, list the rest here.
 
 ## Phase 5: Dos and Graph, then the graphics examples
 
