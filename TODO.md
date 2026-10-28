@@ -133,7 +133,7 @@ chosen so each step is testable with the previous ones.
 - [x] Fix the two bugs found in the user's examples (`bstunit`, `founit`). Fixing them exposed a transpiler bug: call arguments that read through a pointer kept the record borrowed during the call; now they're copied into a `let` first (`tests/run/ptr_args.pas`).
 - [x] README: usage instructions.
 - [x] README: an "Inspiration" section.
-- [x] BGI graphics (Phase 5 below). `clock/` and `tictac/` run. Found a third bug in the examples while checking the clock picture: the hands went round anticlockwise (`theta := ...+pi/2` instead of `pi/2-...`). Fixed in `clock.pas`.
+- [x] BGI graphics (Phase 5 below). `clock/` and `tictac/` run. The clock's hands go round anticlockwise on purpose: it's a playful backwards clock.
 - [x] Consistent identifier casing in the examples.
 - [x] Consistent spacing in the examples: `pascrust fmt` (`crates/pascrust/src/fmt/`), a re-indenter that reuses the lexer; the examples are kept formatted by `tests/fmt_tests.rs`. Prototyped in Python, then ported.
 - [x] DOS and UNIX line endings both work: source, standard input and text files (`tests/run/crlf.pas`, stored with CRLF; see `.gitattributes`), and `fmt`.
