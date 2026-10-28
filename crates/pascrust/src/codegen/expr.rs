@@ -224,38 +224,79 @@ impl<'a> Codegen<'a> {
             (Shl | Shr, _, _) => self.expr(rhs),
             _ => self.coerce(rhs, &operand_ty),
         };
-        // Turbo Pascal's `shr` is a logical shift: it fills with zeros, so
-        // `-300 shr 4` is 4077. Rust's `>>` on a signed integer copies the
-        // sign bit instead (-19), so shift the same bits as unsigned.
-        // (A literal that isn't negative shifts the same either way.)
-        if op == Shr
-            && !matches!(lt, Type::IntLit(n) if n >= 0)
-            && let Type::Int(kind @ (IntKind::ShortInt | IntKind::Integer | IntKind::LongInt)) = operand_ty.concrete()
-        {
-            let unsigned = match kind {
-                IntKind::ShortInt => "u8",
-                IntKind::Integer => "u16",
-                _ => "u32",
-            };
-            // A literal needs its signed type spelled out (`-300_i16`), or
-            // Rust would take it to be the unsigned type.
-            let left = if matches!(lt, Type::IntLit(_)) {
-                format!("{}_{}", left.0, kind.rust())
-            } else {
-                paren(left, prec::AS)
-            };
-            let code = format!("(({left} as {unsigned}) >> {}) as {}", paren(right, p + 1), kind.rust());
-            return (code, prec::AS);
+        if let (Shl | Shr, Type::Int(kind)) = (op, operand_ty.concrete()) {
+            return self.shift(op, kind, (left, &lt), (right, &rt));
         }
         // `x as i16 < y` would parse `<` as the start of generic arguments,
         // so a cast on the left of `<` or `<<` always gets parentheses.
-        let left_min = if left.1 == prec::AS && matches!(op, Lt | Shl) { prec::UNARY } else { p };
+        let left_min = if left.1 == prec::AS && op == Lt { prec::UNARY } else { p };
         // Comparisons don't chain in Rust, so both sides need higher
         // precedence; arithmetic is left-associative, so only the right side
         // does.
         let left_min = if p == prec::CMP { p + 1 } else { left_min };
         let code = format!("{} {rust_op} {}", paren(left, left_min), paren(right, p + 1));
         (code, p)
+    }
+
+    /// `x shl n` or `x shr n` on an integer of type `kind`.
+    fn shift(&mut self, op: BinaryOp, kind: IntKind, left: (Code, &Type), right: (Code, &Type)) -> Code {
+        let ((left, lt), (right, rt)) = (left, right);
+        let width = match kind {
+            IntKind::ShortInt | IntKind::Byte => 8,
+            IntKind::Integer | IntKind::Word => 16,
+            IntKind::LongInt => 32,
+        };
+        // Turbo Pascal's `shr` is a logical shift: it fills with zeros, so
+        // `-300 shr 4` is 4077. Rust's `>>` on a signed integer copies the
+        // sign bit instead (-19), so shift the same bits as unsigned.
+        // (A literal that isn't negative shifts the same either way.)
+        let unsigned = match kind {
+            _ if op == BinaryOp::Shl || matches!(lt, Type::IntLit(n) if *n >= 0) => None,
+            IntKind::ShortInt => Some("u8"),
+            IntKind::Integer => Some("u16"),
+            IntKind::LongInt => Some("u32"),
+            IntKind::Byte | IntKind::Word => None,
+        };
+        // A literal needs its type spelled out (`-300_i16`) to be cast or to
+        // have a method called on it.
+        let small_count = matches!(rt, Type::IntLit(n) if (0..width).contains(n));
+        let left = if matches!(lt, Type::IntLit(_)) && (unsigned.is_some() || !small_count) {
+            (format!("{}_{}", left.0, kind.rust()), prec::POSTFIX)
+        } else {
+            left
+        };
+        let left = match unsigned {
+            Some(unsigned) => (format!("{} as {unsigned}", paren(left, prec::AS)), prec::AS),
+            None => left,
+        };
+        let code = if small_count {
+            let rust_op = if op == BinaryOp::Shl { "<<" } else { ">>" };
+            // `x as i16 << y` would parse `<` as the start of generic
+            // arguments, so a cast on the left of `<<` gets parentheses.
+            let left_min = if left.1 == prec::AS { prec::UNARY } else { prec::SHIFT };
+            (format!("{} {rust_op} {}", paren(left, left_min), paren(right, prec::SHIFT + 1)), prec::SHIFT)
+        } else {
+            // Shifting by the type's width or more shifts every bit out in
+            // Turbo Pascal (`x shl 16` is 0), but Rust's `<<` rejects it (or
+            // panics, for a count it can't see at compile time).
+            // `checked_shl` gives `None` instead.
+            if self.first_time("checked_shift") {
+                self.pending
+                    .push("// `checked_shl`/`checked_shr`: shifting by the integer's width or more gives".to_string());
+                self.pending.push("// 0, as in Turbo Pascal, where Rust's `<<` and `>>` would panic.".to_string());
+            }
+            let method = if op == BinaryOp::Shl { "checked_shl" } else { "checked_shr" };
+            let count = match rt {
+                Type::IntLit(_) => right.0,
+                _ => format!("{} as u32", paren(right, prec::AS)),
+            };
+            (format!("{}.{method}({count}).unwrap_or(0)", paren(left, prec::POSTFIX)), prec::POSTFIX)
+        };
+        match unsigned {
+            // Back to the signed type.
+            Some(_) => (format!("{} as {}", paren(code, prec::AS), kind.rust()), prec::AS),
+            None => code,
+        }
     }
 
     /// The Rust place expression for an assignment target.

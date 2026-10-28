@@ -1259,7 +1259,10 @@ impl Checker {
             Add if l.is_stringish() && r.is_stringish() => Some(Type::Str { cap: 255 }),
             Add | Sub | Mul => numeric_common(l, r),
             RealDiv if l.is_numeric() && r.is_numeric() => Some(Type::Real),
-            Div | Mod | Shl | Shr if l.is_integer() && r.is_integer() => int_common(l, r),
+            // A shift has the type of the number being shifted: the count
+            // doesn't widen it. (TP: "the result is of the same type as x".)
+            Shl | Shr if l.is_integer() && r.is_integer() => int_common(l, l),
+            Div | Mod if l.is_integer() && r.is_integer() => int_common(l, r),
             And | Or | Xor if *l == Type::Bool && *r == Type::Bool => Some(Type::Bool),
             And | Or | Xor => int_common(l, r),
             Eq | NotEq | Lt | LtEq | Gt | GtEq => comparable(l, r).then_some(Type::Bool),

@@ -142,7 +142,7 @@ chosen so each step is testable with the previous ones.
   - [x] Two disjoint fields of one record as two `var` arguments (`Init(p.x, p.y)`) were rejected. Sema now compares field paths; two fields of one heap record (`q^.x, q^.y`) borrow it once with `Ptr::with_mut`. Still rejected: two elements of one array (`a[1], a[2]`).
   - [ ] A local that clashes with a captured global renames the global everywhere (`global_count`); scope the rename to the procedure with the clash.
   - [ ] Hoisting a deref argument evaluates it before earlier arguments with side effects (`Show(Bump, head^.value)`).
-  - [ ] `x shl n` with `n` at least the type's width doesn't compile (constant) or panics (variable); TP gives 0.
+  - [x] `x shl n` with `n` at least the type's width didn't compile (constant) or panicked (variable); TP gives 0. Now `checked_shl(n).unwrap_or(0)` unless the count is a literal below the width. A shift also has the type of its left operand now, as in TP.
   - [ ] `p^.x := p^.x + 1` hoists a temporary instead of becoming `p.get_mut().x += 1`.
   - [x] `Random(n)`: checked against a disassembly of TP's System unit (github.com/daelsepara/turbo-pascal-assembly): it uses the full 32-bit seed, `(seed * n) shr 32`, as we do. `n` is now truncated to a `Word`, as TP's parameter is. Not done: `RandSeed` as an assignable variable.
   - [x] `{$I-}` and a real `IOResult`.
