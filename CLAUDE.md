@@ -38,6 +38,12 @@ tests/gen_expected.sh tests/run/foo.pas      # expected output from Free Pascal 
 cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+## Licensing
+
+Pascrust is MIT. Don't copy code or tests from GPL projects (Free Pascal,
+p2c, GNU Pascal): read them for ideas only. Running `fpc` as an external
+program to produce expected output (`tests/gen_expected.sh`) is fine.
+
 ## Style rules
 
 - Write Rust the way an intermediate Rust programmer would: clear over clever.

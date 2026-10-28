@@ -194,10 +194,10 @@ arrays, variant records (p2c uses C unions; we flatten), `computational` type.
   `{ %OPT=-Mtp }`, `{ %RESULT=201 }`, `{ %NORUN }`, `{ %INTERACTIVE }`,
   `{ %GRAPH }` describe how to run it. Takeaways for our harness: self-checking
   tests with an exit code are more robust than golden stdout for language
-  semantics; we will use both. Many `tests/test/t*.pp` files are plain TP-mode
-  programs we can copy (FPC is LGPL/GPL; copying individual test programs into
-  our tests directory with attribution is fine for a non-distributed hobby
-  project, but ask before shipping them).
+  semantics; we will use both. We don't copy FPC's tests (or any of its code):
+  FPC is GPL and this project is MIT (decided 2026-10-28). Running `fpc -Mtp`
+  as an external program to produce expected output is fine, and is what
+  `tests/gen_expected.sh` does.
 - **Testing FPC wiki**: https://wiki.lazarus.freepascal.org/Testing_FPC and
   https://wiki.lazarus.freepascal.org/Compiler_test_suite.
 

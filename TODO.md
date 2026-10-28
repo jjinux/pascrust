@@ -247,8 +247,7 @@ Last: raw bytes and C strings
 
 - [ ] One translate snapshot and one run test per construct in `language_spec.md` tier 1 and 2; keep a checklist table in `tests/README.md`.
 - [x] If FPC is installed (open question 2): script `tests/gen_expected.sh` that compiles each `tests/run/*.pas` with `fpc -Mtp` and records its stdout as `*.out`; commit the outputs.
-- [ ] Import a curated subset of Free Pascal `tests/test/t*.pp` programs that are TP-mode and self-checking (exit code 0), with attribution.
-- [ ] Import p2c's `examples/*.p` where they parse as TP.
+- [ ] Write our own self-checking run tests (exit code 0 when every check passes) for the System, Crt, Dos and Graph routines, covering the kinds of cases Free Pascal's test suite covers. Don't copy FPC's or p2c's tests: both are GPL and this project is MIT. Running `fpc -Mtp` as an external program to produce expected output (`tests/gen_expected.sh`) is fine.
 - [ ] Negative tests: malformed programs produce the expected diagnostic text (snapshot).
 - [ ] Alias-detection tests (should fail to transpile) and `RefCell` aliasing tests (should fail at run time with the clear message).
 - [ ] `cargo clippy -- -D warnings` on the transpiler and the runtime; `#![deny(warnings)]` is not applied to generated code, but generated code must build warning-free for every example.
