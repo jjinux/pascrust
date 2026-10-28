@@ -223,29 +223,39 @@ Division by zero is a Rust panic, which becomes Pascal runtime error 200
 
 ## 8. Strings: `PString`, a 256-byte value type
 
-Decision: one runtime type for all Borland short strings:
+Decision: one runtime type for all Borland short strings, with exactly Turbo
+Pascal's memory layout:
 
 ```rust
-/// A Turbo Pascal string: up to 255 bytes, length stored separately, and
-/// copied by value on assignment, exactly like TP (where a `string` is
-/// literally 256 bytes of memory with the length in byte 0).
+/// A Turbo Pascal string: byte 0 is the length, bytes 1..=255 the
+/// characters, copied by value on assignment, exactly like TP.
 #[derive(Clone, Copy)]
-pub struct PString { len: u8, cap: u8, bytes: [u8; 255] }
+pub struct PString { bytes: [u8; 256] }
 ```
 
 - `Copy`, because TP strings are value types and that keeps codegen free of
   `.clone()` noise. 256 bytes per copy is irrelevant at our scale.
-- `cap` records the declared capacity (`string[30]` → 30, `string` → 255).
-  Assignment goes through `dst.assign(&src)`, which truncates to `cap`,
-  matching TP's silent truncation. Codegen emits `.assign()` whenever the
-  declared capacities differ and plain `=` otherwise.
-- 1-based indexing via `impl Index<i32>`/`IndexMut<i32>`; `s[0]` reads the
-  length byte like TP. Out-of-range indexes panic (runtime error 201).
-- Concatenation (`+`), comparison (`<` is byte-wise, like TP), and the whole
-  `System` string API (`Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Str`,
-  `Val`, `Concat`, `UpCase`) are methods or free functions in the runtime.
-- Literals: `PString::from("hello")` is `const fn`-able; codegen emits
-  `pstr!("hello")`. Character literals in string context (`'x'`) are `u8`.
+- **Capacity is static, not stored.** (Revised by Opus during Phase 1; the
+  first draft stored a runtime `cap` byte.) `string[30]` and `string` are the
+  same Rust type; codegen knows the declared capacity and emits
+  `name = value.truncated(30)` when assigning to a `string[30]` variable
+  (skipped for literals that obviously fit). Keeping the capacity out of the
+  value means `#[derive(Default)]` works for records containing strings, and
+  `s = t` is always plain assignment. The one gap is `var` parameters
+  declared `string` receiving a `string[30]` variable under `{$V-}`: the
+  callee can store more than 30 characters, which in TP would overwrite
+  memory; for us it's simply a longer string.
+- 1-based indexing via `impl<I: Ordinal> Index<I>`; `s[0]` reads and writes
+  the length byte like TP. Indexes outside 0..255 are runtime error 201.
+- Concatenation is `impl<T: Into<PString>> Add<T> for PString`, so
+  `s + "abc"` and `s + c` (a `Char`) work directly; comparison is byte-wise
+  like TP, with `PartialEq<&str>` so `s == "abc"` reads naturally.
+- The `System` string API (`Length`, `Copy`, `Pos`, `Delete`, `Insert`,
+  `Str`, `Val`, `Concat`, `UpCase`) is methods (`s.copy(i, n)`,
+  `s.delete(i, n)`) or free functions (`pos(sub, s)`, `pas_str(w(x, 5))`).
+- Literals: `pstr("hello")` where a `PString` is needed; raw `"hello"` where
+  the runtime accepts anything string-like (`pwriteln!`, `+`, `==`).
+  Non-ASCII (CP437) literals become byte strings, `b"\xc9\xcd"`.
 
 Rejected: Rust `String`. It is UTF-8, so byte indexing and `s[i] := 'x'` are
 wrong or panic on non-ASCII, it has no capacity semantics, and it is not
@@ -255,7 +265,9 @@ and makes `string[30]` and `string[40]` different types, which TP does not do.
 
 ## 9. Characters and the code page
 
-`Char` is `u8`. Output to the terminal translates CP437 bytes to Unicode (a
+`Char` is `u8`. Since `Byte` is also `u8`, the runtime's `PasWrite` impl for
+`u8` prints a character, and codegen widens `Byte` values (`i16::from(b)`)
+before writing them so they print as numbers. Output to the terminal translates CP437 bytes to Unicode (a
 256-entry table in the runtime), so box-drawing characters and `chr(7)` work
 as they did in DOS. Input (`ReadKey`, `Readln`) translates back where possible
 and otherwise yields `?`. `#13`, `#10`, `^M` literals are supported.

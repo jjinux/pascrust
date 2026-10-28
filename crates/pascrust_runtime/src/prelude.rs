@@ -1,0 +1,15 @@
+//! Everything generated code needs, in one `use`.
+//!
+//! A "prelude" is a Rust convention: a module that re-exports the most
+//! commonly used items of a crate so that users can glob-import them with
+//! `use some_crate::prelude::*;`. The standard library has one too
+//! (`std::prelude`), which is why `Vec` and `Option` are always in scope.
+
+pub use crate::io::{PasWrite, eof, eoln, w, wd};
+pub use crate::ordinal::Ordinal;
+pub use crate::run::{halt, rte};
+pub use crate::string::{PString, pos, pstr};
+pub use crate::system::{pas_str, random, random_real, randomize, val};
+// `#[macro_export]` macros live at the crate root; re-exporting them here
+// lets the generated code's single glob import pick them up as well.
+pub use crate::{pread, preadln, pwrite, pwriteln};

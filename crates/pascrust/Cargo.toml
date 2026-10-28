@@ -1,0 +1,13 @@
+[package]
+name = "pascrust"
+description = "A Turbo Pascal to Rust transpiler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+insta = { version = "1", features = ["glob"] }

@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/alias_same_var.pas
+---
+alias_same_var.pas:7:11: error: `x` is passed by `var` more than once in this call to `Swap`; Rust doesn't allow two mutable references to the same variable
+  Swap(x, x);
+          ^

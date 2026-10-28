@@ -13,8 +13,8 @@ acceptance test for the whole project.
   - [x] Pascrust
 - [x] Write a TODO.md file.
 - [x] Have Fable fill out the TODO.md with the plan and make the core architectural decisions.
-- [ ] Opus can then read the plan and fill in the details.
-- [ ] Write a CLAUDE.md.
+- [x] Opus can then read the plan and fill in the details.
+- [x] Write a CLAUDE.md.
 - [x] Use an MIT license.
 - [x] Figure out if I should aim to translate Pascal or Turbo Pascal:
   - [x] Is there an official spec and/or open source implementation for Turbo Pascal? (No formal spec; the TP 7.0 Language Guide is the spec, Free Pascal `-Mtp` is the open-source implementation. See `notes/p2c.md` §4.)
@@ -43,31 +43,31 @@ acceptance test for the whole project.
 
 ## Phase 0: Scaffolding (half a day)
 
-- [ ] Review `notes/open_questions.md` with the user; record answers at the top of that file.
-- [ ] Create the Cargo workspace: `crates/pascrust` (bin + lib) and `crates/pascrust_runtime` (lib with features `crt`, `dos`, `graph`). Edition 2024.
-- [ ] Write `CLAUDE.md`: project goals, the "intermediate Rust with teaching comments" style rule, where decisions live, how to run tests, the rule that every new Pascal construct needs a translate test and a run test.
-- [ ] Add `.gitignore` entries for `out/` and `target/`; add `rustfmt.toml`; add a GitHub Actions workflow (fmt, clippy, test).
-- [ ] Add `tests/README.md` describing the three test layers from `architecture.md` §21.
-- [ ] `pascrust --help` prints usage; `pascrust emit`, `build`, `run` subcommands stubbed with `clap`.
+- [x] Review `notes/open_questions.md` with the user; record answers at the top of that file.
+- [x] Create the Cargo workspace: `crates/pascrust` (bin + lib) and `crates/pascrust_runtime` (lib with features `crt`, `dos`, `graph`). Edition 2024.
+- [x] Write `CLAUDE.md`: project goals, the "intermediate Rust with teaching comments" style rule, where decisions live, how to run tests, the rule that every new Pascal construct needs a translate test and a run test.
+- [x] Add `.gitignore` entries for `out/` and `target/`; add `rustfmt.toml`; add a GitHub Actions workflow (fmt, clippy, test).
+- [x] Add `tests/README.md` describing the three test layers from `architecture.md` §21.
+- [x] `pascrust --help` prints usage; `pascrust emit`, `build`, `run` subcommands stubbed with `clap`.
 
 ## Phase 1: Hello world end to end (first thing that runs)
 
 Goal: `pascrust run tests/run/hello.pas` prints `Hello, world!` by going
 lexer → parser → AST → sema → codegen → Cargo project → `cargo run`.
 
-- [ ] `token.rs`: token enum (keywords, identifiers, integer/real/string/char literals, operators, punctuation) with `Span`.
-- [ ] `lexer.rs`: handwritten lexer; case-insensitive keywords; `{ }`, `(* *)` and `//` comments; `{$...}` directives kept as a `Directive` token; `1..5` vs `1.5`; `'it''s'`, `#13`, `^M`; hex `$FF`.
-  - [ ] Unit tests for every token class and the tricky cases.
-- [ ] `ast.rs`: `Program`, `Block`, `Decl` (const/type/var/proc), `TypeExpr`, `Stmt`, `Expr`, all with spans. Keep it a plain tree of enums and structs; comment what each node corresponds to in Pascal.
-- [ ] `parser/`: recursive descent for `program`, `const`/`var` sections, `begin ... end`, procedure calls with arguments, string and integer literals, `writeln`. Error type with Pascal file:line:col.
-  - [ ] `insta` snapshot tests of the AST for hello world and a few malformed inputs (error messages).
-- [ ] `sema/` skeleton: symbol table with case-insensitive lookup, builtin `writeln`, types `Integer`/`String`; annotates the AST with types.
-- [ ] `codegen/`: indenting writer; emits `use pascrust_runtime::prelude::*;`, `fn pascal_main()`, `fn main() { pascrust_runtime::run(pascal_main) }`, `pwriteln!(...)`.
-- [ ] `pascrust_runtime`: `prelude`, `run()` (plain version: call the closure, map panics to exit code 1 for now), `pwrite!`/`pwriteln!` macros over a `PasWrite` trait implemented for `&str`, integers, `f64`, `bool`, `u8`.
-- [ ] `driver.rs`: writes `out/<name>/Cargo.toml` (path dependency on the runtime, `overflow-checks = false`) and `src/main.rs`; runs `rustfmt` if present; `build`/`run` shell out to `cargo`.
-- [ ] Test harness v1: `tests/run_tests.rs` finds `tests/run/*.pas`, transpiles each, builds, runs with `*.in` as stdin, diffs against `*.out`. Build all test programs into one scratch workspace so a single `cargo build` covers them.
-- [ ] Translate test harness v1: `tests/translate_tests.rs` snapshots the generated Rust for `tests/translate/*.pas` with `insta`.
-- [ ] `hello.pas` passes both harnesses. Commit.
+- [x] `token.rs`: token enum (keywords, identifiers, integer/real/string/char literals, operators, punctuation) with `Span`.
+- [x] `lexer.rs`: handwritten lexer; case-insensitive keywords; `{ }`, `(* *)` and `//` comments; `{$...}` directives kept as a `Directive` token; `1..5` vs `1.5`; `'it''s'`, `#13`, `^M`; hex `$FF`.
+  - [x] Unit tests for every token class and the tricky cases.
+- [x] `ast.rs`: `Program`, `Block`, `Decl` (const/type/var/proc), `TypeExpr`, `Stmt`, `Expr`, all with spans. Keep it a plain tree of enums and structs; comment what each node corresponds to in Pascal.
+- [x] `parser/`: recursive descent for `program`, `const`/`var` sections, `begin ... end`, procedure calls with arguments, string and integer literals, `writeln`. Error type with Pascal file:line:col.
+  - [x] `insta` snapshot tests of the AST for hello world and a few malformed inputs (error messages).
+- [x] `sema/` skeleton: symbol table with case-insensitive lookup, builtin `writeln`, types `Integer`/`String`; annotates the AST with types.
+- [x] `codegen/`: indenting writer; emits `use pascrust_runtime::prelude::*;`, `fn pascal_main()`, `fn main() { pascrust_runtime::run(pascal_main) }`, `pwriteln!(...)`.
+- [x] `pascrust_runtime`: `prelude`, `run()` (plain version: call the closure, map panics to exit code 1 for now), `pwrite!`/`pwriteln!` macros over a `PasWrite` trait implemented for `&str`, integers, `f64`, `bool`, `u8`.
+- [x] `driver.rs`: writes `out/<name>/Cargo.toml` (path dependency on the runtime, `overflow-checks = false`) and `src/main.rs`; runs `rustfmt` if present; `build`/`run` shell out to `cargo`.
+- [x] Test harness v1: `tests/run_tests.rs` finds `tests/run/*.pas`, transpiles each, builds, runs with `*.in` as stdin, diffs against `*.out`. Build all test programs into one scratch workspace so a single `cargo build` covers them.
+- [x] Translate test harness v1: `tests/translate_tests.rs` snapshots the generated Rust for `tests/translate/*.pas` with `insta`.
+- [x] `hello.pas` passes both harnesses. Commit.
 
 ## Phase 2: Core language (tier 1 of `language_spec.md`)
 
@@ -156,7 +156,7 @@ chosen so each step is testable with the previous ones.
 ## Testing track (runs alongside every phase)
 
 - [ ] One translate snapshot and one run test per construct in `language_spec.md` tier 1 and 2; keep a checklist table in `tests/README.md`.
-- [ ] If FPC is installed (open question 2): script `tests/gen_expected.sh` that compiles each `tests/run/*.pas` with `fpc -Mtp` and records its stdout as `*.out`; commit the outputs.
+- [x] If FPC is installed (open question 2): script `tests/gen_expected.sh` that compiles each `tests/run/*.pas` with `fpc -Mtp` and records its stdout as `*.out`; commit the outputs.
 - [ ] Import a curated subset of Free Pascal `tests/test/t*.pp` programs that are TP-mode and self-checking (exit code 0), with attribution.
 - [ ] Import p2c's `examples/*.p` where they parse as TP.
 - [ ] Negative tests: malformed programs produce the expected diagnostic text (snapshot).
