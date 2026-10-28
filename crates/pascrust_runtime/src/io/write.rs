@@ -131,7 +131,10 @@ macro_rules! impl_pas_write_int {
 impl_pas_write_int!(i8, i16, i32, i64, u16, u32, u64);
 
 /// Turbo Pascal prints a `Real` with no width in scientific notation, 17
-/// characters wide: ` 1.2345000000E+02`.
+/// characters wide: ` 1.2345000000E+02`. That's at most 11 significant
+/// digits, the precision of TP's 6-byte `Real`, even though pascrust
+/// stores a `Real` as an `f64`; so `x:25` pads with spaces rather than
+/// printing more digits.
 const DEFAULT_REAL_WIDTH: i32 = 17;
 
 impl PasWrite for f64 {
@@ -150,7 +153,7 @@ impl PasWrite for f64 {
 
     /// `x:width:decimals` prints in fixed-point notation.
     fn pas_write_decimals(&self, width: i32, decimals: i32, out: &mut Vec<u8>) {
-        let text = format!("{:.*}", decimals.max(0) as usize, self);
+        let text = format_fixed(*self, decimals.max(0));
         pad_left(text.as_bytes(), width, out);
     }
 }
@@ -173,15 +176,103 @@ impl PasWrite for f32 {
     }
 }
 
-/// Format like Turbo Pascal: ` 1.2340000000E+02` or `-1.2340000000E-05`.
+/// Format like Turbo Pascal: ` 1.2340000000E+02` or `-1.2340000000E-05`,
+/// with `digits` digits after the point.
 fn format_scientific(x: f64, digits: usize) -> String {
-    // Rust's `{:e}` gives `1.2340000000e2`; reshape the exponent.
-    let s = format!("{:.*e}", digits, x.abs());
-    let (mantissa, exp) = s.split_once('e').expect("`{:e}` always has an exponent");
-    let exp: i32 = exp.parse().expect("exponent is an integer");
+    if let Some(text) = format_non_finite(x) {
+        return text;
+    }
+    let (first, exp) = decimal_digits(x.abs());
+    let (rounded, exp) = round_digits(first, exp, digits as i32 + 1);
+    // Rounding 9.99 up gives 10.0, one digit more than we print.
+    let mantissa: String = rounded[..=digits].iter().map(|&d| char::from(b'0' + d)).collect();
     let sign = if x.is_sign_negative() { '-' } else { ' ' };
     let exp_sign = if exp < 0 { '-' } else { '+' };
-    format!("{sign}{mantissa}E{exp_sign}{:02}", exp.abs())
+    format!("{sign}{}.{}E{exp_sign}{:02}", &mantissa[..1], &mantissa[1..], exp.abs())
+}
+
+/// Format like Turbo Pascal's `x:width:decimals`: `-12.35`.
+fn format_fixed(x: f64, decimals: i32) -> String {
+    if let Some(text) = format_non_finite(x) {
+        return text;
+    }
+    let (first, exp) = decimal_digits(x.abs());
+    // Keep the digits down to the last decimal place.
+    let (digits, exp) = round_digits(first, exp, exp + 1 + decimals);
+    // The digit worth 10^power, or 0 if it's outside the ones we have.
+    let digit_at = |power: i32| {
+        let i = exp - power;
+        let d = if i >= 0 { digits.get(i as usize).copied().unwrap_or(0) } else { 0 };
+        char::from(b'0' + d)
+    };
+    let mut text = String::new();
+    if x < 0.0 {
+        text.push('-');
+    }
+    // `rev()` counts down, from the highest power of ten to the ones.
+    text.extend((0..=exp.max(0)).rev().map(digit_at));
+    if decimals > 0 {
+        text.push('.');
+        text.extend((1..=decimals).map(|p| digit_at(-p)));
+    }
+    text
+}
+
+/// Infinity and NaN, which TP would have stopped at with a runtime error
+/// when they were computed; we print them the way Free Pascal does.
+fn format_non_finite(x: f64) -> Option<String> {
+    if x.is_nan() {
+        Some("Nan".to_string())
+    } else if x.is_infinite() {
+        Some(if x < 0.0 { "-Inf" } else { "+Inf" }.to_string())
+    } else {
+        None
+    }
+}
+
+/// The decimal digits of `x` (which is not negative), and the power of ten
+/// of the first one: 123.4 is `([1, 2, 3, 4, 0, ...], 2)`.
+///
+/// We take 15 significant digits, about what an `f64` holds reliably. So
+/// 2.675, which is really stored as 2.67499999999999982236431605997495353221893310546875,
+/// counts as 2.675 and rounds up to 2.68, as it does in TP and Free Pascal.
+fn decimal_digits(x: f64) -> (Vec<u8>, i32) {
+    let s = format!("{x:.14e}");
+    let (mantissa, exp) = s.split_once('e').expect("`{:e}` of a finite number has an exponent");
+    let digits = mantissa.bytes().filter(u8::is_ascii_digit).map(|b| b - b'0').collect();
+    (digits, exp.parse().expect("exponent is an integer"))
+}
+
+/// Round `digits` (the first worth 10^`exp`) to `keep` digits. Turbo Pascal
+/// rounds halves away from zero (0.125 to two places is 0.13), unlike
+/// Rust's `format!`, which rounds them to even (0.12).
+fn round_digits(mut digits: Vec<u8>, mut exp: i32, keep: i32) -> (Vec<u8>, i32) {
+    let Ok(keep) = usize::try_from(keep) else {
+        // Everything is below the last place we print: it rounds to zero.
+        return (Vec::new(), exp);
+    };
+    if keep >= digits.len() {
+        digits.resize(keep, 0);
+        return (digits, exp);
+    }
+    let round_up = digits[keep] >= 5;
+    digits.truncate(keep);
+    if round_up {
+        // Add one to the last digit, carrying left past any 9s; 9.99 becomes
+        // 10.0, which needs one more digit at the front.
+        match digits.iter().rposition(|&d| d != 9) {
+            Some(i) => {
+                digits[i] += 1;
+                digits[i + 1..].fill(0);
+            }
+            None => {
+                digits.fill(0);
+                digits.insert(0, 1);
+                exp += 1;
+            }
+        }
+    }
+    (digits, exp)
 }
 
 /// Pascal `Write(a, b, ...)` to standard output.
