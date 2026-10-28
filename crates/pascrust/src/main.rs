@@ -27,6 +27,15 @@ enum Cmd {
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
+    /// Make indentation, spacing and identifier casing consistent. Give a
+    /// program and its units together, so names are spelled the same in all.
+    Fmt {
+        files: Vec<PathBuf>,
+        /// Don't write anything; list the files that would change, and fail
+        /// if there are any.
+        #[arg(long)]
+        check: bool,
+    },
     /// Transpile, build and run.
     Run {
         file: PathBuf,
@@ -63,11 +72,33 @@ fn run(command: Cmd) -> Result<ExitCode, String> {
             let dir = project(&file, out)?;
             cargo(&dir, &["build", "--quiet"], &[])
         }
+        Cmd::Fmt { files, check } => fmt(&files, check),
         Cmd::Run { file, out, args } => {
             let dir = project(&file, out)?;
             cargo(&dir, &["run", "--quiet", "--"], &args)
         }
     }
+}
+
+fn fmt(files: &[PathBuf], check: bool) -> Result<ExitCode, String> {
+    let sources = files
+        .iter()
+        .map(|f| std::fs::read(f).map_err(|e| format!("cannot read {}: {e}", f.display())))
+        .collect::<Result<Vec<_>, _>>()?;
+    let borrowed: Vec<&[u8]> = sources.iter().map(Vec::as_slice).collect();
+    let formatted = pascrust::fmt::format_files(&borrowed)
+        .map_err(|(i, d)| d.render(&files[i].display().to_string(), &sources[i]))?;
+    let mut changed = false;
+    for ((file, old), new) in files.iter().zip(&sources).zip(formatted) {
+        if *old != new {
+            changed = true;
+            println!("{}", file.display());
+            if !check {
+                std::fs::write(file, new).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
+            }
+        }
+    }
+    Ok(if check && changed { ExitCode::FAILURE } else { ExitCode::SUCCESS })
 }
 
 /// Transpile `file` and write the Cargo project; return its directory.

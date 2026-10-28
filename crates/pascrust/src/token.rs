@@ -70,7 +70,8 @@ impl TokenKind {
         }
     }
 
-    fn punct_str(&self) -> &'static str {
+    /// The spelling of a punctuation token (`"?"` for other kinds).
+    pub fn punct_str(&self) -> &'static str {
         match self {
             TokenKind::Plus => "+",
             TokenKind::Minus => "-",

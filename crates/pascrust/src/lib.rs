@@ -10,6 +10,7 @@ pub mod ast;
 pub mod codegen;
 pub mod diag;
 pub mod driver;
+pub mod fmt;
 pub mod lexer;
 pub mod parser;
 pub mod sema;

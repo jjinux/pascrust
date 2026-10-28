@@ -15,6 +15,7 @@ implementation. The opening prompt is in `README.md`.
 ## Layout
 
 - `crates/pascrust`: the transpiler (lexer → parser → sema → codegen → driver), bin + lib.
+  `fmt/` is `pascrust fmt`, a source formatter that reuses the lexer.
 - `crates/pascrust_runtime`: the library every generated program depends on
   (Pascal strings, I/O, `run()`, later `Crt`/`Dos`/`Graph` behind features).
 - `tests/run/*.pas`: execution tests (`.out` expected stdout, optional `.in`, `.exitcode`).
@@ -31,6 +32,7 @@ PASCRUST_TEST=hello cargo test --test run_tests   # one execution test
 INSTA_UPDATE=always cargo test --test translate_tests   # accept new snapshots, then review the git diff
 cargo run -p pascrust -- emit file.pas       # print generated Rust
 cargo run -p pascrust -- run file.pas        # transpile, build and run (project goes in out/)
+cargo run -p pascrust -- fmt examples/*.pas examples/*/*.pas   # keep the examples formatted (checked by fmt_tests)
 tests/gen_expected.sh tests/run/foo.pas      # expected output from Free Pascal (fpc -Mtp)
 cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
 ```
