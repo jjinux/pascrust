@@ -38,6 +38,11 @@ builtins! {
     Val => "val",
     // Pointers
     New => "new", Dispose => "dispose",
+    // Files
+    Assign => "assign", Reset => "reset", Rewrite => "rewrite", Append => "append",
+    Close => "close", Erase => "erase", Rename => "rename", Flush => "flush",
+    Truncate => "truncate", Seek => "seek", FilePos => "filepos", FileSize => "filesize",
+    Eof => "eof", Eoln => "eoln", IOResult => "ioresult",
 }
 
 impl Builtin {
@@ -63,6 +68,16 @@ impl Builtin {
                 | Val
                 | New
                 | Dispose
+                | Assign
+                | Reset
+                | Rewrite
+                | Append
+                | Close
+                | Erase
+                | Rename
+                | Flush
+                | Truncate
+                | Seek
         )
     }
 }

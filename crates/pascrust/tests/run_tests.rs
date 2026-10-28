@@ -76,7 +76,13 @@ fn run_tests() {
     for (path, name) in built {
         let exe = scratch.join("target/debug").join(&name);
         let input = std::fs::read(path.with_extension("in")).unwrap_or_default();
+        // Run in an empty scratch directory, so files the program creates
+        // don't land in the repository.
+        let cwd = scratch.join("cwd").join(&name);
+        let _ = std::fs::remove_dir_all(&cwd);
+        std::fs::create_dir_all(&cwd).unwrap();
         let mut child = Command::new(&exe)
+            .current_dir(&cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

@@ -232,6 +232,7 @@ impl Checker {
             ("single", Type::Real),
             ("boolean", Type::Bool),
             ("char", Type::Char),
+            ("text", Type::Text),
         ];
         for (name, ty) in types {
             let rust = ty.rust();
@@ -286,6 +287,10 @@ impl Checker {
         for unit in uses {
             if let Some((routines, consts)) = super::units::unit(&unit.key()) {
                 self.declare_unit_routines(routines, consts);
+                for (name, ty) in super::units::unit_types(&unit.key()) {
+                    let sym = self.add_symbol(name, ty.rust(), SymKind::TypeName(ty));
+                    self.scopes[0].insert(name.to_string(), sym);
+                }
             } else if let Some(exports) = self.unit_exports.get(&unit.key()) {
                 self.scopes.push(exports.clone());
             } else {
@@ -773,6 +778,15 @@ impl Checker {
                     self.a.type_defs.push((ty.clone(), t.span()));
                 }
                 ty
+            }
+            TypeExpr::File(Some(elem), _) => {
+                let elem = self.resolve_type(elem);
+                self.a.file_types.push(elem.clone());
+                Type::File(Rc::new(elem))
+            }
+            TypeExpr::File(None, span) => {
+                self.error(*span, "untyped files are not supported");
+                Type::Error
             }
             TypeExpr::Pointer(target, _) => {
                 let alias = if self.declaring_type { name.map(|n| self.type_name(n)) } else { None };
@@ -1535,6 +1549,26 @@ impl Checker {
         let name = format!("{b:?}");
         match b {
             Write | Writeln => {
+                // `Write(f, ...)` writes to a file.
+                let mut args = args;
+                if let Some(first) = args.first()
+                    && let Some(file_ty @ (Type::Text | Type::File(_))) = self.place_type(first)
+                {
+                    self.place(first, true);
+                    args = &args[1..];
+                    if let Type::File(elem) = file_ty {
+                        if b == Writeln {
+                            self.error(span, "`Writeln` needs a text file");
+                        }
+                        for arg in args {
+                            let ty = self.expr(arg);
+                            if !elem.accepts(&ty) {
+                                self.error(arg.span, format!("this file holds {elem} values, not {ty}"));
+                            }
+                        }
+                        return Type::Void;
+                    }
+                }
                 for arg in args {
                     let (value, width, decimals) = match &arg.kind {
                         ExprKind::Format { value, width, decimals } => (&**value, Some(width), decimals.as_ref()),
@@ -1555,6 +1589,22 @@ impl Checker {
                 Type::Void
             }
             Read | Readln => {
+                let mut args = args;
+                if let Some(first) = args.first()
+                    && let Some(file_ty @ (Type::Text | Type::File(_))) = self.place_type(first)
+                {
+                    self.place(first, true);
+                    args = &args[1..];
+                    if let Type::File(elem) = file_ty {
+                        for arg in args {
+                            let ty = self.place(arg, true);
+                            if ty != *elem && ty != Type::Error {
+                                self.error(arg.span, format!("this file holds {elem} values, not {ty}"));
+                            }
+                        }
+                        return Type::Void;
+                    }
+                }
                 for arg in args {
                     let ty = self.place(arg, true);
                     if !(ty.is_numeric() || ty == Type::Char || matches!(ty, Type::Str { .. }) || ty == Type::Error) {
@@ -1568,6 +1618,55 @@ impl Checker {
                     self.int_arg(&args[0]);
                 }
                 Type::Void
+            }
+            Assign | Rename => {
+                if arity(&mut self.errors, span, args.len(), 2..=2, &name) {
+                    self.file_arg(&args[0], &name, false);
+                    self.string_arg(&args[1]);
+                }
+                Type::Void
+            }
+            Reset | Rewrite | Close | Erase | Flush => {
+                if arity(&mut self.errors, span, args.len(), 1..=1, &name) {
+                    self.file_arg(&args[0], &name, false);
+                }
+                Type::Void
+            }
+            Append => {
+                if arity(&mut self.errors, span, args.len(), 1..=1, &name) {
+                    self.file_arg(&args[0], &name, true);
+                }
+                Type::Void
+            }
+            Truncate => {
+                if arity(&mut self.errors, span, args.len(), 1..=1, &name) {
+                    self.typed_file_arg(&args[0], &name);
+                }
+                Type::Void
+            }
+            Seek => {
+                if arity(&mut self.errors, span, args.len(), 2..=2, &name) {
+                    self.typed_file_arg(&args[0], &name);
+                    self.int_arg(&args[1]);
+                }
+                Type::Void
+            }
+            FilePos | FileSize => {
+                if arity(&mut self.errors, span, args.len(), 1..=1, &name) {
+                    self.typed_file_arg(&args[0], &name);
+                }
+                Type::Int(IntKind::LongInt)
+            }
+            Eof | Eoln => {
+                // No argument means standard input.
+                if arity(&mut self.errors, span, args.len(), 0..=1, &name) && args.len() == 1 {
+                    self.file_arg(&args[0], &name, b == Eoln);
+                }
+                Type::Bool
+            }
+            IOResult => {
+                arity(&mut self.errors, span, args.len(), 0..=0, &name);
+                Type::Int(IntKind::Integer)
             }
             New | Dispose => {
                 if arity(&mut self.errors, span, args.len(), 1..=1, &name) {
@@ -1723,6 +1822,64 @@ impl Checker {
             return Type::Error;
         }
         result(&ty)
+    }
+
+    /// A file variable argument. File operations change the file variable's
+    /// state, so it's treated like a `var` argument.
+    fn file_arg(&mut self, e: &Expr, name: &str, text_only: bool) {
+        let ty = self.place(e, true);
+        let ok = match ty {
+            Type::Text | Type::Error => true,
+            Type::File(_) => !text_only,
+            _ => false,
+        };
+        if !ok {
+            let wanted = if text_only { "a text file" } else { "a file" };
+            self.error(e.span, format!("`{name}` needs {wanted} variable, found {ty}"));
+        }
+    }
+
+    fn typed_file_arg(&mut self, e: &Expr, name: &str) {
+        let ty = self.place(e, true);
+        if !matches!(ty, Type::File(_) | Type::Error) {
+            self.error(e.span, format!("`{name}` needs a typed file (`file of ...`), found {ty}"));
+        }
+    }
+
+    /// The type of a place expression, worked out without recording
+    /// anything (no uses, no errors). Used to peek at the first argument of
+    /// `Write` and `Read`, which is a file if it has a file type.
+    fn place_type(&self, e: &Expr) -> Option<Type> {
+        match &e.kind {
+            ExprKind::Name(id) => match self.resolve(&id.key())? {
+                Resolved::Sym(sym) => match &self.a.symbols[sym].kind {
+                    SymKind::Var(v) => Some(v.ty.clone()),
+                    _ => None,
+                },
+                Resolved::SelfField { ty, .. } => Some(ty),
+                Resolved::SelfMethod { .. } => None,
+            },
+            ExprKind::Field(base, field) => match self.place_type(base)? {
+                Type::Record(r) => r.field(&field.name).map(|f| f.ty.clone()),
+                Type::Object(o) => o.field_path(&field.name).map(|(_, ty)| ty),
+                _ => None,
+            },
+            ExprKind::Index(base, indexes) => {
+                let mut ty = self.place_type(base)?;
+                for _ in indexes {
+                    ty = match ty {
+                        Type::Array(a) => a.elem.clone(),
+                        _ => return None,
+                    };
+                }
+                Some(ty)
+            }
+            ExprKind::Deref(base) => match self.place_type(base)? {
+                Type::Pointer(p) => Some(p.target()),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     fn int_arg(&mut self, e: &Expr) {

@@ -139,6 +139,20 @@ pub static CRT_CONSTS: &[UnitConst] = &[
     ("mono", "MONO", 7),
 ];
 
+/// Types a unit exports. The `Dos` unit's path strings are `string[n]`
+/// types sized for DOS's path limits.
+pub fn unit_types(name: &str) -> Vec<(&'static str, Type)> {
+    match name {
+        "dos" => vec![
+            ("pathstr", Type::Str { cap: 79 }),
+            ("dirstr", Type::Str { cap: 67 }),
+            ("namestr", Type::Str { cap: 8 }),
+            ("extstr", Type::Str { cap: 4 }),
+        ],
+        _ => Vec::new(),
+    }
+}
+
 /// The routines and constants of a unit, by lowercase name.
 pub fn unit(name: &str) -> Option<(&'static [UnitRoutine], &'static [UnitConst])> {
     match name {

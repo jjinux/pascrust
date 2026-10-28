@@ -12,16 +12,67 @@ impl<'a> Codegen<'a> {
         use Builtin::*;
         let ty = |g: &Self, e: &Expr| g.a.type_of(e.id).clone();
         match b {
-            Write | Writeln => {
-                let parts: Vec<String> = args.iter().map(|a| self.write_arg(a)).collect();
-                let mac = if b == Write { "pwrite!" } else { "pwriteln!" };
-                format!("{mac}({})", parts.join(", "))
+            Write | Writeln => match args.first().map(|a| ty(self, a)) {
+                // `Write(f, x, y)` on a typed file writes whole records.
+                Some(Type::File(_)) => {
+                    let file = self.place_receiver(&args[0]);
+                    let writes: Vec<String> =
+                        args[1..].iter().map(|a| format!("{file}.write(&{});", self.expr(a).0)).collect();
+                    writes.join(" ")
+                }
+                Some(Type::Text) => {
+                    let mut parts = vec![self.place_receiver(&args[0])];
+                    parts.extend(args[1..].iter().map(|a| self.write_arg(a)));
+                    let mac = if b == Write { "fwrite!" } else { "fwriteln!" };
+                    format!("{mac}({})", parts.join(", "))
+                }
+                _ => {
+                    let parts: Vec<String> = args.iter().map(|a| self.write_arg(a)).collect();
+                    let mac = if b == Write { "pwrite!" } else { "pwriteln!" };
+                    format!("{mac}({})", parts.join(", "))
+                }
+            },
+            Read | Readln => match args.first().map(|a| ty(self, a)) {
+                Some(Type::File(_)) => {
+                    let file = self.place_receiver(&args[0]);
+                    let reads: Vec<String> =
+                        args[1..].iter().map(|a| format!("{file}.read({});", self.place_mut(a))).collect();
+                    reads.join(" ")
+                }
+                Some(Type::Text) => {
+                    let mut parts = vec![self.place_receiver(&args[0])];
+                    parts.extend(args[1..].iter().map(|a| self.place_mut(a)));
+                    let mac = if b == Read { "fread!" } else { "freadln!" };
+                    format!("{mac}({})", parts.join(", "))
+                }
+                _ => {
+                    let parts: Vec<String> = args.iter().map(|a| self.place_mut(a)).collect();
+                    let mac = if b == Read { "pread!" } else { "preadln!" };
+                    format!("{mac}({})", parts.join(", "))
+                }
+            },
+            Assign | Rename => {
+                let file = self.place_receiver(&args[0]);
+                let method = if b == Assign { "assign" } else { "rename" };
+                format!("{file}.{method}({});", self.string_arg(&args[1]))
             }
-            Read | Readln => {
-                let parts: Vec<String> = args.iter().map(|a| self.place_mut(a)).collect();
-                let mac = if b == Read { "pread!" } else { "preadln!" };
-                format!("{mac}({})", parts.join(", "))
+            Reset | Rewrite | Append | Close | Erase | Flush | Truncate => {
+                let method = format!("{b:?}").to_ascii_lowercase();
+                format!("{}.{method}();", self.place_receiver(&args[0]))
             }
+            Seek => format!("{}.seek({});", self.place_receiver(&args[0]), self.expr(&args[1]).0),
+            FilePos => format!("{}.file_pos()", self.place_receiver(&args[0])),
+            FileSize => format!("{}.file_size()", self.place_receiver(&args[0])),
+            Eof | Eoln => {
+                let method = if b == Eof { "eof" } else { "eoln" };
+                match args.first() {
+                    Some(file) => format!("{}.{method}()", self.place_receiver(file)),
+                    None => format!("{method}()"),
+                }
+            }
+            // With `{$I+}`, Turbo Pascal's default, an I/O error stops the
+            // program, so a program that gets to call `IOResult` always sees 0.
+            IOResult => "0".to_string(),
             Halt => match args.first() {
                 None => "halt(0)".to_string(),
                 Some(code) => format!("halt({})", self.coerce(code, &Type::Int(IntKind::LongInt)).0),
@@ -211,7 +262,7 @@ impl<'a> Codegen<'a> {
 
     /// A variable used as the receiver of a mutating method (`s.delete(..)`).
     /// Method calls auto-dereference, so references don't need a `*`.
-    fn place_receiver(&mut self, e: &Expr) -> String {
+    pub(super) fn place_receiver(&mut self, e: &Expr) -> String {
         match &e.kind {
             ExprKind::Name(_) if !self.a.self_fields.contains_key(&e.id) => {
                 self.a.var_name(self.proc, self.a.refs[&e.id]).to_string()

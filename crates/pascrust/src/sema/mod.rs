@@ -169,8 +169,14 @@ pub struct Analysis {
     pub type_defs: Vec<(Type, Span)>,
     /// `(procedure, outer variable) → var parameter`: inside that procedure,
     /// the outer variable is reached through the parameter, because every
-    /// call passes exactly that variable for it. See `lift::unify_aliases`.
+    /// call passes exactly that variable for it (the key's variable is the
+    /// canonical one). See `lift::find_param_aliases`.
     pub capture_aliases: HashMap<(ProcId, SymId), SymId>,
+    /// `var` parameter → the variable every call binds it to.
+    pub param_aliases: HashMap<SymId, SymId>,
+    /// (procedure, parameter) pairs where the procedure relies on the
+    /// parameter standing for an outer variable it also uses by name.
+    pub used_aliases: HashSet<(ProcId, SymId)>,
     /// Methods by (object type's Rust name, lowercase method name).
     pub methods: HashMap<(String, String), ProcId>,
     /// `Name` expressions that are fields of `Self` inside a method: the
@@ -180,6 +186,9 @@ pub struct Analysis {
     /// path from the receiver to the object that defines it (`["base"]`
     /// for an inherited method).
     pub method_calls: HashMap<NodeId, (ProcId, Vec<String>)>,
+    /// The element type of every `file of T`, so codegen can make those
+    /// types storable.
+    pub file_types: Vec<Type>,
     /// The user units, in dependency order.
     pub units: Vec<UnitInfo>,
     /// The value of every `case` label, computed at compile time.
@@ -219,8 +228,23 @@ impl Analysis {
     /// The Rust name for variable `sym` inside procedure `proc`. Usually the
     /// variable's own name, unless the procedure reaches it through an
     /// aliasing `var` parameter (see [`Analysis::capture_aliases`]).
+    /// The variable `sym` always stands for: itself, unless it's a `var`
+    /// parameter that every call binds to the same outer variable.
+    pub fn canonical(&self, sym: SymId) -> SymId {
+        self.param_aliases.get(&sym).copied().unwrap_or(sym)
+    }
+
+    /// The parameter through which `proc` reaches `sym`, if `sym` is an
+    /// outer variable that one of its parameters always stands for.
+    fn alias_param(&self, proc: ProcId, sym: SymId) -> Option<SymId> {
+        if self.var(sym).owner == proc {
+            return None;
+        }
+        self.capture_aliases.get(&(proc, self.canonical(sym))).copied()
+    }
+
     pub fn var_name(&self, proc: ProcId, sym: SymId) -> &str {
-        let sym = self.capture_aliases.get(&(proc, sym)).copied().unwrap_or(sym);
+        let sym = self.alias_param(proc, sym).unwrap_or(sym);
         // A method's `self` is called `this` when a nested procedure
         // receives it: only methods may have a parameter named `self`.
         if self.symbols[sym].rust_name == "self" && self.var(sym).owner != proc {
@@ -231,7 +255,7 @@ impl Analysis {
 
     /// How variable `sym` is reached from inside procedure `proc`.
     pub fn access(&self, proc: ProcId, sym: SymId) -> Access {
-        if self.capture_aliases.contains_key(&(proc, sym)) {
+        if self.alias_param(proc, sym).is_some() {
             return Access::Reference;
         }
         let var = self.var(sym);
@@ -256,8 +280,8 @@ pub fn analyze(program: &Program, units: &[Unit]) -> Result<Analysis, Vec<Diagno
     let mut checker = check::Checker::new();
     checker.program(program, units);
     let (mut analysis, mut errors, call_sites) = checker.finish();
+    lift::find_param_aliases(&mut analysis, &call_sites);
     lift::lift(&mut analysis);
-    lift::unify_aliases(&mut analysis, &call_sites);
     errors.extend(lift::check_aliasing(&analysis, &call_sites));
     if errors.is_empty() { Ok(analysis) } else { Err(errors) }
 }

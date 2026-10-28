@@ -6,7 +6,7 @@
 //! (`std::prelude`), which is why `Vec` and `Option` are always in scope.
 
 pub use crate::array::PArray;
-pub use crate::io::{PasWrite, eof, eoln, w, wd};
+pub use crate::io::{FileRecord, PFile, PText, PasWrite, eof, eoln, w, wd};
 pub use crate::ordinal::{Enumerated, Ordinal, enum_range};
 pub use crate::ptr::Ptr;
 pub use crate::run::{halt, rte};
@@ -20,4 +20,4 @@ pub use crate::crt::*;
 pub use crate::dos::*;
 // `#[macro_export]` macros live at the crate root; re-exporting them here
 // lets the generated code's single glob import pick them up as well.
-pub use crate::{pread, preadln, pwrite, pwriteln};
+pub use crate::{file_record, fread, freadln, fwrite, fwriteln, pread, preadln, pwrite, pwriteln};

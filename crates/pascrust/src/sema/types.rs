@@ -86,6 +86,10 @@ pub enum Type {
     Object(Rc<ObjectType>),
     /// `^T`, a pointer.
     Pointer(Rc<PointerType>),
+    /// `Text`, a file of lines.
+    Text,
+    /// `file of T`.
+    File(Rc<Type>),
     /// The type of `nil`.
     Nil,
     /// The "type" of a procedure call, which has no value.
@@ -271,6 +275,8 @@ impl Type {
             Type::Enum(e) => e.rust_name.clone(),
             Type::Record(r) => r.rust_name.clone(),
             Type::Object(o) => o.rust_name.clone(),
+            Type::Text => "PText".to_string(),
+            Type::File(elem) => format!("PFile<{}>", elem.rust()),
             Type::Pointer(p) => match &p.alias {
                 Some(alias) => alias.clone(),
                 None => format!("Ptr<{}>", p.target().rust()),
@@ -292,6 +298,7 @@ impl Type {
             Type::Object(o) => o.is_copy(),
             // Copying a pointer means cloning its `Rc` handle.
             Type::Pointer(_) => false,
+            Type::Text | Type::File(_) => false,
             _ => true,
         }
     }
@@ -335,6 +342,8 @@ impl fmt::Display for Type {
             Type::Record(r) => write!(f, "{}", r.rust_name),
             Type::Object(o) => write!(f, "{}", o.rust_name),
             Type::Pointer(p) => write!(f, "^{}", p.target_name),
+            Type::Text => write!(f, "Text"),
+            Type::File(elem) => write!(f, "file of {elem}"),
             Type::Array(a) => write!(f, "array[{}..{}] of {}", a.lo, a.hi, a.elem),
             Type::Nil => write!(f, "Pointer"),
             Type::Void => write!(f, "no value"),

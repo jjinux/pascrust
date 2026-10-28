@@ -1,4 +1,4 @@
-//! `Read` and `Readln` from standard input.
+//! `Read` and `Readln`, from standard input or a text file.
 //!
 //! Turbo Pascal reads text line by line. `Read(x)` for a number skips
 //! blanks (including line breaks) and parses the number; `Read(s)` for a
@@ -10,9 +10,16 @@ use std::io::BufRead;
 
 use crate::string::PString;
 
-/// The current input line and how far into it we've read.
-#[derive(Default)]
-struct Input {
+/// Where a [`LineReader`] gets its lines.
+pub(crate) enum Source {
+    Stdin,
+    File(std::io::BufReader<std::fs::File>),
+}
+
+/// The current input line and how far into it we've read. Standard input and
+/// every open text file each have one.
+pub struct LineReader {
+    source: Source,
     line: Vec<u8>,
     pos: usize,
     /// True once a line has been fetched and not yet finished by `Readln`.
@@ -23,10 +30,14 @@ struct Input {
 thread_local! {
     // `RefCell` lets us mutate the input state through a shared global; it
     // checks at runtime that no two borrows overlap.
-    static INPUT: RefCell<Input> = RefCell::new(Input::default());
+    static INPUT: RefCell<LineReader> = RefCell::new(LineReader::new(Source::Stdin));
 }
 
-impl Input {
+impl LineReader {
+    pub(crate) fn new(source: Source) -> LineReader {
+        LineReader { source, line: Vec::new(), pos: 0, have_line: false, eof: false }
+    }
+
     /// Make sure there is a line to read from. Returns false at end of input.
     fn fill(&mut self) -> bool {
         if self.have_line {
@@ -35,27 +46,34 @@ impl Input {
         if self.eof {
             return false;
         }
-        // Prompts written with `Write` (no newline) must appear before we
-        // wait for input.
-        crate::io::flush_stdout();
         self.line.clear();
         self.pos = 0;
-        // In raw mode the terminal doesn't echo or edit lines; Crt does it.
-        #[cfg(feature = "crt")]
-        if crate::io::raw_terminal() {
-            return match crate::crt::read_line_raw() {
-                Some(line) => {
-                    self.line = line;
-                    self.have_line = true;
-                    true
+        let result = match &mut self.source {
+            Source::Stdin => {
+                // Prompts written with `Write` (no newline) must appear
+                // before we wait for input.
+                crate::io::flush_stdout();
+                // In raw mode the terminal doesn't echo or edit lines; Crt
+                // does it.
+                #[cfg(feature = "crt")]
+                if crate::io::raw_terminal() {
+                    return match crate::crt::read_line_raw() {
+                        Some(line) => {
+                            self.line = line;
+                            self.have_line = true;
+                            true
+                        }
+                        None => {
+                            self.eof = true;
+                            false
+                        }
+                    };
                 }
-                None => {
-                    self.eof = true;
-                    false
-                }
-            };
-        }
-        match std::io::stdin().lock().read_until(b'\n', &mut self.line) {
+                std::io::stdin().lock().read_until(b'\n', &mut self.line)
+            }
+            Source::File(file) => file.read_until(b'\n', &mut self.line),
+        };
+        match result {
             Ok(0) | Err(_) => {
                 self.eof = true;
                 false
@@ -105,18 +123,48 @@ impl Input {
         }
         String::from_utf8_lossy(&self.line[start..self.pos]).into_owned()
     }
+
+    /// The next character, `#13` at the end of a line, or `None` at the end
+    /// of the input.
+    fn next_char(&mut self) -> Option<u8> {
+        if !self.fill() {
+            return None;
+        }
+        if self.at_eoln() {
+            self.have_line = false;
+            return Some(13);
+        }
+        self.pos += 1;
+        Some(self.line[self.pos - 1])
+    }
+
+    /// Finish a `Readln`: skip the rest of the current line (or, if nothing
+    /// has been read from it yet, a whole line).
+    pub(crate) fn end_line(&mut self) {
+        self.fill();
+        self.have_line = false;
+    }
+
+    pub(crate) fn eof(&mut self) -> bool {
+        !self.fill()
+    }
+
+    pub(crate) fn eoln(&mut self) -> bool {
+        !self.fill() || self.at_eoln()
+    }
 }
 
 /// A type that `Read` can read.
 pub trait PasRead {
-    fn pas_read(&mut self);
+    #[doc(hidden)]
+    fn pas_read(&mut self, input: &mut LineReader);
 }
 
 macro_rules! impl_read_number {
     ($($t:ty),*) => {
         $( impl PasRead for $t {
-            fn pas_read(&mut self) {
-                let word = INPUT.with_borrow_mut(|input| input.word());
+            fn pas_read(&mut self, input: &mut LineReader) {
+                let word = input.word();
                 if word.is_empty() {
                     // TP reads 0 at end of file.
                     *self = Default::default();
@@ -135,47 +183,34 @@ impl_read_number!(i8, i16, i32, i64, u16, f64);
 /// Reading a `Char` takes exactly one character. At the end of a line it
 /// gives `#13` (carriage return), as on DOS, and moves to the next line.
 impl PasRead for u8 {
-    fn pas_read(&mut self) {
-        *self = INPUT.with_borrow_mut(|input| {
-            if !input.fill() {
-                return 26; // Ctrl-Z, the DOS end-of-file character
-            }
-            if input.at_eoln() {
-                input.have_line = false;
-                return 13;
-            }
-            input.pos += 1;
-            input.line[input.pos - 1]
-        });
+    fn pas_read(&mut self, input: &mut LineReader) {
+        // 26 is Ctrl-Z, the DOS end-of-file character.
+        *self = input.next_char().unwrap_or(26);
     }
 }
 
 /// Reading a string takes the rest of the current line.
 impl PasRead for PString {
-    fn pas_read(&mut self) {
-        *self = INPUT.with_borrow_mut(|input| {
-            if !input.fill() {
-                return PString::new();
-            }
+    fn pas_read(&mut self, input: &mut LineReader) {
+        *self = if input.fill() {
             let s = PString::from_bytes(&input.line[input.pos..]);
             input.pos = input.line.len();
             s
-        });
+        } else {
+            PString::new()
+        };
     }
 }
 
-/// Read one value; used by the `pread!` and `preadln!` macros.
+/// Read one value from standard input; used by the `pread!` and `preadln!`
+/// macros.
 pub fn read_into<T: PasRead>(target: &mut T) {
-    target.pas_read();
+    INPUT.with_borrow_mut(|input| target.pas_read(input));
 }
 
-/// Finish a `Readln`: skip the rest of the current line (or, if nothing has
-/// been read from it yet, a whole line).
+/// Finish a `Readln` from standard input.
 pub fn readln_end() {
-    INPUT.with_borrow_mut(|input| {
-        input.fill();
-        input.have_line = false;
-    });
+    INPUT.with_borrow_mut(LineReader::end_line);
 }
 
 /// `ReadKey` when there's no terminal to read keys from: take the next
@@ -184,18 +219,7 @@ pub fn readln_end() {
 /// program waiting for a key would otherwise wait forever.
 #[cfg(feature = "crt")]
 pub(crate) fn read_key_plain() -> u8 {
-    let key = INPUT.with_borrow_mut(|input| {
-        if !input.fill() {
-            return None;
-        }
-        if input.at_eoln() {
-            input.have_line = false;
-            return Some(13);
-        }
-        input.pos += 1;
-        Some(input.line[input.pos - 1])
-    });
-    match key {
+    match INPUT.with_borrow_mut(LineReader::next_char) {
         Some(key) => key,
         None => {
             eprintln!("[pascrust] ReadKey: no more input, stopping the program");
@@ -207,12 +231,12 @@ pub(crate) fn read_key_plain() -> u8 {
 
 /// Pascal `Eof` for standard input.
 pub fn eof() -> bool {
-    INPUT.with_borrow_mut(|input| !input.fill())
+    INPUT.with_borrow_mut(LineReader::eof)
 }
 
 /// Pascal `Eoln` for standard input.
 pub fn eoln() -> bool {
-    INPUT.with_borrow_mut(|input| !input.fill() || input.at_eoln())
+    INPUT.with_borrow_mut(LineReader::eoln)
 }
 
 /// Pascal `Read(a, b, ...)` from standard input. Arguments are `&mut`

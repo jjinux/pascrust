@@ -414,13 +414,30 @@ impl<'a> Codegen<'a> {
             });
         }
         let params = info.params.clone();
+        // Variables this call borrows mutably (`var` arguments).
+        let borrowed: Vec<String> = params
+            .iter()
+            .zip(args)
+            .filter(|(p, _)| self.a.var(**p).role == crate::sema::VarRole::Param(ParamMode::Var))
+            .map(|(_, arg)| root_key(arg))
+            .collect();
         for (param, arg) in params.iter().zip(args) {
             let var = self.a.var(*param);
             let ty = var.ty.clone();
             if var.role == crate::sema::VarRole::Param(ParamMode::Var) {
                 parts.push(self.place_mut(arg));
             } else {
-                parts.push(self.coerce(arg, &ty).0);
+                let code = self.coerce(arg, &ty).0;
+                // `f(&mut x, x.size)` borrows `x` mutably and then reads it,
+                // which Rust rejects; Pascal evaluates the argument first
+                // anyway. Compute it into a temporary before the call.
+                if borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root)) {
+                    let temp = self.a.sym(*param).rust_name.clone();
+                    self.pending.push(format!("let {temp} = {code};"));
+                    parts.push(temp);
+                } else {
+                    parts.push(code);
+                }
             }
         }
         parts.join(", ")
@@ -439,6 +456,30 @@ impl<'a> Codegen<'a> {
             ConstVal::Str(bytes) if *ty == Type::Char && bytes.len() == 1 => char_literal(bytes[0]),
             ConstVal::Str(bytes) => str_literal(bytes),
         }
+    }
+}
+
+/// The lowercase name of the variable a place starts from (`a` for
+/// `a[i].x`), or empty.
+fn root_key(e: &Expr) -> String {
+    match &e.kind {
+        ExprKind::Name(id) => id.key(),
+        ExprKind::Field(base, _) | ExprKind::Index(base, _) | ExprKind::Deref(base) => root_key(base),
+        _ => String::new(),
+    }
+}
+
+/// Does the expression mention the name `key` anywhere?
+fn mentions(e: &Expr, key: &str) -> bool {
+    match &e.kind {
+        ExprKind::Name(id) => id.key() == key,
+        ExprKind::Field(base, _) | ExprKind::Deref(base) => mentions(base, key),
+        ExprKind::Index(base, indexes) => mentions(base, key) || indexes.iter().any(|i| mentions(i, key)),
+        ExprKind::Call { callee, args } => mentions(callee, key) || args.iter().any(|a| mentions(a, key)),
+        ExprKind::Unary { operand, .. } => mentions(operand, key),
+        ExprKind::Binary { lhs, rhs, .. } => mentions(lhs, key) || mentions(rhs, key),
+        ExprKind::Format { value, .. } => mentions(value, key),
+        _ => false,
     }
 }
 

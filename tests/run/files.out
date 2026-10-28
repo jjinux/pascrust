@@ -1,0 +1,8 @@
+size 3 pos 3
+record 1: Bob 42, now at 2
+Ann Bob Carol 
+record 2 is now Dave
+1: first line
+2: 42 3.5
+3: appended
+number on line 2: 42

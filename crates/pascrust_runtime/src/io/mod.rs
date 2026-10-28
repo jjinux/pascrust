@@ -1,12 +1,15 @@
 //! Input and output: Pascal's `Write`/`Writeln` (and later `Read`/`Readln`
 //! and files).
 
+mod files;
 mod read;
 mod write;
 
+pub use files::{FileRecord, PFile, PText};
+
 #[cfg(feature = "crt")]
 pub(crate) use read::read_key_plain;
-pub use read::{PasRead, eof, eoln, read_into, readln_end};
+pub use read::{LineReader, PasRead, eof, eoln, read_into, readln_end};
 pub use write::{Formatted, PasWrite, w, wd};
 
 use std::io::Write;

@@ -32,6 +32,7 @@ pub fn generate(program: &Program, units: &[Unit], analysis: &Analysis, map: &So
         file: 0,
         vis: "",
         mutable_place: false,
+        pending: Vec::new(),
     };
     g.program(program);
     files.push(("main.rs".to_string(), std::mem::take(&mut g.out)));
@@ -60,6 +61,9 @@ struct Codegen<'a> {
     /// True while generating a place that will be written, so that `p^`
     /// borrows the record mutably (`p.get_mut()`).
     mutable_place: bool,
+    /// `let` statements to emit before the next line (see
+    /// `expr::call_args`).
+    pending: Vec<String>,
 }
 
 impl<'a> Codegen<'a> {
@@ -70,6 +74,14 @@ impl<'a> Codegen<'a> {
 
     /// Write one line at the current indentation.
     fn line(&mut self, text: impl AsRef<str>) {
+        // Temporaries that the code on this line needs come first.
+        for pending in std::mem::take(&mut self.pending) {
+            for _ in 0..self.indent {
+                self.out.push_str("    ");
+            }
+            self.out.push_str(&pending);
+            self.out.push('\n');
+        }
         for _ in 0..self.indent {
             self.out.push_str("    ");
         }
@@ -197,8 +209,22 @@ impl<'a> Codegen<'a> {
 
     /// `const` declarations become Rust `const` items.
     fn consts(&mut self, decls: &[Decl]) {
+        // Constants declared inside procedures go here too, at module level:
+        // a procedure's nested procedures become separate functions, and
+        // they need to see the constants. Their names are already unique.
+        fn collect<'d>(decls: &'d [Decl], out: &mut Vec<&'d Decl>) {
+            for decl in decls {
+                match decl {
+                    Decl::Const(_) => out.push(decl),
+                    Decl::Proc(ProcDecl { body: ProcBody::Block(body), .. }) => collect(&body.decls, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut all = Vec::new();
+        collect(decls, &mut all);
         let mut first = true;
-        for decl in decls {
+        for decl in all {
             let Decl::Const(c) = decl else { continue };
             if c.ty.is_some() {
                 continue; // typed constants are variables
@@ -319,6 +345,63 @@ impl<'a> Codegen<'a> {
                 }
                 _ => {}
             }
+            if self.stored_in_files().contains(&ty.rust()) {
+                self.file_record(ty);
+            }
+        }
+    }
+
+    /// The Rust names of the record, object and enum types that some
+    /// `file of T` stores, directly or as part of `T`.
+    fn stored_in_files(&self) -> std::collections::HashSet<String> {
+        fn visit(ty: &Type, found: &mut std::collections::HashSet<String>) {
+            match ty {
+                Type::Record(r) => {
+                    if found.insert(r.rust_name.clone()) {
+                        r.fields.iter().for_each(|f| visit(&f.ty, found));
+                    }
+                }
+                Type::Object(o) => {
+                    if found.insert(o.rust_name.clone()) {
+                        o.fields.iter().for_each(|f| visit(&f.ty, found));
+                        if let Some(parent) = &o.parent {
+                            visit(&Type::Object(parent.clone()), found);
+                        }
+                    }
+                }
+                Type::Enum(e) => {
+                    found.insert(e.rust_name.clone());
+                }
+                Type::Array(a) => visit(&a.elem, found),
+                _ => {}
+            }
+        }
+        let mut found = std::collections::HashSet::new();
+        for ty in &self.a.file_types {
+            visit(ty, &mut found);
+        }
+        found
+    }
+
+    /// `file_record!(...)`: let a `file of T` store this type.
+    fn file_record(&mut self, ty: &Type) {
+        self.blank();
+        if self.first_time("file_record") {
+            self.line("// `file of` needs to turn records into bytes and back. This runtime macro");
+            self.line("// implements that (the `FileRecord` trait) field by field.");
+        }
+        match ty {
+            Type::Enum(e) => self.line(format!("file_record!(enum {});", e.rust_name)),
+            Type::Record(r) => {
+                let fields: Vec<&str> = r.fields.iter().map(|f| f.rust_name.as_str()).collect();
+                self.line(format!("file_record!({} {{ {} }});", r.rust_name, fields.join(", ")));
+            }
+            Type::Object(o) => {
+                let mut fields: Vec<&str> = o.parent.iter().map(|_| "base").collect();
+                fields.extend(o.fields.iter().map(|f| f.rust_name.as_str()));
+                self.line(format!("file_record!({} {{ {} }});", o.rust_name, fields.join(", ")));
+            }
+            _ => {}
         }
     }
 
@@ -407,7 +490,12 @@ impl<'a> Codegen<'a> {
             }
         }
 
-        let mut aliases: Vec<_> = self.a.capture_aliases.iter().filter(|((p, _), _)| *p == pid).collect();
+        let mut aliases: Vec<_> = self
+            .a
+            .capture_aliases
+            .iter()
+            .filter(|((p, _), param)| *p == pid && self.a.used_aliases.contains(&(pid, **param)))
+            .collect();
         aliases.sort();
         for ((_, outer), param) in aliases {
             self.line("///");
@@ -427,7 +515,6 @@ impl<'a> Codegen<'a> {
         };
         self.line(format!("{}fn {}({params}){ret} {{", self.vis, info.rust_name));
         self.indent += 1;
-        self.local_consts(&body.decls);
         self.locals(pid);
         self.stmts(&body.body);
         if info.result.is_some() {
@@ -462,27 +549,6 @@ impl<'a> Codegen<'a> {
             });
         }
         params.join(", ")
-    }
-
-    /// Constants declared inside a procedure become `const` items inside the
-    /// function body; Rust allows items there and scopes them to the body.
-    fn local_consts(&mut self, decls: &[Decl]) {
-        for decl in decls {
-            let Decl::Const(c) = decl else { continue };
-            if c.ty.is_some() {
-                continue;
-            }
-            let sym = self.a.decls[&c.name.span.start];
-            let SymKind::Const { value, ty } = &self.a.sym(sym).kind else {
-                continue;
-            };
-            let rust_ty = match ty {
-                Type::StrLit(_) => "&str".to_string(),
-                other => other.rust(),
-            };
-            let value = self.const_value(value, ty);
-            self.line(format!("const {}: {rust_ty} = {value};", self.a.sym(sym).rust_name));
-        }
     }
 
     /// `let` statements for a procedure's local variables.
@@ -552,7 +618,7 @@ impl<'a> Codegen<'a> {
             }
             StmtKind::If { .. } => self.if_chain(s, ""),
             StmtKind::While { cond, body } => {
-                let cond = self.expr(cond).0;
+                let cond = self.condition(cond);
                 self.line(format!("while {cond} {{"));
                 self.block_body(body);
                 self.line("}");
@@ -562,7 +628,7 @@ impl<'a> Codegen<'a> {
                 self.line("loop {");
                 self.indent += 1;
                 self.stmts(body);
-                let cond = self.expr(cond).0;
+                let cond = self.condition(cond);
                 self.line(format!("if {cond} {{"));
                 self.line("    break;");
                 self.line("}");
@@ -648,11 +714,23 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// A condition. If it needed temporaries, they go in a block expression
+    /// (`{ let n = ...; f(&mut x, n) }`): a loop condition is evaluated
+    /// every time round, so they can't be hoisted above the loop.
+    fn condition(&mut self, cond: &Expr) -> String {
+        let code = self.expr(cond).0;
+        if self.pending.is_empty() {
+            return code;
+        }
+        let lets = std::mem::take(&mut self.pending).join(" ");
+        format!("{{ {lets} {code} }}")
+    }
+
     /// `if`, with `else if` chains flattened the way a person would write
     /// them.
     fn if_chain(&mut self, s: &Stmt, prefix: &str) {
         let StmtKind::If { cond, then_branch, else_branch } = &s.kind else { unreachable!() };
-        let cond = self.expr(cond).0;
+        let cond = self.condition(cond);
         self.line(format!("{prefix}if {cond} {{"));
         self.block_body(then_branch);
         match else_branch.as_deref() {
@@ -863,6 +941,8 @@ fn default_value(ty: &Type) -> String {
         Type::Array(a) if a.alias.is_none() => "PArray::default()".to_string(),
         Type::Array(_) | Type::Record(_) | Type::Object(_) => format!("{}::default()", ty.rust()),
         Type::Pointer(_) => "Ptr::nil()".to_string(),
+        Type::Text => "PText::default()".to_string(),
+        Type::File(_) => "PFile::default()".to_string(),
         Type::Nil | Type::Void | Type::Error => "()".to_string(),
     }
 }

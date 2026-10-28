@@ -22,7 +22,7 @@
 //! keep propagating needs from callees to callers until nothing changes. That
 //! also handles recursion, which a single pass in call order couldn't.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use super::*;
 use crate::diag::Diagnostic;
@@ -35,9 +35,13 @@ pub(super) fn lift(a: &mut Analysis) {
     // (or something it calls) modifies.
     let mut need: Vec<BTreeSet<SymId>> = Vec::with_capacity(n);
     let mut write_need: Vec<BTreeSet<SymId>> = Vec::with_capacity(n);
+    // A procedure "provides" a variable it owns, or one it receives through
+    // a parameter that always stands for it (see `find_param_aliases`).
+    let provided =
+        |a: &Analysis, p: ProcId, v: SymId| owner(a, v) == p || a.capture_aliases.contains_key(&(p, a.canonical(v)));
     for (p, info) in a.procs.iter().enumerate() {
-        need.push(info.uses.iter().copied().filter(|&v| owner(a, v) != p).collect());
-        write_need.push(info.writes.iter().copied().filter(|&v| owner(a, v) != p).collect());
+        need.push(info.uses.iter().copied().filter(|&v| !provided(a, p, v)).collect());
+        write_need.push(info.writes.iter().copied().filter(|&v| !provided(a, p, v)).collect());
     }
 
     let mut changed = true;
@@ -48,16 +52,26 @@ pub(super) fn lift(a: &mut Analysis) {
                 // Variables q needs that p doesn't own must come from p's
                 // own caller, so p needs them too.
                 for &v in &need[q].clone() {
-                    if owner(a, v) != p && is_ancestor(a, owner(a, v), p) && need[p].insert(v) {
+                    if !provided(a, p, v) && is_ancestor(a, owner(a, v), p) && need[p].insert(v) {
                         changed = true;
                     }
                 }
                 for &v in &write_need[q].clone() {
-                    if owner(a, v) != p && is_ancestor(a, owner(a, v), p) && write_need[p].insert(v) {
+                    if !provided(a, p, v) && is_ancestor(a, owner(a, v), p) && write_need[p].insert(v) {
                         changed = true;
                     }
                 }
             }
+        }
+    }
+
+    // Note which parameter aliases matter: those through which the procedure
+    // (or something it calls) actually reaches the outer variable.
+    for (&(p, target), &param) in &a.capture_aliases.clone() {
+        let reaches = |v: &SymId| owner(a, *v) != p && a.canonical(*v) == target;
+        let used = a.procs[p].uses.iter().any(reaches) || a.procs[p].calls.iter().any(|&q| need[q].iter().any(reaches));
+        if used {
+            a.used_aliases.insert((p, param));
         }
     }
 
@@ -152,39 +166,69 @@ fn is_ancestor(a: &Analysis, ancestor: ProcId, p: ProcId) -> bool {
     false
 }
 
-/// Find procedures that receive an outer variable twice: once as a
-/// captured variable and once through a `var` parameter, because every call
-/// passes that very variable by `var`. (`life.pas` does this: `Pause` takes
-/// the global `generations` as a `var` parameter, and also calls a procedure
-/// that reads the global directly.) Rust forbids holding `&mut generations`
-/// alongside a second reference to it. But since the two are always the same
-/// variable, the procedure can drop the capture and use the parameter for
-/// both. That's exactly Pascal's meaning, with no aliasing left for Rust to
-/// object to.
-pub(super) fn unify_aliases(a: &mut Analysis, sites: &[CallSite]) {
-    for p in 0..a.procs.len() {
-        let calls: Vec<&CallSite> = sites.iter().filter(|s| s.callee == p).collect();
-        if calls.is_empty() {
-            continue;
+/// Find `var` parameters that every call binds to the same variable.
+///
+/// `life.pas` passes the global `generations` to `Pause` as a `var`
+/// parameter, and `Pause` also calls a procedure that reads the global
+/// directly. In Rust, `Pause` would then hold `&mut generations` alongside a
+/// second reference to it, which the borrow checker forbids. But if *every*
+/// call passes that very variable, the parameter and the variable are the
+/// same storage, so the procedure can simply use the parameter wherever the
+/// Pascal code names the variable. That's exactly Pascal's meaning, with no
+/// aliasing left for Rust to object to.
+///
+/// The binding can be indirect (`examples/database/filesys.pas`): `Editor`
+/// receives the global `FileSystem` as a parameter and passes its parameter
+/// on to a nested procedure, so every parameter in that chain is the global.
+/// The chains are followed to a fixed point.
+pub(super) fn find_param_aliases(a: &mut Analysis, sites: &[CallSite]) {
+    // `canon[param]` = the variable that parameter always stands for.
+    let mut canon: HashMap<SymId, SymId> = HashMap::new();
+    let resolve = |canon: &HashMap<SymId, SymId>, mut sym: SymId| {
+        while let Some(&next) = canon.get(&sym) {
+            sym = next;
         }
-        for cap in a.procs[p].captures.clone() {
-            let var_params = a.procs[p].params.iter().copied().filter(|&param| {
-                a.var(param).role == VarRole::Param(crate::ast::ParamMode::Var) && a.var(param).ty == a.var(cap.sym).ty
-            });
-            // A parameter that every call binds to the captured variable
-            // itself (or, for recursive calls, to the parameter again).
-            let alias = var_params.into_iter().find(|&param| {
-                calls.iter().all(|site| {
-                    site.var_args
-                        .iter()
-                        .any(|arg| arg.param == param && arg.whole && (arg.root == cap.sym || arg.root == param))
-                })
-            });
-            if let Some(param) = alias {
-                a.capture_aliases.insert((p, cap.sym), param);
-                a.procs[p].captures.retain(|c| c.sym != cap.sym);
+        sym
+    };
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for p in 0..a.procs.len() {
+            let calls: Vec<&CallSite> = sites.iter().filter(|s| s.callee == p).collect();
+            if calls.is_empty() {
+                continue;
+            }
+            for &param in &a.procs[p].params {
+                if canon.contains_key(&param) || a.var(param).role != VarRole::Param(crate::ast::ParamMode::Var) {
+                    continue;
+                }
+                // The variable each call passes for this parameter. A
+                // recursive call passing the parameter itself doesn't count.
+                let mut bound_to = HashSet::new();
+                let mut every_call_binds_whole_variable = true;
+                for site in &calls {
+                    match site.var_args.iter().find(|arg| arg.param == param) {
+                        Some(arg) if arg.whole => {
+                            let root = resolve(&canon, arg.root);
+                            if root != param {
+                                bound_to.insert(root);
+                            }
+                        }
+                        _ => every_call_binds_whole_variable = false,
+                    }
+                }
+                if every_call_binds_whole_variable && bound_to.len() == 1 {
+                    canon.insert(param, *bound_to.iter().next().unwrap());
+                    changed = true;
+                }
             }
         }
+    }
+    for &param in canon.keys() {
+        let p = a.var(param).owner;
+        let target = resolve(&canon, param);
+        a.capture_aliases.insert((p, target), param);
+        a.param_aliases.insert(param, target);
     }
 }
 
