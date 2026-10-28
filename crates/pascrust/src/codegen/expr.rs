@@ -287,7 +287,7 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    fn user_call(&mut self, p: usize, args: &[Expr]) -> String {
+    pub(super) fn user_call(&mut self, p: usize, args: &[Expr]) -> String {
         let info = &self.a.procs[p];
         let mut parts = Vec::new();
         // Captured variables first, in the callee's order.

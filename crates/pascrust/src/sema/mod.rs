@@ -28,7 +28,7 @@ pub mod units;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use crate::ast::{NodeId, ParamMode, ProcKind, Program};
+use crate::ast::{NodeId, ParamMode, ProcKind, Program, Unit};
 use crate::diag::{Diagnostic, Span};
 pub use builtins::Builtin;
 pub use types::{IntKind, Type};
@@ -168,6 +168,8 @@ pub struct Analysis {
     /// the outer variable is reached through the parameter, because every
     /// call passes exactly that variable for it. See `lift::unify_aliases`.
     pub capture_aliases: HashMap<(ProcId, SymId), SymId>,
+    /// The user units, in dependency order.
+    pub units: Vec<UnitInfo>,
     /// The value of every `case` label, computed at compile time.
     pub case_labels: HashMap<NodeId, ConstVal>,
     /// Variables that need no `let` declaration because they're only used as
@@ -231,14 +233,26 @@ impl Analysis {
 }
 
 /// Analyze a parsed program.
-pub fn analyze(program: &Program) -> Result<Analysis, Vec<Diagnostic>> {
+/// Analyze a program and the units it uses. `units` must be in dependency
+/// order: each unit after the units it uses.
+pub fn analyze(program: &Program, units: &[Unit]) -> Result<Analysis, Vec<Diagnostic>> {
     let mut checker = check::Checker::new();
-    checker.program(program);
+    checker.program(program, units);
     let (mut analysis, mut errors, call_sites) = checker.finish();
     lift::lift(&mut analysis);
     lift::unify_aliases(&mut analysis, &call_sites);
     errors.extend(lift::check_aliasing(&analysis, &call_sites));
     if errors.is_empty() { Ok(analysis) } else { Err(errors) }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnitInfo {
+    pub name: String,
+    /// The Rust module the unit becomes.
+    pub module: String,
+    /// The procedure made from the unit's initialization part, if it has one.
+    pub init: Option<ProcId>,
+    pub span: Span,
 }
 
 /// One `var` argument of a call.

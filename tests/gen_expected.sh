@@ -10,7 +10,11 @@ trap 'rm -rf "$build"' EXIT
 for src in "$@"; do
     name=$(basename "$src" .pas)
     dir=$(dirname "$src")
-    fpc -Mtp -v0 -FE"$build" -o"$build/$name" "$src" >/dev/null
+    if ! fpc -Mtp -v0 -FE"$build" -o"$build/$name" "$src" > "$build/fpc.log" 2>&1; then
+        grep -v "macosx_version_min\|multiply_defined" "$build/fpc.log" >&2
+        echo "$src: fpc failed" >&2
+        exit 1
+    fi
     input="$dir/$name.in"
     [ -f "$input" ] || input=/dev/null
     set +e

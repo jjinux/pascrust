@@ -56,7 +56,7 @@ fn run(command: Cmd) -> Result<ExitCode, String> {
     match command {
         Cmd::Emit { file } => {
             let generated = pascrust::driver::transpile_file(&file)?;
-            print!("{}", generated.main_rs);
+            print!("{}", generated.combined());
             Ok(ExitCode::SUCCESS)
         }
         Cmd::Build { file, out } => {

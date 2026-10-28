@@ -44,10 +44,18 @@ fn run_tests() {
     for path in &programs {
         match pascrust::driver::transpile_file(path) {
             Ok(generated) => {
-                std::fs::write(bin_dir.join(format!("{}.rs", generated.name)), &generated.main_rs).unwrap();
+                // Each program is a binary in its own directory, so its unit
+                // modules can sit next to its `main.rs`.
+                let dir = bin_dir.join(&generated.name);
+                std::fs::create_dir_all(&dir).unwrap();
+                for (name, code) in &generated.files {
+                    std::fs::write(dir.join(name), code).unwrap();
+                }
                 features.extend(generated.features);
                 built.push((path.clone(), generated.name));
             }
+            // Units are compiled as part of the programs that use them.
+            Err(message) if message.contains("is a unit") => {}
             Err(message) => failures.push(format!("{}: transpile failed:\n{message}", path.display())),
         }
     }

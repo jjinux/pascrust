@@ -37,6 +37,30 @@ pub struct Program {
     pub block: Block,
 }
 
+/// A Turbo Pascal unit: a separately written module with a public
+/// `interface` part (declarations other code can use) and a private
+/// `implementation` part.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unit {
+    pub name: Ident,
+    pub interface_uses: Vec<Ident>,
+    /// Interface declarations. Procedures here are headings only; their
+    /// bodies come in the implementation part.
+    pub interface: Vec<Decl>,
+    pub implementation_uses: Vec<Ident>,
+    pub implementation: Vec<Decl>,
+    /// The initialization part: statements run once, before the main
+    /// program starts. Empty if there is none.
+    pub init: Vec<Stmt>,
+    pub span: Span,
+}
+
+impl Unit {
+    pub fn uses(&self) -> impl Iterator<Item = &Ident> {
+        self.interface_uses.iter().chain(&self.implementation_uses)
+    }
+}
+
 /// Declarations followed by a `begin ... end` body. Pascal allows the
 /// declaration sections (`const`, `type`, `var`, procedures) in any order and
 /// any number of times, so they're kept as a list in source order.
@@ -112,6 +136,9 @@ pub enum TypeExpr {
     Set(Box<TypeExpr>, Span),
     /// `file of T`, or plain `file` (untyped).
     File(Option<Box<TypeExpr>>, Span),
+    /// A Turbo Pascal 5.5 `object`: a record with procedures attached
+    /// ("methods"), optionally inheriting from a parent object type.
+    Object { parent: Option<Ident>, fields: Vec<FieldDecl>, methods: Vec<ProcDecl>, span: Span },
 }
 
 impl TypeExpr {
@@ -125,7 +152,8 @@ impl TypeExpr {
             | TypeExpr::Record(_, span)
             | TypeExpr::Pointer(_, span)
             | TypeExpr::Set(_, span)
-            | TypeExpr::File(_, span) => *span,
+            | TypeExpr::File(_, span)
+            | TypeExpr::Object { span, .. } => *span,
         }
     }
 }
@@ -147,6 +175,9 @@ pub enum ProcKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcDecl {
     pub kind: ProcKind,
+    /// For a method implementation, `procedure Queue.AddQ(...)`, the object
+    /// type it belongs to (`Queue`).
+    pub owner: Option<Ident>,
     pub name: Ident,
     pub params: Vec<ParamGroup>,
     /// The result type, for functions.
@@ -166,6 +197,9 @@ pub enum ProcBody {
     Forward,
     /// `external;`: implemented outside Pascal.
     External,
+    /// A heading with no body: in a unit's interface, or a method inside an
+    /// `object` type. The body comes later.
+    Heading,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -64,7 +64,43 @@ impl Parser {
                 let end = self.expect(&TokenKind::RParen)?;
                 Ok(TypeExpr::Enum(names, start.to(end)))
             }
-            TokenKind::Keyword(Keyword::Object) => Err(Diagnostic::new(start, "object types are not supported yet")),
+            TokenKind::Keyword(Keyword::Object) => {
+                self.bump();
+                let parent = if self.eat(&TokenKind::LParen) {
+                    let parent = self.expect_ident()?;
+                    self.expect(&TokenKind::RParen)?;
+                    Some(parent)
+                } else {
+                    None
+                };
+                let mut fields = Vec::new();
+                let mut methods = Vec::new();
+                loop {
+                    match self.peek() {
+                        TokenKind::Ident(name)
+                            if name.eq_ignore_ascii_case("private") || name.eq_ignore_ascii_case("public") =>
+                        {
+                            // Visibility sections don't change what a program
+                            // does, so they're ignored.
+                            self.bump();
+                        }
+                        TokenKind::Ident(_) => {
+                            let names = self.ident_list()?;
+                            self.expect(&TokenKind::Colon)?;
+                            let ty = self.type_expr()?;
+                            self.expect(&TokenKind::Semi)?;
+                            fields.push(FieldDecl { names, ty });
+                        }
+                        TokenKind::Keyword(
+                            Keyword::Procedure | Keyword::Function | Keyword::Constructor | Keyword::Destructor,
+                        ) => methods.push(self.proc_decl(true)?),
+                        _ => break,
+                    }
+                }
+                let end = self.expect_keyword(Keyword::End)?;
+                Ok(TypeExpr::Object { parent, fields, methods, span: start.to(end) })
+            }
+
             _ => {
                 // Either a type name or a subrange `lo..hi`. Both ends of a
                 // subrange are constant expressions (`1..maxcol - 1`,

@@ -43,9 +43,34 @@ pub struct ParsedProgram {
 
 /// Lex and parse a complete program.
 pub fn parse_program(source: &[u8]) -> PResult<ParsedProgram> {
-    let mut parser = Parser::new(lexer::tokenize(source)?);
-    let program = parser.program()?;
-    Ok(ParsedProgram { program, directives: parser.directives })
+    match parse_file(source, 0)? {
+        (SourceFile::Program(program), directives) => Ok(ParsedProgram { program, directives }),
+        (SourceFile::Unit(unit), _) => Err(Diagnostic::new(unit.name.span, "expected a program, found a unit")),
+    }
+}
+
+/// A source file is either a program or a unit.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SourceFile {
+    Program(Program),
+    Unit(Unit),
+}
+
+/// Lex and parse a program or unit. `base` is added to every span, so that
+/// spans from different files don't overlap (see [`crate::diag::SourceMap`]).
+/// Node ids start at `base` too, which keeps them unique across files.
+pub fn parse_file(source: &[u8], base: usize) -> PResult<(SourceFile, Vec<Directive>)> {
+    let shift = |span: Span| Span::new(span.start + base, span.end + base);
+    let tokens = lexer::tokenize(source).map_err(|d| Diagnostic::new(shift(d.span), d.message))?;
+    let tokens = tokens.into_iter().map(|t| Token { span: shift(t.span), ..t }).collect();
+    let mut parser = Parser::new(tokens);
+    parser.next_id = base as NodeId;
+    let file = if parser.at_keyword(Keyword::Unit) {
+        SourceFile::Unit(parser.unit()?)
+    } else {
+        SourceFile::Program(parser.program()?)
+    };
+    Ok((file, parser.directives))
 }
 
 pub(crate) struct Parser {
@@ -188,6 +213,30 @@ impl Parser {
         Ok(Program { name, uses, block })
     }
 
+    fn unit(&mut self) -> PResult<Unit> {
+        let start = self.expect_keyword(Keyword::Unit)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::Semi)?;
+        self.expect_keyword(Keyword::Interface)?;
+        let interface_uses = self.uses_clause()?;
+        let interface = self.declarations(true)?;
+        self.expect_keyword(Keyword::Implementation)?;
+        let implementation_uses = self.uses_clause()?;
+        let implementation = self.declarations(false)?;
+        let init = if self.eat_keyword(Keyword::Begin) { self.statement_list()? } else { Vec::new() };
+        self.expect_keyword(Keyword::End)?;
+        self.expect(&TokenKind::Dot)?;
+        Ok(Unit {
+            name,
+            interface_uses,
+            interface,
+            implementation_uses,
+            implementation,
+            init,
+            span: start.to(self.prev_span()),
+        })
+    }
+
     fn uses_clause(&mut self) -> PResult<Vec<Ident>> {
         if !self.eat_keyword(Keyword::Uses) {
             return Ok(Vec::new());
@@ -198,21 +247,7 @@ impl Parser {
     }
 
     fn block(&mut self) -> PResult<Block> {
-        let mut decls = Vec::new();
-        loop {
-            match self.peek() {
-                TokenKind::Keyword(Keyword::Const) => self.const_section(&mut decls)?,
-                TokenKind::Keyword(Keyword::Type) => self.type_section(&mut decls)?,
-                TokenKind::Keyword(Keyword::Var) => self.var_section(&mut decls)?,
-                TokenKind::Keyword(Keyword::Procedure | Keyword::Function) => {
-                    decls.push(Decl::Proc(self.proc_decl()?));
-                }
-                TokenKind::Keyword(Keyword::Label) => {
-                    return Err(Diagnostic::new(self.span(), "labels and `goto` are not supported"));
-                }
-                _ => break,
-            }
-        }
+        let decls = self.declarations(false)?;
         let start = self.expect_keyword(Keyword::Begin)?;
         let body = self.statement_list()?;
         let end = self.expect_keyword(Keyword::End)?;
@@ -220,6 +255,28 @@ impl Parser {
     }
 
     // ----- Declarations --------------------------------------------------
+
+    /// Declaration sections, in any order. In a unit's interface
+    /// (`headings_only`), procedures are just headings.
+    fn declarations(&mut self, headings_only: bool) -> PResult<Vec<Decl>> {
+        let mut decls = Vec::new();
+        loop {
+            match self.peek() {
+                TokenKind::Keyword(Keyword::Const) => self.const_section(&mut decls)?,
+                TokenKind::Keyword(Keyword::Type) => self.type_section(&mut decls)?,
+                TokenKind::Keyword(Keyword::Var) => self.var_section(&mut decls)?,
+                TokenKind::Keyword(
+                    Keyword::Procedure | Keyword::Function | Keyword::Constructor | Keyword::Destructor,
+                ) => {
+                    decls.push(Decl::Proc(self.proc_decl(headings_only)?));
+                }
+                TokenKind::Keyword(Keyword::Label) => {
+                    return Err(Diagnostic::new(self.span(), "labels and `goto` are not supported"));
+                }
+                _ => return Ok(decls),
+            }
+        }
+    }
 
     fn const_section(&mut self, decls: &mut Vec<Decl>) -> PResult<()> {
         self.expect_keyword(Keyword::Const)?;
@@ -313,15 +370,25 @@ impl Parser {
         Ok(())
     }
 
-    fn proc_decl(&mut self) -> PResult<ProcDecl> {
+    /// A procedure or function. With `heading_only`, stop after the heading
+    /// (as in a unit interface or an `object` type).
+    pub(super) fn proc_decl(&mut self, heading_only: bool) -> PResult<ProcDecl> {
         let start = self.span();
-        let kind = if self.eat_keyword(Keyword::Function) {
-            ProcKind::Function
-        } else {
-            self.expect_keyword(Keyword::Procedure)?;
-            ProcKind::Procedure
+        // Constructors and destructors only matter for virtual methods, which
+        // need a hidden table pointer set up; for the static objects pascrust
+        // supports they're ordinary procedures.
+        let kind = match self.bump().kind {
+            TokenKind::Keyword(Keyword::Function) => ProcKind::Function,
+            TokenKind::Keyword(Keyword::Procedure | Keyword::Constructor | Keyword::Destructor) => ProcKind::Procedure,
+            _ => return Err(Diagnostic::new(start, "expected `procedure` or `function`")),
         };
-        let name = self.expect_ident()?;
+        let mut name = self.expect_ident()?;
+        // `procedure Queue.AddQ`: the body of a method of object type `Queue`.
+        let mut owner = None;
+        if self.eat(&TokenKind::Dot) {
+            owner = Some(name);
+            name = self.expect_ident()?;
+        }
         let params = if self.at(&TokenKind::LParen) { self.param_list()? } else { Vec::new() };
         // The result type may be left out when repeating the header of a
         // function that was declared `forward`.
@@ -341,6 +408,8 @@ impl Parser {
                 body = Some(ProcBody::External);
             } else if self.peek().is_ident("far") || self.peek().is_ident("near") {
                 self.bump();
+            } else if self.peek().is_ident("virtual") {
+                return Err(Diagnostic::new(self.span(), "virtual methods are not supported yet"));
             } else {
                 break;
             }
@@ -348,13 +417,14 @@ impl Parser {
         }
         let body = match body {
             Some(body) => body,
+            None if heading_only => ProcBody::Heading,
             None => {
                 let block = self.block()?;
                 self.expect(&TokenKind::Semi)?;
                 ProcBody::Block(Box::new(block))
             }
         };
-        Ok(ProcDecl { kind, name, params, ret, body, span: start.to(self.prev_span()), header_span })
+        Ok(ProcDecl { kind, owner, name, params, ret, body, span: start.to(self.prev_span()), header_span })
     }
 
     fn param_list(&mut self) -> PResult<Vec<ParamGroup>> {

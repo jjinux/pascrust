@@ -73,3 +73,66 @@ fn source_line(source: &[u8], offset: usize) -> String {
     // code page 437) with `?`-like replacement characters instead of failing.
     String::from_utf8_lossy(&source[start..end]).trim_end_matches('\r').to_string()
 }
+
+/// All the source files of a program, laid end to end in one big "address
+/// space". Each file starts at its own *base* offset, so a [`Span`] alone
+/// identifies both the file and the position in it. (rustc's own
+/// `SourceMap` works the same way.)
+#[derive(Debug, Default)]
+pub struct SourceMap {
+    files: Vec<SourceFile>,
+}
+
+#[derive(Debug)]
+pub struct SourceFile {
+    pub name: String,
+    pub base: usize,
+    pub text: Vec<u8>,
+}
+
+impl SourceMap {
+    pub fn new() -> SourceMap {
+        SourceMap::default()
+    }
+
+    /// Add a file and return its base offset.
+    pub fn add(&mut self, name: impl Into<String>, text: Vec<u8>) -> usize {
+        // Leave a gap of one byte so that an end-of-file span of one file
+        // never touches the next file.
+        let base = self.files.last().map_or(0, |f| f.base + f.text.len() + 1);
+        self.files.push(SourceFile { name: name.into(), base, text });
+        base
+    }
+
+    /// The index of the file containing `offset`.
+    pub fn file_index(&self, offset: usize) -> usize {
+        // `partition_point` is a binary search: the number of files whose
+        // base is <= offset, so the last of those contains it.
+        self.files.partition_point(|f| f.base <= offset).saturating_sub(1)
+    }
+
+    pub fn file(&self, index: usize) -> &SourceFile {
+        &self.files[index]
+    }
+
+    /// The source text of a span.
+    pub fn slice(&self, span: Span) -> &[u8] {
+        let file = &self.files[self.file_index(span.start)];
+        let start = (span.start - file.base).min(file.text.len());
+        let end = (span.end.saturating_sub(file.base)).clamp(start, file.text.len());
+        &file.text[start..end]
+    }
+
+    /// Render a diagnostic with the right file name and line.
+    pub fn render(&self, d: &Diagnostic) -> String {
+        if self.files.is_empty() {
+            return d.message.clone();
+        }
+        let file = &self.files[self.file_index(d.span.start)];
+        let local = Diagnostic::new(
+            Span::new(d.span.start - file.base, d.span.end.saturating_sub(file.base)),
+            d.message.clone(),
+        );
+        local.render(&file.name, &file.text)
+    }
+}

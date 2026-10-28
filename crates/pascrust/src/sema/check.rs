@@ -37,6 +37,10 @@ pub(super) struct Checker {
     used_fn_names: HashSet<String>,
     used_const_names: HashSet<String>,
     used_type_names: HashSet<String>,
+    /// The Rust module name of the unit being checked, if any.
+    current_unit: Option<String>,
+    /// Each user unit's interface: what a `uses` clause makes visible.
+    unit_exports: HashMap<String, HashMap<String, SymId>>,
     /// True while resolving the right-hand side of a `type` declaration.
     declaring_type: bool,
     /// Bounds of type names declared as subranges (`Index = 1..10`).
@@ -59,6 +63,8 @@ impl Checker {
             used_const_names: HashSet::new(),
             used_type_names: HashSet::new(),
             declaring_type: false,
+            unit_exports: HashMap::new(),
+            current_unit: None,
             subrange_types: HashMap::new(),
             errors: Vec::new(),
             call_sites: Vec::new(),
@@ -205,19 +211,92 @@ impl Checker {
 
     // ----- Programs and declarations ---------------------------------------
 
-    pub fn program(&mut self, program: &Program) {
-        for unit in &program.uses {
-            match super::units::unit(&unit.key()) {
-                Some((routines, consts)) => self.declare_unit_routines(routines, consts),
-                None => self.error(unit.span, format!("unit `{}` is not supported yet", unit.name)),
-            }
+    pub fn program(&mut self, program: &Program, units: &[Unit]) {
+        for unit in units {
+            self.unit(unit);
         }
+        self.use_units(&program.uses);
         self.scopes.push(HashMap::new());
         self.block(&program.block);
     }
 
+    /// Make the units in a `uses` clause visible: standard units' routines,
+    /// or a user unit's interface (as a new scope, so a later unit's names
+    /// hide an earlier one's, which is Turbo Pascal's rule).
+    fn use_units(&mut self, uses: &[Ident]) {
+        for unit in uses {
+            if let Some((routines, consts)) = super::units::unit(&unit.key()) {
+                self.declare_unit_routines(routines, consts);
+            } else if let Some(exports) = self.unit_exports.get(&unit.key()) {
+                self.scopes.push(exports.clone());
+            } else {
+                self.error(unit.span, format!("unit `{}` is not supported yet", unit.name));
+            }
+        }
+    }
+
+    fn unit(&mut self, unit: &Unit) {
+        self.current_unit = Some(snake_case(&unit.name.name));
+        let depth = self.scopes.len();
+        self.use_units(&unit.interface_uses);
+        self.scopes.push(HashMap::new());
+        self.decls(&unit.interface);
+        // Everything declared so far is the unit's public interface.
+        let exports = self.scopes.last().unwrap().clone();
+        let own_scope = self.scopes.pop().unwrap();
+        self.use_units(&unit.implementation_uses);
+        self.scopes.push(own_scope);
+        self.decls(&unit.implementation);
+        self.check_forwards();
+
+        // The initialization part runs before the main program. It's
+        // treated as a procedure of its own, so it can be lifted like one.
+        let mut init = None;
+        if !unit.init.is_empty() {
+            let pid = self.a.procs.len();
+            let rust_name = Self::unique_in(&mut self.used_fn_names, format!("{}_init", snake_case(&unit.name.name)));
+            self.a.procs.push(ProcInfo {
+                name: format!("{} initialization", unit.name.name),
+                rust_name,
+                kind: ProcKind::Procedure,
+                parent: Some(MAIN),
+                params: Vec::new(),
+                ret: None,
+                result: None,
+                locals: Vec::new(),
+                uses: Default::default(),
+                writes: Default::default(),
+                calls: Default::default(),
+                captures: Vec::new(),
+                has_body: true,
+                span: unit.name.span,
+            });
+            self.used_names.push(HashSet::new());
+            self.a.procs[MAIN].calls.insert(pid);
+            self.proc_stack.push(pid);
+            self.stmts(&unit.init);
+            self.proc_stack.pop();
+            init = Some(pid);
+        }
+        self.scopes.truncate(depth);
+        self.current_unit = None;
+        self.unit_exports.insert(unit.name.key(), exports);
+        self.a.units.push(UnitInfo {
+            name: unit.name.name.clone(),
+            module: snake_case(&unit.name.name),
+            init,
+            span: unit.span,
+        });
+    }
+
     fn block(&mut self, block: &Block) {
-        for decl in &block.decls {
+        self.decls(&block.decls);
+        self.check_forwards();
+        self.stmts(&block.body);
+    }
+
+    fn decls(&mut self, decls: &[Decl]) {
+        for decl in decls {
             match decl {
                 Decl::Const(c) => self.const_decl(c),
                 Decl::Type(t) => {
@@ -251,15 +330,23 @@ impl Checker {
                 Decl::Proc(p) => self.proc_decl(p),
             }
         }
-        for (key, sym) in self.scopes.last().unwrap().clone() {
+    }
+
+    /// Every procedure declared `forward` (or in a unit interface) in the
+    /// current scope must have been given a body.
+    fn check_forwards(&mut self) {
+        let mut missing: Vec<(Span, String)> = Vec::new();
+        for (key, &sym) in self.scopes.last().unwrap() {
             if let SymKind::Proc(p) = self.a.symbols[sym].kind
                 && !self.a.procs[p].has_body
             {
-                let span = self.a.procs[p].span;
-                self.error(span, format!("`{key}` was declared `forward` but never defined"));
+                missing.push((self.a.procs[p].span, key.clone()));
             }
         }
-        self.stmts(&block.body);
+        missing.sort_by_key(|(span, _)| span.start);
+        for (span, key) in missing {
+            self.error(span, format!("`{key}` is declared but its body is never defined"));
+        }
     }
 
     fn const_decl(&mut self, c: &ConstDecl) {
@@ -328,6 +415,10 @@ impl Checker {
     }
 
     fn proc_decl(&mut self, d: &ProcDecl) {
+        if d.owner.is_some() {
+            self.error(d.name.span, "object methods are not supported yet");
+            return;
+        }
         let parent = self.cur();
         // A procedure declared `forward` earlier in this scope gets its body
         // now; reuse its ProcInfo (and its parameters).
@@ -367,6 +458,12 @@ impl Checker {
             snake_case(&d.name.name)
         } else {
             format!("{}_{}", self.a.procs[parent].rust_name, snake_case(&d.name.name))
+        };
+        // Two units may both declare a `Name` function. The second one gets
+        // its unit's name as a prefix (`labels_name`).
+        let base = match &self.current_unit {
+            Some(unit) if self.used_fn_names.contains(&base) => format!("{unit}_{base}"),
+            _ => base,
         };
         let rust_name = Self::unique_in(&mut self.used_fn_names, base);
         let ret = d.ret.as_ref().map(|t| self.resolve_type(t));

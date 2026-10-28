@@ -14,8 +14,12 @@ fn translations() {
     // `glob!` runs the closure once per matching file, naming each snapshot
     // after the file.
     insta::glob!("../../../tests/translate", "*.pas", |path| {
-        let generated = pascrust::driver::transpile_file(path).unwrap_or_else(|e| panic!("{e}"));
-        insta::assert_snapshot!(generated.main_rs);
+        match pascrust::driver::transpile_file(path) {
+            Ok(generated) => insta::assert_snapshot!(generated.combined()),
+            // Units are snapshotted as part of the programs that use them.
+            Err(e) if e.contains("is a unit") => {}
+            Err(e) => panic!("{e}"),
+        }
     });
 }
 
