@@ -3,7 +3,7 @@
 use super::expr::{convert, paren, prec};
 use super::{Codegen, LoopLabels};
 use crate::ast::*;
-use crate::sema::{Builtin, IntKind, Type};
+use crate::sema::{Builtin, IntKind, SymKind, Type};
 
 impl<'a> Codegen<'a> {
     /// Translate a builtin call. Statement-like builtins (`Inc`, `Exit`, ...)
@@ -101,6 +101,7 @@ impl<'a> Codegen<'a> {
                 }
             }
             IOResult => "io_result()".to_string(),
+            TypeOf => self.type_of(&args[0]),
             Halt => match args.first() {
                 None => "halt(0)".to_string(),
                 Some(code) => format!("halt({})", self.coerce(code, &Type::Int(IntKind::LongInt)).0),
@@ -360,6 +361,34 @@ impl Codegen<'_> {
                 _ => "Ptr::alloc()".to_string(),
             },
             _ => "Ptr::alloc()".to_string(),
+        }
+    }
+}
+
+impl Codegen<'_> {
+    /// `TypeOf(x)`: the name of the object type `x` really is. It's only
+    /// known at run time for an object reached through a pointer, a `var`
+    /// parameter, or `Self` in a trait's default method; anything else is
+    /// exactly its declared type.
+    fn type_of(&mut self, arg: &Expr) -> String {
+        let Type::Object(object) = self.a.type_of(arg.id).clone() else { return "\"\"".to_string() };
+        let is_type_name =
+            self.a.refs.get(&arg.id).is_some_and(|&sym| matches!(self.a.sym(sym).kind, SymKind::TypeName(_)));
+        if is_type_name || !self.in_dispatch(&object) {
+            return format!("\"{}\"", object.rust_name);
+        }
+        match &arg.kind {
+            ExprKind::Deref(pointer) => format!("{}.get().type_name()", self.selector_base(pointer)),
+            ExprKind::Name(_) if self.is_dyn_param(arg) => {
+                format!("{}.type_name()", self.a.var_name(self.proc, self.a.refs[&arg.id]))
+            }
+            ExprKind::Name(_)
+                if self.self_expr.is_some()
+                    && self.a.refs.get(&arg.id).is_some_and(|&s| self.a.sym(s).rust_name == "self") =>
+            {
+                "self.type_name()".to_string()
+            }
+            _ => format!("\"{}\"", object.rust_name),
         }
     }
 }

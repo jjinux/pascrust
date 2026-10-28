@@ -92,6 +92,10 @@ pub enum Type {
     File(Rc<Type>),
     /// The type of `nil`.
     Nil,
+    /// What `TypeOf` returns: which object type something really is. (In
+    /// TP, a pointer to the type's table of virtual methods.) It can only be
+    /// compared.
+    TypeInfo,
     /// The "type" of a procedure call, which has no value.
     Void,
     /// Produced after a type error so that one mistake doesn't cascade into
@@ -285,6 +289,7 @@ impl Type {
                 Some(alias) => alias.clone(),
                 None => a.rust_unaliased(),
             },
+            Type::TypeInfo => "&'static str".to_string(),
             Type::Nil | Type::Void | Type::Error => "()".to_string(),
         }
     }
@@ -350,7 +355,7 @@ impl fmt::Display for Type {
             Type::Text => write!(f, "Text"),
             Type::File(elem) => write!(f, "file of {elem}"),
             Type::Array(a) => write!(f, "array[{}..{}] of {}", a.lo, a.hi, a.elem),
-            Type::Nil => write!(f, "Pointer"),
+            Type::Nil | Type::TypeInfo => write!(f, "Pointer"),
             Type::Void => write!(f, "no value"),
             Type::Error => write!(f, "<error>"),
         }

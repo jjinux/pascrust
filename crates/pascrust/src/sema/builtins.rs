@@ -43,7 +43,7 @@ builtins! {
     Close => "close", Erase => "erase", Rename => "rename", Flush => "flush",
     Truncate => "truncate", Seek => "seek", FilePos => "filepos", FileSize => "filesize",
     Eof => "eof", Eoln => "eoln", SeekEof => "seekeof", SeekEoln => "seekeoln",
-    IOResult => "ioresult",
+    IOResult => "ioresult", TypeOf => "typeof",
 }
 
 impl Builtin {

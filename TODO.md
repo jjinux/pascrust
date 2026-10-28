@@ -183,7 +183,7 @@ chosen so each step is testable with the previous ones.
 
 - [ ] Sets (`PSet<T>`, literals, `in`, operators).
 - [ ] Variant records (flattened).
-- [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, architecture.md §16). Not yet: `TypeOf`.
+- [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, architecture.md §16), and `TypeOf`.
 - [ ] Procedural types and procedure parameters.
 - [ ] Structured `goto` (forward jumps out of loops → labeled `break`).
 - [ ] TP-exact binary file layout including 6-byte `Real`, so `examples/database/mark.dat` can be read.

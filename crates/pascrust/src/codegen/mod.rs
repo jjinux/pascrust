@@ -558,6 +558,10 @@ impl<'a> Codegen<'a> {
         self.indent += 1;
         self.line(format!("/// The `{name}` part of the object, for its fields."));
         self.line(format!("fn {}(&mut self) -> &mut {name};", accessor(object)));
+        if object.parent.is_none() && self.a.uses_type_of {
+            self.line("/// The name of the object's real type, for Pascal's `TypeOf`.");
+            self.line("fn type_name(&self) -> &'static str;");
+        }
         for slot in self.slots_introduced(object) {
             let (params, ret) = self.method_signature(slot);
             self.line(format!("fn {}({params}){ret};", self.a.procs[slot].rust_name));
@@ -583,6 +587,11 @@ impl<'a> Codegen<'a> {
             self.line(format!("fn {}(&mut self) -> &mut {} {{", accessor(&ancestor), ancestor.rust_name));
             self.line(format!("    {part}"));
             self.line("}");
+            if ancestor.parent.is_none() && self.a.uses_type_of {
+                self.line("fn type_name(&self) -> &'static str {");
+                self.line(format!("    \"{name}\""));
+                self.line("}");
+            }
             for slot in self.slots_introduced(&ancestor) {
                 // The nearest version of the method, from this object up.
                 let key = self.a.procs[slot].name.rsplit('.').next().unwrap().to_ascii_lowercase();
@@ -733,6 +742,15 @@ impl<'a> Codegen<'a> {
         self.line(format!("fn {}(&mut self) -> &mut {} {{", accessor(root), root.rust_name));
         self.line(format!("    self.as_{}_mut()", accessor(root)));
         self.line("}");
+        if self.a.uses_type_of {
+            self.line("fn type_name(&self) -> &'static str {");
+            self.line("    match self {");
+            for (o, _) in &members {
+                self.line(format!("        {name}::{}(o) => o.type_name(),", variant_name(o)));
+            }
+            self.line("    }");
+            self.line("}");
+        }
         let variants: Vec<String> = members.iter().map(|(o, _)| variant_name(o)).collect();
         for slot in self.slots_introduced(root) {
             self.enum_dispatch(&name, slot, &variants, members.len(), "");
@@ -1403,6 +1421,7 @@ fn default_value(ty: &Type) -> String {
         Type::Pointer(_) => "Ptr::nil()".to_string(),
         Type::Text => "PText::default()".to_string(),
         Type::File(_) => "PFile::default()".to_string(),
+        Type::TypeInfo => "\"\"".to_string(),
         Type::Nil | Type::Void | Type::Error => "()".to_string(),
     }
 }

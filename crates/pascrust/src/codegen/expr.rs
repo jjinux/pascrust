@@ -192,6 +192,11 @@ impl<'a> Codegen<'a> {
             GtEq => (">=", prec::CMP),
             In => unreachable!("sema rejects `in` without sets"),
         };
+        // `TypeOf(p^) = TypeOf(TCircle)` compares type names.
+        if lt == Type::TypeInfo {
+            let (l, r) = (self.expr(lhs).0, self.expr(rhs).0);
+            return (format!("{l} {rust_op} {r}"), p);
+        }
         // `p = nil` reads best as `p.is_nil()`.
         if matches!(op, Eq | NotEq) && (lt == Type::Nil || rt == Type::Nil) && lt != rt {
             let pointer = if lt == Type::Nil { rhs } else { lhs };
@@ -538,7 +543,7 @@ impl<'a> Codegen<'a> {
 
     /// Is `e` a `var` parameter that takes any object of a hierarchy with
     /// virtual methods (`shape: &mut dyn TShapeMethods`)?
-    fn is_dyn_param(&self, e: &Expr) -> bool {
+    pub(super) fn is_dyn_param(&self, e: &Expr) -> bool {
         let ExprKind::Name(_) = &e.kind else { return false };
         let Some(&sym) = self.a.refs.get(&e.id) else { return false };
         if self.a.sym(sym).rust_name == "self" {

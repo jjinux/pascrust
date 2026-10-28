@@ -204,6 +204,10 @@ pub struct Analysis {
     /// the method call `p^.Init(1)`. For `New` used as a function,
     /// `New(PCircle, Init(2))`, `p` is a new local variable.
     pub object_calls: HashMap<NodeId, (Expr, Option<SymId>)>,
+    /// True if the program uses `TypeOf`, so object traits need `type_name`.
+    pub uses_type_of: bool,
+    /// Methods that use `TypeOf(Self)`, which must see the real object.
+    pub self_type_of: HashSet<ProcId>,
     /// (caller, callee) for every method call on `Self`.
     pub self_calls: Vec<(ProcId, ProcId)>,
     /// Method calls: the call's callee expression id → the method, and the
@@ -323,6 +327,11 @@ fn dispatch(a: &mut Analysis) -> Vec<Diagnostic> {
     // A method that calls a dispatched method on `Self` must itself see the
     // real object, to pass it on: a fixed point, as in `lift`.
     a.dispatched = a.virtuals.clone();
+    for &p in &a.self_type_of {
+        if a.dispatch_roots.contains(&root_of(&object_of(a, p).unwrap())) {
+            a.dispatched.insert(p);
+        }
+    }
     let mut changed = true;
     while changed {
         changed = false;

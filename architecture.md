@@ -548,7 +548,10 @@ methods are supported too (below).
   of a virtual method receive the same lifted globals, since they share the
   trait's signature. Constructors and destructors are ordinary methods: the
   enum variant, set when the record is allocated, plays the role of TP's
-  hidden table pointer.
+  hidden table pointer. `TypeOf(x) = TypeOf(TCircle)` compares type names:
+  when a program uses `TypeOf`, the root trait gets `fn type_name(&self)
+  -> &'static str`, and a method using `TypeOf(Self)` becomes a default
+  method so it sees the real object.
 - `private` sections are a no-op.
 
 Rejected: a `Deref` to `base` trick to make inherited fields look flat. It

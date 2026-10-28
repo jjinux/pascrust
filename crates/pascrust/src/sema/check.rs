@@ -2077,6 +2077,35 @@ impl Checker {
                 arity(&mut self.errors, span, args.len(), 0..=0, &name);
                 Type::Int(IntKind::Integer)
             }
+            TypeOf => {
+                if !arity(&mut self.errors, span, args.len(), 1..=1, &name) {
+                    return Type::TypeInfo;
+                }
+                self.a.uses_type_of = true;
+                // An object type's name, or an object.
+                if let ExprKind::Name(id) = &args[0].kind
+                    && let Some(Resolved::Sym(sym)) = self.resolve(&id.key())
+                    && let SymKind::TypeName(ty) = &self.a.symbols[sym].kind
+                {
+                    let ty = ty.clone();
+                    self.a.refs.insert(args[0].id, sym);
+                    self.a.types.insert(args[0].id, ty.clone());
+                    if !matches!(ty, Type::Object(_)) {
+                        self.error(args[0].span, format!("`TypeOf` needs an object type, found {ty}"));
+                    }
+                    return Type::TypeInfo;
+                }
+                let ty = self.expr(&args[0]);
+                if !matches!(ty, Type::Object(_) | Type::Error) {
+                    self.error(args[0].span, format!("`TypeOf` needs an object, found {ty}"));
+                }
+                // `TypeOf(Self)` inside a method (not a procedure nested in one).
+                let is_self = self.a.refs.get(&args[0].id).is_some_and(|&s| self.a.symbols[s].rust_name == "self");
+                if is_self && self.a.procs[self.cur()].self_param.is_some() {
+                    self.a.self_type_of.insert(self.cur());
+                }
+                Type::TypeInfo
+            }
             New | Dispose => {
                 if !arity(&mut self.errors, span, args.len(), 1..=2, &name) {
                     return Type::Void;
@@ -2400,6 +2429,7 @@ fn comparable(l: &Type, r: &Type) -> bool {
         || (l.is_stringish() && r.is_stringish())
         || (l == r && (l.is_ordinal() || matches!(l, Type::Pointer(_))))
         || (matches!(l, Type::Pointer(_) | Type::Nil) && matches!(r, Type::Pointer(_) | Type::Nil))
+        || (*l == Type::TypeInfo && *r == Type::TypeInfo)
 }
 
 /// The pointer under the last `^` of a place: `p` in `p^.x`, `p^.next` in

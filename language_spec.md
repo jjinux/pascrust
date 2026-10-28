@@ -116,8 +116,8 @@ Objects (TP 5.5 OOP)
   ancestor type, and through pointers (a pointer to an object may point to a
   descendant); `constructor`/`destructor`, `inherited Method`,
   `Ancestor.Method(...)`, `New(p, Init(...))`, `New(PType, Init(...))` as a
-  function, `Dispose(p, Done)`. Not yet: `TypeOf`, a descendant hiding a
-  static method that calls virtual ones
+  function, `Dispose(p, Done)`, `TypeOf` (compared with `=`/`<>`). Not yet:
+  a descendant hiding a static method that calls virtual ones
 
 Pointers
 

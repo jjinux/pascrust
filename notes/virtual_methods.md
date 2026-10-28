@@ -1,7 +1,7 @@
 # Plan: virtual methods
 
 Status: implemented (2026-10-28), as designed below, in well under the
-2-hour time box. Not done: `TypeOf`, a descendant hiding a static method
+2-hour time box, plus `TypeOf`. Not done: a descendant hiding a static method
 that calls virtual ones (an error), a procedure nested in a method calling
 a virtual method of `Self` (an error). Tests: `tests/run/virtual_*.pas`.
 The design was worked out by Claude Opus and reviewed by Claude Fable,
