@@ -856,10 +856,15 @@ impl Checker {
             return None;
         }
         let host = match lo_ty.concrete() {
+            // The host is `Integer` if both bounds fit; otherwise the lower
+            // bound's type, if the upper bound fits it too (`0..70000` mustn't
+            // be stored in 16 bits), and `LongInt` if not.
             Type::Int(k) => Type::Int(if IntKind::Integer.contains(l) && IntKind::Integer.contains(h) {
                 IntKind::Integer
-            } else {
+            } else if k.contains(l) && k.contains(h) {
                 k
+            } else {
+                IntKind::LongInt
             }),
             other => other,
         };
@@ -979,6 +984,10 @@ impl Checker {
                 match (id.key().as_str(), self.eval_const(&args[0])?) {
                     ("chr", Int(n)) if (0..=255).contains(&n) => Some(Str(vec![n as u8])),
                     ("ord", Str(s)) if s.len() == 1 => Some(Int(s[0] as i64)),
+                    // An enum constant's value is already its ordinal.
+                    ("ord", Int(n)) => Some(Int(n)),
+                    ("ord", Bool(b)) => Some(Int(b as i64)),
+                    ("abs", Int(n)) => Some(Int(n.abs())),
                     _ => None,
                 }
             }
@@ -1178,6 +1187,13 @@ impl Checker {
                 match op {
                     UnaryOp::Neg | UnaryOp::Plus if ty.is_numeric() => match ty {
                         Type::IntLit(n) if *op == UnaryOp::Neg => Type::IntLit(-n),
+                        // `-b` for a `Byte` or `Word` is negative, so it needs a
+                        // signed type big enough for the result (in Rust, `-`
+                        // doesn't even exist for unsigned integers).
+                        Type::Int(IntKind::Byte | IntKind::ShortInt) if *op == UnaryOp::Neg => {
+                            Type::Int(IntKind::Integer)
+                        }
+                        Type::Int(IntKind::Word) if *op == UnaryOp::Neg => Type::Int(IntKind::LongInt),
                         other => other,
                     },
                     UnaryOp::Not if ty == Type::Bool || ty.is_integer() => ty.concrete(),
@@ -1609,7 +1625,13 @@ impl Checker {
                     };
                     let ty = self.expr(value);
                     self.a.types.insert(arg.id, ty.clone());
-                    if !(ty.is_ordinal() || ty.is_numeric() || ty.is_stringish() || ty == Type::Error) {
+                    // Turbo Pascal can't write an enumerated value: the names
+                    // don't exist at run time.
+                    let writable = (ty.is_ordinal() && !matches!(ty, Type::Enum(_)))
+                        || ty.is_numeric()
+                        || ty.is_stringish()
+                        || ty == Type::Error;
+                    if !writable {
                         self.error(value.span, format!("cannot write a {ty} value"));
                     }
                     for n in width.into_iter().chain(decimals) {

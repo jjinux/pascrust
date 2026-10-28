@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/write_enum.pas
+---
+write_enum.pas:9:12: error: cannot write a Color value
+   writeln(c);
+           ^
