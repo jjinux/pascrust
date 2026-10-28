@@ -227,7 +227,9 @@ impl<'a> Codegen<'a> {
         // Turbo Pascal's `shr` is a logical shift: it fills with zeros, so
         // `-300 shr 4` is 4077. Rust's `>>` on a signed integer copies the
         // sign bit instead (-19), so shift the same bits as unsigned.
+        // (A literal that isn't negative shifts the same either way.)
         if op == Shr
+            && !matches!(lt, Type::IntLit(n) if n >= 0)
             && let Type::Int(kind @ (IntKind::ShortInt | IntKind::Integer | IntKind::LongInt)) = operand_ty.concrete()
         {
             let unsigned = match kind {

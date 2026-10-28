@@ -32,7 +32,7 @@ fn pascal_main() {
         " ",
         ((-300_i16 as u16) >> 4) as i16
     );
-    pwriteln!(((300_i16 as u16) >> 4) as i16, " ", w_ >> 4);
+    pwriteln!(300 >> 4, " ", w_ >> 4);
 }
 
 fn main() {
