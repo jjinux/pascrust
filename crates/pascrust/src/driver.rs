@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::ast::Unit;
-use crate::diag::SourceMap;
+use crate::diag::{Diagnostic, SourceMap};
 use crate::parser::SourceFile;
 use crate::{codegen, parser, sema};
 
@@ -19,6 +19,8 @@ pub struct Generated {
     pub files: Vec<(String, String)>,
     /// Runtime features to enable, one per Turbo Pascal unit used (`crt`, ...).
     pub features: Vec<String>,
+    /// Warnings to show the user, already rendered.
+    pub warnings: Vec<String>,
 }
 
 impl Generated {
@@ -61,18 +63,21 @@ pub fn transpile_source(source: &[u8], file_name: &str) -> Result<Generated, Str
 fn transpile(source: Vec<u8>, file_name: &str, dir: Option<&Path>) -> Result<Generated, String> {
     let mut map = SourceMap::new();
     let base = map.add(file_name, source.clone());
-    let program = match parser::parse_file(&source, base).map_err(|d| map.render(&d))?.0 {
+    let (program, directives) = parser::parse_file(&source, base).map_err(|d| map.render(&d))?;
+    let program = match program {
         SourceFile::Program(program) => program,
         SourceFile::Unit(unit) => {
             return Err(format!("{file_name} is a unit; give pascrust the program that uses it ({})", unit.name.name));
         }
     };
 
-    let mut loader = UnitLoader { dir, map, loaded: Vec::new(), visiting: Vec::new() };
+    let mut loader = UnitLoader { dir, map, loaded: Vec::new(), visiting: Vec::new(), directives };
     for name in &program.uses {
         loader.load(name)?;
     }
-    let UnitLoader { map, loaded, .. } = loader;
+    let UnitLoader { map, loaded, directives, .. } = loader;
+    let warnings = check_directives(&directives).map_err(|d| map.render(&d))?;
+    let warnings = warnings.iter().map(|d| map.render(d)).collect();
     let units: Vec<Unit> = loaded.into_iter().map(|(_, unit)| unit).collect();
 
     let analysis = sema::analyze(&program, &units)
@@ -89,7 +94,35 @@ fn transpile(source: Vec<u8>, file_name: &str, dir: Option<&Path>) -> Result<Gen
         .collect();
     features.sort();
     features.dedup();
-    Ok(Generated { name: package_name(file_name), files, features })
+    Ok(Generated { name: package_name(file_name), files, features, warnings })
+}
+
+/// Compiler directives (`{$R+}`, `{$I-}`, ...) are mostly ignored, but the
+/// user should hear about the ones that change what a program does.
+/// An include file (`{$I name}`) is an error: without it the program
+/// would be missing code.
+fn check_directives(directives: &[parser::Directive]) -> Result<Vec<Diagnostic>, Diagnostic> {
+    let mut warnings = Vec::new();
+    for d in directives {
+        let text = d.text.trim();
+        // `{$I file.inc}` includes a file; `{$I-}` and `{$I+}` are switches.
+        if let Some(name) = text.strip_prefix(['I', 'i']).filter(|rest| rest.starts_with(' ')) {
+            return Err(Diagnostic::new(d.span, format!("include files aren't supported (`{{$I {}}}`)", name.trim())));
+        }
+        // Switches can be combined: `{$R+,B-}`.
+        for switch in text.split(',') {
+            let switch = switch.trim().to_ascii_uppercase();
+            let meaning = match switch.as_str() {
+                "B+" => "complete Boolean evaluation; `and` and `or` still short-circuit",
+                "R+" => "range checks on subranges; only array indexes are checked",
+                "I-" => "I/O errors going to IOResult; they still stop the program",
+                "Q+" => "overflow checks; integer arithmetic still wraps",
+                _ => continue,
+            };
+            warnings.push(Diagnostic::warning(d.span, format!("`{{${switch}}}` isn't supported: no {meaning}")));
+        }
+    }
+    Ok(warnings)
 }
 
 /// Finds, parses and orders the units a program uses.
@@ -100,6 +133,8 @@ struct UnitLoader<'a> {
     loaded: Vec<(String, Unit)>,
     /// Units being loaded right now, to detect `uses` cycles.
     visiting: Vec<String>,
+    /// The compiler directives of every file loaded so far.
+    directives: Vec<parser::Directive>,
 }
 
 impl UnitLoader<'_> {
@@ -125,7 +160,9 @@ impl UnitLoader<'_> {
         let source = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
         let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
         let base = self.map.add(file_name, source.clone());
-        let unit = match parser::parse_file(&source, base).map_err(|d| self.map.render(&d))?.0 {
+        let (unit, directives) = parser::parse_file(&source, base).map_err(|d| self.map.render(&d))?;
+        self.directives.extend(directives);
+        let unit = match unit {
             SourceFile::Unit(unit) => unit,
             SourceFile::Program(_) => return Err(format!("{} is a program, not a unit", path.display())),
         };
@@ -232,4 +269,18 @@ pub fn write_project(dir: &Path, generated: &Generated) -> std::io::Result<()> {
         std::fs::write(dir.join("src").join(name), code)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn directives_that_change_meaning_give_warnings() {
+        let source = b"program P;\n{$R+,B-}\n{$I-}\n{$M 16384,0,0}\nbegin\nend.\n";
+        let generated = transpile_source(source, "p.pas").unwrap();
+        assert_eq!(generated.warnings.len(), 2);
+        assert!(generated.warnings[0].starts_with("p.pas:2:1: warning: `{$R+}`"));
+        assert!(generated.warnings[1].starts_with("p.pas:3:1: warning: `{$I-}`"));
+    }
 }

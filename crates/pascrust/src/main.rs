@@ -65,6 +65,7 @@ fn run(command: Cmd) -> Result<ExitCode, String> {
     match command {
         Cmd::Emit { file } => {
             let generated = pascrust::driver::transpile_file(&file)?;
+            warn(&generated);
             print!("{}", generated.combined());
             Ok(ExitCode::SUCCESS)
         }
@@ -101,9 +102,16 @@ fn fmt(files: &[PathBuf], check: bool) -> Result<ExitCode, String> {
     Ok(if check && changed { ExitCode::FAILURE } else { ExitCode::SUCCESS })
 }
 
+fn warn(generated: &pascrust::driver::Generated) {
+    for warning in &generated.warnings {
+        eprintln!("{warning}\n");
+    }
+}
+
 /// Transpile `file` and write the Cargo project; return its directory.
 fn project(file: &Path, out: Option<PathBuf>) -> Result<PathBuf, String> {
     let generated = pascrust::driver::transpile_file(file)?;
+    warn(&generated);
     let dir = out.unwrap_or_else(|| Path::new("out").join(&generated.name));
     pascrust::driver::write_project(&dir, &generated).map_err(|e| format!("cannot write {}: {e}", dir.display()))?;
     Ok(dir)

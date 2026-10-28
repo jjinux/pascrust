@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/include_file.pas
+---
+include_file.pas:3:1: error: include files aren't supported (`{$I defs.inc}`)
+{$I defs.inc}
+^^^^^^^^^^^^^

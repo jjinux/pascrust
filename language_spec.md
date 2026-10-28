@@ -41,7 +41,8 @@ Program structure
 - `procedure` / `function` declarations, nested to any depth, recursive
 - `forward` declarations
 - Compiler directives `{$...}` parsed and ignored (with a warning for ones that
-  change semantics: `{$B+}`, `{$R+}`, `{$I-}`, `{$N+}`); `{$M}` ignored silently
+  change semantics: `{$B+}`, `{$R+}`, `{$I-}`, `{$Q+}`); `{$M}` and `{$N+}`
+  ignored silently; include files (`{$I name}`) are an error
 - Comments `{ }` and `(* *)`, including the examples' `{t ... }` headers
 - Main block `begin ... end.`
 

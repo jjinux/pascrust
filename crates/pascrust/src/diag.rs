@@ -23,16 +23,23 @@ impl Span {
     }
 }
 
-/// An error found while transpiling, tied to a place in the Pascal source.
+/// An error (or a warning) found while transpiling, tied to a place in the
+/// Pascal source.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
     pub span: Span,
     pub message: String,
+    /// A warning doesn't stop the translation.
+    pub warning: bool,
 }
 
 impl Diagnostic {
     pub fn new(span: Span, message: impl Into<String>) -> Diagnostic {
-        Diagnostic { span, message: message.into() }
+        Diagnostic { span, message: message.into(), warning: false }
+    }
+
+    pub fn warning(span: Span, message: impl Into<String>) -> Diagnostic {
+        Diagnostic { warning: true, ..Diagnostic::new(span, message) }
     }
 
     /// Render as `file:line:col: error: message`, followed by the offending
@@ -42,7 +49,8 @@ impl Diagnostic {
         let line_text = source_line(source, self.span.start);
         let width = (self.span.end.saturating_sub(self.span.start)).clamp(1, line_text.len().max(1));
         format!(
-            "{file_name}:{line}:{col}: error: {}\n{line_text}\n{}{}",
+            "{file_name}:{line}:{col}: {}: {}\n{line_text}\n{}{}",
+            if self.warning { "warning" } else { "error" },
             self.message,
             " ".repeat(col - 1),
             "^".repeat(width),
@@ -129,10 +137,9 @@ impl SourceMap {
             return d.message.clone();
         }
         let file = &self.files[self.file_index(d.span.start)];
-        let local = Diagnostic::new(
-            Span::new(d.span.start - file.base, d.span.end.saturating_sub(file.base)),
-            d.message.clone(),
-        );
+        // `..d.clone()` fills in the fields not named here from `d`.
+        let local =
+            Diagnostic { span: Span::new(d.span.start - file.base, d.span.end.saturating_sub(file.base)), ..d.clone() };
         local.render(&file.name, &file.text)
     }
 }
