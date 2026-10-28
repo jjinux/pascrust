@@ -155,9 +155,9 @@ chosen so each step is testable with the previous ones.
 
 ## Phase 5: Dos and Graph, then the graphics examples
 
-- [x] `dos` feature (the parts the examples use; `FSplit`, `GetDir`, `DosVersion`, `FindFirst`/`FindNext`, `DiskFree` still to do): `GetDate`/`GetTime` (`chrono`), `FExpand`/`FSearch`/`FSplit` with the drive-letter mapping and `\`→`/` translation, `Exec`/`DosExitCode` via `std::process::Command`, `ChDir`/`MkDir`/`RmDir`/`GetDir`, `GetEnv`, `DosVersion`, `FindFirst`/`FindNext`, `DiskFree`/`DiskSize` best effort; `PathStr` and friends as `PString` aliases.
+- [x] `dos` feature (the parts the examples use; the rest is in Phase 7): `GetDate`/`GetTime` (`chrono`), `FExpand`/`FSearch`/`FSplit` with the drive-letter mapping and `\`→`/` translation, `Exec`/`DosExitCode` via `std::process::Command`, `ChDir`/`MkDir`/`RmDir`/`GetDir`, `GetEnv`, `DosVersion`, `FindFirst`/`FindNext`, `DiskFree`/`DiskSize` best effort; `PathStr` and friends as `PString` aliases.
 - [x] `graph` feature, headless core first: 640x480 framebuffer of colour numbers, EGA palette (`SetBkColor`, `SetPalette`), `PutPixel`/`GetPixel`, Bresenham `Line`/`LineTo`/`LineRel`, `Rectangle`, `Bar`/`Bar3D` with 8x8 fill patterns (`SetFillStyle`/`SetFillPattern`/`GetFillPattern`), `Circle`/`Arc`/`Ellipse`/`FillEllipse`/`PieSlice`/`Sector`, `FloodFill`, line styles and `ThickWidth`, viewports (`SetViewPort`/`ClearViewPort`/`ClearDevice`), `SetWriteMode`.
-  - [ ] `GetImage`/`PutImage`/`ImageSize`, `DrawPoly`/`FillPoly`, `GetArcCoords`, `GetLineSettings` and the other `Get*Settings` records.
+  - [ ] The rest of Graph: see Phase 7.
 - [x] Bitmap text: the public-domain 8x8 VGA font (ASCII); `OutText`/`OutTextXY`/`SetTextJustify`/`SetTextStyle` (default font, integer scale; stroked fonts approximated with it)/`TextWidth`/`TextHeight`.
   - [ ] CP437 characters 128-255 in the font (box drawing, accented letters).
 - [x] `InitGraph`/`Detect`/`DetectGraph`/`CloseGraph`/`GraphResult`/`GraphErrorMsg`/`SetGraphMode`/`GetGraphMode`/`RestoreCrtMode`/`GetMaxX`/`GetMaxY`/`GetMaxColor`/`GetAspectRatio`.
@@ -179,9 +179,57 @@ chosen so each step is testable with the previous ones.
 - [ ] Write `docs/translating.md`: a user guide with the Pascal→Rust mapping table and the known limitations, generated partly from the translate-test snapshots.
 - [ ] Measure and trim compile time of generated crates (feature flags, no unused dependencies).
 
-## Phase 7: Tier 3 and FFI (as interest dictates)
+## Phase 7: The rest of Turbo Pascal 7's standard units
 
-- [ ] Sets (`PSet<T>`, literals, `in`, operators).
+Borland's *Turbo Pascal 7.0 Programmer's Reference* lists every routine,
+variable and constant of the standard units, so "done" is well defined. The
+order below puts first what old programs use most. Where the real thing
+makes no sense on a modern machine, we **fake it**: accept the call and do
+something harmless and plausible, so the program runs, and list the fake in
+`language_spec.md`. Each item gets translate and run tests, checked against
+`fpc -Mtp` where FPC matches TP.
+
+System, the small routines
+- [ ] `SizeOf` with TP's sizes (`Integer` 2, `LongInt` 4, `Real` 6, `Char` and `Boolean` 1, `string[n]` n+1, records unpadded, arrays), so `FillChar(a, SizeOf(a), 0)` and record-size arithmetic work.
+- [ ] `High`/`Low` (of arrays, strings, ordinal types and variables), `Swap`, `Assigned`, `RunError(n)`.
+- [ ] `FillChar` and `Move` for the common cases: filling a whole array, record or string with one byte value (zeroing is by far the most common), and copying between variables of the same type. Other uses (partial byte ranges, mismatched types) are a clear error.
+- [ ] `GetDir(drive, s)`: the current directory as a DOS path, through the drive mapping.
+- [ ] System variables: `ExitCode` (read/write; `Halt` without an argument uses it), `RandSeed` (read/write, so `RandSeed := 42` gives a repeatable sequence), `FileMode` (0 opens typed files read-only), and `Input`/`Output` as `Text` variables (`Writeln(Output, ...)`).
+- [ ] Fake: `MemAvail`/`MaxAvail` return a typical DOS figure (about 500 KB), so "is there enough memory?" checks pass; `Mark`/`Release` do nothing (records are freed when nothing points to them); `SetTextBuf` does nothing (our files are buffered anyway); `Test8087` is 3 (an 80387 is present).
+
+Crt, the variables
+- [ ] `TextAttr` as an assignable variable (now a read-only function), `LastMode` (the mode from `TextMode`), `AssignCrt(f)` (a `Text` file that writes through Crt, honouring the window and colours).
+- [ ] Fake: `DirectVideo`, `CheckSnow` and `CheckEOF` are accepted and ignored; `CheckBreak` decides whether Ctrl-Break ends the program (as now, by default).
+
+Printer and Overlay
+- [ ] Fake `Printer`: `Lst` is a `Text` file appended to `printer.txt` (or the file named by `PASCRUST_PRINTER`), so printed reports can be read.
+- [ ] Fake `Overlay`: `OvrInit`, `OvrInitEMS`, `OvrSetBuf`, `OvrGetBuf`, `OvrClearBuf` do nothing and `OvrResult` is 0 (`ovrOk`); `{$O+}` and `{$F+}` are ignored silently. Overlays only existed to fit in 640 KB.
+
+Sets (a language feature, but `Include`/`Exclude` and `in` are everywhere in old code)
+- [ ] `set of T` as a runtime `PSet` (a 256-bit set, as in TP), set literals with ranges (`['a'..'z', '_']`), `in`, `+ - *`, `= <> <= >=`, `Include`/`Exclude`, sets in typed constants and records. `ch in ['a'..'z']` with a literal set could become a `matches!` for readability.
+
+Dos, the rest
+- [ ] `FindFirst`/`FindNext`/`SearchRec` with DOS wildcards (`*.PAS`, `?`), the attribute filter (`Directory`, `AnyFile`, ...), names shown as on disk.
+- [ ] `FSplit`, `EnvCount`/`EnvStr`, `DosVersion` (fake: DOS 6.22, `$1606`).
+- [ ] `GetFTime`/`SetFTime` with `PackTime`/`UnpackTime` and the `DateTime` record; `GetFAttr`/`SetFAttr` (read-only from the file's permissions, directory from its type; hidden/system/archive faked from the name and kept in memory).
+- [ ] `DiskFree`/`DiskSize`: the real figures for the mapped drive's file system, capped at what a `LongInt` holds (TP returned -1 for an invalid drive).
+- [ ] Fake: `SetDate`/`SetTime` don't change the machine's clock; `GetCBreak`/`SetCBreak` and `GetVerify`/`SetVerify` remember a flag; `SwapVectors` does nothing.
+- [ ] Never: `Intr`, `MsDos`, `Keep`, `GetIntVec`/`SetIntVec` stay a clear "needs real DOS" error.
+
+Graph, the rest
+- [ ] `DrawPoly`/`FillPoly` (arrays of `PointType`), `GetArcCoords`, and the `Get*Settings` records (`GetLineSettings`, `GetFillSettings`, `GetTextSettings`, `GetViewSettings`).
+- [ ] `GetImage`/`PutImage`/`ImageSize` with the `PutImage` modes (`NormalPut`, `XORPut`, ...), storing images in a byte buffer the program allocates.
+- [ ] Palettes: `GetPalette`, `GetDefaultPalette`, `SetAllPalette`, `SetRGBPalette`, `GetPaletteSize`; `GraphDefaults`; `SetAspectRatio`; `SetUserCharSize`; `GetDriverName`/`GetModeName`/`GetMaxMode`/`GetModeRange`.
+- [ ] `SetActivePage`/`SetVisualPage` (two framebuffers, for flicker-free animation).
+- [ ] Fake: `RegisterBGIdriver`, `RegisterBGIfont`, `InstallUserDriver`, `InstallUserFont` and `SetGraphBufSize` succeed and change nothing (there are no `.BGI`/`.CHR` files to load).
+
+Last: raw bytes and C strings
+- [ ] Untyped files (`file` without `of`) with `BlockRead`/`BlockWrite`, and untyped `var` parameters, as byte views of records and arrays (with `SizeOf`).
+- [ ] `PChar` and the `Strings` unit (`StrLen`, `StrCopy`, `StrCat`, `StrComp`, `StrPas`, `StrPCopy`, ...), as a handle to a byte buffer plus an offset, since `PChar` arithmetic is pointer arithmetic. Then `WinDos` (the `Dos` routines with `PChar` arguments) is mostly aliases.
+- [ ] Skip: `Graph3` and `Turbo3` (Turbo Pascal 3.0 compatibility).
+
+## Phase 8: Tier 3 and FFI (as interest dictates)
+
 - [ ] Variant records (flattened).
 - [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, architecture.md §16), and `TypeOf`.
 - [ ] Procedural types and procedure parameters.
