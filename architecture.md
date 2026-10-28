@@ -307,9 +307,8 @@ and the transpiler computes it.
 
 Big arrays live wherever the Pascal variable lived; globals are locals of
 `main` (§15), so a very large global array could overflow the main thread's
-stack. `run()` will execute the program on a thread with a large stack (see
-§17) for non-graphics programs; graphics programs need the main thread on
-macOS, which is an open question.
+stack. `run()` executes the program on a thread with a large stack (see
+§17). Graphics programs do too; the main thread runs their window (§19).
 
 ## 11. Records and variant records
 
@@ -552,9 +551,10 @@ same `run` returns `Result<(), PascalError>` to the host, so the host sees an
 error value, never a panic, exactly the "exception raised to the Rust
 container" the user described.
 
-Non-graphics programs run on a spawned thread with a 256 MB stack so deep
-recursion and large global arrays do not overflow; graphics programs run on
-the main thread because macOS requires window event handling there.
+Programs run on a spawned thread with a 256 MB stack so deep recursion and
+large global arrays do not overflow. With the `graph` feature, the main
+thread, which macOS requires for window event handling, runs the graphics
+window meanwhile (§19).
 
 ## 18. Units, `with`, control flow, I/O
 
@@ -609,15 +609,30 @@ the main thread because macOS requires window event handling there.
   `GetEnv`, `DosVersion` stub. `Intr`, `MsDos`, `Keep`, interrupt vectors:
   unsupported.
 - **Graph** (`feature = "graph"`): a software-rendered BGI emulation. A
-  640x480 `Vec<u32>` framebuffer with the 16-colour EGA palette, Bresenham
-  lines, midpoint circles/arcs, 8x8 fill patterns, flood fill, viewports, and
-  the default 8x8 bitmap font (CP437, public-domain glyphs embedded as a const
-  table) for `OutTextXY`. Displayed through `minifb` (one dependency, trivial
-  API, works on macOS). Keyboard input for `ReadKey`/`KeyPressed` switches to
-  the window's events while graphics mode is active, because the DOS programs
-  mix `Crt` input with `Graph` output. A headless backend writes the
-  framebuffer to PNG for tests. `InitGraph(Detect, ...)` always succeeds with
-  "VGA 640x480"; `GetMaxX`/`GetMaxY` return 639/479.
+  640x480 framebuffer of colour *numbers* (`Vec<u8>`) plus a 16-entry EGA
+  palette, Bresenham lines (styles, thickness, XOR mode), arcs and ellipses
+  (parametric, joined with short lines), 8x8 fill patterns, flood fill,
+  viewports, and the default 8x8 bitmap font (the public-domain IBM VGA
+  glyphs from `font8x8`, ASCII only) for `OutTextXY`. Displayed through
+  `minifb` (one dependency, trivial API, works on macOS). Keyboard input for
+  `ReadKey`/`KeyPressed` switches to the window's events while graphics mode
+  is active, because the DOS programs mix `Crt` input with `Graph` output.
+  `InitGraph(Detect, ...)` always succeeds with "VGA 640x480";
+  `GetMaxX`/`GetMaxY` return 639/479.
+
+  Threads: the program draws on its worker thread into a `Mutex`-protected
+  screen; the main thread (`graph::window::main_loop`, called from `run`)
+  opens and closes the window when asked through an atomic state variable,
+  copies the screen into it at 60 fps, and queues keys (a `Mutex<VecDeque>`
+  plus `Condvar`). Closing the window ends the program.
+
+  Changed from the plan, and why: colour numbers rather than `u32` pixels,
+  because `GetPixel` returns colour numbers and `SetBkColor`/`SetPalette`
+  recolour what is already on the screen, as on an EGA. No PNG writer:
+  `PASCRUST_GRAPH=headless` draws without a window, and run tests check
+  drawings with `GetPixel` instead of golden images (no binary files in the
+  repository, no image dependency). `PASCRUST_GRAPH_SAVE=file.bmp` saves the
+  screen (BMP needs no compression code) for looking at by eye.
 
 Rejected for Graph: `pixels` + `winit` (more code and an event-loop
 inversion that fights Pascal's synchronous style), terminal-based pseudo
@@ -704,9 +719,12 @@ or serial-port bridge; (c) transpile it, which is this project. Recorded in
 
 Turbo Pascal has no threads (DOS is single-tasking), so none of the examples
 and no TP program needs them. Decision: skip threads entirely. The runtime is
-single-threaded by design: terminal, Dos and Graph state are `thread_local!`,
-and `Ptr<T>` is `Rc`, not `Arc`. The only thread the runtime creates is the
+single-threaded by design: terminal and Dos state are `thread_local!`, and
+`Ptr<T>` is `Rc`, not `Arc`. The only thread the runtime creates is the
 big-stack worker in `run()`, and the Pascal program lives entirely on it.
+The one exception is the graphics window, which the main thread services
+while the program runs (§19); the screen and key queue it shares with the
+program are behind `Mutex`es.
 
 ## 24. Worked example
 

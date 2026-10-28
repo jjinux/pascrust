@@ -56,6 +56,14 @@ cargo run -p pascrust -- run examples/database/filesys.pas
 ```
 
 The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
+`Graph` programs open a 640x480 window, and keys typed into it go to
+`ReadKey`. The tic-tac-toe game expects to live in `A:\TICTAC`, so map drive
+A: to the examples directory:
+
+```sh
+cargo run -p pascrust -- run examples/clock/tester.pas
+PASCRUST_DRIVE_A=examples cargo run -p pascrust -- run examples/tictac/tictac.pas
+```
 
 ### Environment variables
 
@@ -63,7 +71,9 @@ The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 | --- | --- |
 | `PASCRUST_TERM=plain` | Don't take over the terminal for `Crt`; `ReadKey` reads standard input. This is automatic when stdin or stdout isn't a terminal, so you can script a program: `printf 'y\nq' \| pascrust run game.pas`. |
 | `PASCRUST_FAST=1` | Skip `Delay`. |
-| `PASCRUST_DRIVE_C=/some/dir` | Where the DOS drive `C:` lives for file names like `C:\DATA\X.DAT` (default: the current directory). Any drive letter works. |
+| `PASCRUST_GRAPH=headless` | Draw `Graph` output without opening a window (for tests; `ReadKey` then reads standard input). |
+| `PASCRUST_GRAPH_SAVE=screen.bmp` | Save the graphics screen to a BMP file at `CloseGraph` or `Halt`. |
+| `PASCRUST_DRIVE_C=/some/dir` | Where the DOS drive `C:` lives for file names like `C:\DATA\X.DAT` (default: the directory the program started in). Any drive letter works, and names match files on disk ignoring case, as in DOS. |
 
 ### What's supported
 

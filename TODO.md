@@ -37,9 +37,9 @@ acceptance test for the whole project.
 - [ ] How do we build at least a small standard library, including things like printing to stdout?
   - [ ] There should be tests that compile Pascal to Rust and then run the Rust to generate expected output.
 - [x] Is there an official standard library for Pascal or Turbo Pascal that has an interface that we can match? (The TP `System` unit plus `Crt`/`Dos`/`Graph`; list in `notes/p2c.md` §5.)
-- [ ] If possible, copy all the code in ~/Dropbox/programming/turbo_pascal to an examples directory and get them working.
+- [x] If possible, copy all the code in ~/Dropbox/programming/turbo_pascal to an examples directory and get them working.
   - [x] Copy the code into `examples/`.
-  - [ ] Get them working.
+  - [x] Get them working. (All ten programs transpile, build without warnings and run; see Phases 4 and 5.)
 
 ## Phase 0: Scaffolding (half a day)
 
@@ -133,21 +133,26 @@ chosen so each step is testable with the previous ones.
 - [x] Fix the two bugs found in the user's examples (`bstunit`, `founit`). Fixing them exposed a transpiler bug: call arguments that read through a pointer kept the record borrowed during the call; now they're copied into a `let` first (`tests/run/ptr_args.pas`).
 - [x] README: usage instructions.
 - [x] README: an "Inspiration" section.
-- [ ] BGI graphics (Phase 5 below).
+- [x] BGI graphics (Phase 5 below). `clock/` and `tictac/` run. Found a third bug in the examples while checking the clock picture: the hands went round anticlockwise (`theta := ...+pi/2` instead of `pi/2-...`). Fixed in `clock.pas`.
 - [x] Consistent identifier casing in the examples.
 - [x] Consistent spacing in the examples: `pascrust fmt` (`crates/pascrust/src/fmt/`), a re-indenter that reuses the lexer; the examples are kept formatted by `tests/fmt_tests.rs`. Prototyped in Python, then ported.
 - [x] DOS and UNIX line endings both work: source, standard input and text files (`tests/run/crlf.pas`, stored with CRLF; see `.gitattributes`), and `fmt`.
 
 ## Phase 5: Dos and Graph, then the graphics examples
 
-- [ ] `dos` feature: `GetDate`/`GetTime` (`chrono`), `FExpand`/`FSearch`/`FSplit` with the drive-letter mapping and `\`→`/` translation, `Exec`/`DosExitCode` via `std::process::Command`, `ChDir`/`MkDir`/`RmDir`/`GetDir`, `GetEnv`, `DosVersion`, `FindFirst`/`FindNext`, `DiskFree`/`DiskSize` best effort; `PathStr` and friends as `PString` aliases.
-- [ ] `graph` feature, headless core first: 640x480 `Vec<u32>` framebuffer, EGA 16-colour palette, `PutPixel`/`GetPixel`, Bresenham `Line`, `Rectangle`, `Bar` with 8x8 fill patterns (`SetFillStyle`/`SetFillPattern`/`GetFillPattern`), `Circle`/`Arc`/`Ellipse`/`PieSlice` (midpoint), `FloodFill`, line styles and `ThickWidth`, viewports (`SetViewPort`/`ClearViewPort`/`ClearDevice`), `SetWriteMode`, `GetImage`/`PutImage`.
-- [ ] Bitmap text: embed a public-domain 8x8 CP437 font; `OutText`/`OutTextXY`/`SetTextJustify`/`SetTextStyle` (default font, integer scale)/`TextWidth`/`TextHeight`.
-- [ ] `InitGraph`/`Detect`/`CloseGraph`/`GraphResult`/`SetGraphMode`/`RestoreCrtMode`/`GetMaxX`/`GetMaxY`/`GetMaxColor`/`GetAspectRatio`.
-- [ ] Golden-image tests: headless backend writes PNG; compare against checked-in images for a handful of drawing programs.
-- [ ] `minifb` window backend: present the framebuffer, forward key events to `ReadKey`/`KeyPressed` while graphics mode is active, run on the main thread on macOS.
-- [ ] Get working: `clock/` (menu unit, clock unit, tester), `tictac/` (five units, `Ollie`, `CompUnit` AI), `airport/` if not already.
-- [ ] Milestone: every program in `examples/` transpiles, builds without warnings, and runs. Mark the original "Get them working" TODO done.
+- [x] `dos` feature (the parts the examples use; `FSplit`, `GetDir`, `DosVersion`, `FindFirst`/`FindNext`, `DiskFree` still to do): `GetDate`/`GetTime` (`chrono`), `FExpand`/`FSearch`/`FSplit` with the drive-letter mapping and `\`→`/` translation, `Exec`/`DosExitCode` via `std::process::Command`, `ChDir`/`MkDir`/`RmDir`/`GetDir`, `GetEnv`, `DosVersion`, `FindFirst`/`FindNext`, `DiskFree`/`DiskSize` best effort; `PathStr` and friends as `PString` aliases.
+- [x] `graph` feature, headless core first: 640x480 framebuffer of colour numbers, EGA palette (`SetBkColor`, `SetPalette`), `PutPixel`/`GetPixel`, Bresenham `Line`/`LineTo`/`LineRel`, `Rectangle`, `Bar`/`Bar3D` with 8x8 fill patterns (`SetFillStyle`/`SetFillPattern`/`GetFillPattern`), `Circle`/`Arc`/`Ellipse`/`FillEllipse`/`PieSlice`/`Sector`, `FloodFill`, line styles and `ThickWidth`, viewports (`SetViewPort`/`ClearViewPort`/`ClearDevice`), `SetWriteMode`.
+  - [ ] `GetImage`/`PutImage`/`ImageSize`, `DrawPoly`/`FillPoly`, `GetArcCoords`, `GetLineSettings` and the other `Get*Settings` records.
+- [x] Bitmap text: the public-domain 8x8 VGA font (ASCII); `OutText`/`OutTextXY`/`SetTextJustify`/`SetTextStyle` (default font, integer scale; stroked fonts approximated with it)/`TextWidth`/`TextHeight`.
+  - [ ] CP437 characters 128-255 in the font (box drawing, accented letters).
+- [x] `InitGraph`/`Detect`/`DetectGraph`/`CloseGraph`/`GraphResult`/`GraphErrorMsg`/`SetGraphMode`/`GetGraphMode`/`RestoreCrtMode`/`GetMaxX`/`GetMaxY`/`GetMaxColor`/`GetAspectRatio`.
+- [x] Tests: `PASCRUST_GRAPH=headless` draws without a window; `tests/run/graph_basics.pas` checks drawings with `GetPixel` (instead of golden images; see architecture.md §19). `PASCRUST_GRAPH_SAVE=file.bmp` saves the screen for a look by eye.
+- [x] `minifb` window backend: present the framebuffer, forward key events to `ReadKey`/`KeyPressed` while graphics mode is active, window serviced by the main thread (macOS needs that) while the program runs on its worker thread.
+- [x] Get working: `clock/` (menu unit, clock unit, tester), `tictac/` (five units, `Ollie`, `CompUnit` AI). Checked headless with scripted keys and saved screenshots; the window opens on macOS.
+  - [x] Transpiler fixes they needed: method call arguments that use the receiver (`obj.Prompt(obj.WhoseTurn)`) are computed first (`tests/run/method_args.pas`); two anonymous record types for same-named variables are `EndPoint` and `EndPoint2`, not `EndPoint_2` (`tests/run/anon_records.pas`).
+  - [x] DOS drives: an unmapped drive is the directory the program started in, not the current one (`tictac` does `ChDir('a:\TicTac')` before every game), and names match files on disk case-insensitively.
+  - [ ] Play a whole game against the computer in the window, by hand.
+- [x] Milestone: every program in `examples/` transpiles, builds without warnings, and runs. Mark the original "Get them working" TODO done.
 
 ## Phase 6: Polish and readability
 
