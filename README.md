@@ -157,3 +157,30 @@ command (and to the program it runs).
 
 See `CLAUDE.md` for the layout and commands, `architecture.md` for the design,
 and run `cargo test` for the whole test suite.
+
+## Acknowledgements
+
+Pascrust's code is its own, but we leaned on a lot of other people's work
+while writing it. Thank you to:
+
+- [Free Pascal](https://www.freepascal.org/). Running `fpc -Mtp` on our
+  test programs gives us most of their expected output, so we can check
+  that a translated program behaves as Turbo Pascal would.
+- [daelsepara/turbo-pascal-assembly](https://github.com/daelsepara/turbo-pascal-assembly),
+  an annotated disassembly of Turbo Pascal's System unit. It's how we know
+  exactly how `Random` works.
+- J R Stockton's
+  [Borland Pascal/Delphi Random](https://people.cs.nycu.edu.tw/~tsaiwn/sisc/runtime_error_200_div_by_0/www.merlyn.demon.co.uk/pas-rand.htm)
+  page, and his other Pascal notes.
+- Borland, for the Turbo Pascal 7.0 manuals, which are still the best
+  description of the language (see the References in `language_spec.md`).
+- Dave Gillespie's p2c, the classic Pascal to C translator, for design
+  ideas (`notes/p2c.md`).
+- [font8x8](https://github.com/dhepper/font8x8) (public domain), the 8x8
+  font `Graph` draws text with.
+- The Rust crates we build on: [clap](https://crates.io/crates/clap),
+  [crossterm](https://crates.io/crates/crossterm),
+  [minifb](https://crates.io/crates/minifb),
+  [chrono](https://crates.io/crates/chrono) and
+  [insta](https://crates.io/crates/insta).
+- Claude Fable, for the code and design reviews.
