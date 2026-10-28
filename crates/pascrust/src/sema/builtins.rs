@@ -38,6 +38,8 @@ builtins! {
     Val => "val",
     // Pointers
     New => "new", Dispose => "dispose",
+    // Sets
+    Include => "include", Exclude => "exclude",
     // Files
     Assign => "assign", Reset => "reset", Rewrite => "rewrite", Append => "append",
     Close => "close", Erase => "erase", Rename => "rename", Flush => "flush",
@@ -97,6 +99,8 @@ impl Builtin {
                 | Val
                 | New
                 | Dispose
+                | Include
+                | Exclude
                 | Assign
                 | Reset
                 | Rewrite

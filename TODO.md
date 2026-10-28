@@ -206,7 +206,7 @@ Printer and Overlay
 - [ ] Fake `Overlay`: `OvrInit`, `OvrInitEMS`, `OvrSetBuf`, `OvrGetBuf`, `OvrClearBuf` do nothing and `OvrResult` is 0 (`ovrOk`); `{$O+}` and `{$F+}` are ignored silently. Overlays only existed to fit in 640 KB.
 
 Sets (a language feature, but `Include`/`Exclude` and `in` are everywhere in old code)
-- [ ] `set of T` as a runtime `PSet` (a 256-bit set, as in TP), set literals with ranges (`['a'..'z', '_']`), `in`, `+ - *`, `= <> <= >=`, `Include`/`Exclude`, sets in typed constants and records. `ch in ['a'..'z']` with a literal set could become a `matches!` for readability.
+- [x] `set of T` as a runtime `PSet` (a 256-bit set, as in TP), set literals with ranges, `in` (a `matches!` for a list of constants), `+ - *` as `| & -`, `= <> <= >=`, `Include`/`Exclude`, set constants (`PSet::of`/`from_ranges`, `const fn`s), sets in typed constants, records and parameters. Not yet: sets in `file of` records.
 
 Dos, the rest
 - [ ] `FindFirst`/`FindNext`/`SearchRec` with DOS wildcards (`*.PAS`, `?`), the attribute filter (`Directory`, `AnyFile`, ...), names shown as on disk.

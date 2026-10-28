@@ -67,7 +67,86 @@ impl<'a> Codegen<'a> {
                 }
             }
             ExprKind::Field(..) | ExprKind::Index(..) => (self.selector(e), prec::POSTFIX),
+            ExprKind::Set(elems) => (self.set_literal(e, elems), prec::POSTFIX),
             _ => unreachable!("sema rejects this expression"),
+        }
+    }
+
+    /// `[1, 3..5, x]` → `pset![1, 3..=5, x]`, each element as the set's
+    /// element type (`'a'` → `b'a'`).
+    fn set_literal(&mut self, e: &Expr, elems: &[SetElem]) -> String {
+        let Type::Set(elem_ty) = self.a.type_of(e.id).clone() else { unreachable!("sema typed the set") };
+        if elems.is_empty() {
+            return "PSet::new()".to_string();
+        }
+        let items: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty)).collect();
+        format!("pset![{}]", items.join(", "))
+    }
+
+    /// One element of a set literal: `x` or `lo..=hi`.
+    fn set_item(&mut self, elem: &SetElem, elem_ty: &Type) -> String {
+        match elem {
+            SetElem::Single(x) => self.coerce(x, elem_ty).0,
+            SetElem::Range(lo, hi) => {
+                let (lo, hi) = (self.coerce(lo, elem_ty), self.coerce(hi, elem_ty));
+                // Any binary operator binds tighter than `..=`.
+                format!("{}..={}", paren(lo, prec::OR), paren(hi, prec::OR))
+            }
+        }
+    }
+
+    /// Set operators: `+` → `|`, `*` → `&`, `-` stays, `<=`/`>=` are
+    /// `is_subset`/`is_superset`, and `x in s` is `s.contains(x)`, or, for a
+    /// list of constants, `matches!(x, 1 | 3..=5)`.
+    fn set_binary(&mut self, op: BinaryOp, lhs: &Expr, rhs: &Expr) -> Code {
+        use BinaryOp::*;
+        if op == In {
+            let Type::Set(elem_ty) = self.a.type_of(rhs.id).clone() else { unreachable!("sema checked `in`") };
+            let x = self.coerce(lhs, &elem_ty);
+            if let ExprKind::Set(elems) = &rhs.kind
+                && elems.iter().all(|elem| self.constant_item(elem))
+            {
+                if elems.is_empty() {
+                    return ("false".to_string(), prec::POSTFIX);
+                }
+                let patterns: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty)).collect();
+                return (format!("matches!({}, {})", x.0, patterns.join(" | ")), prec::POSTFIX);
+            }
+            let set = self.expr(rhs);
+            return (format!("{}.contains({})", paren(set, prec::POSTFIX), x.0), prec::POSTFIX);
+        }
+        let (l, r) = (self.expr(lhs), self.expr(rhs));
+        let (rust_op, p) = match op {
+            Add => ("|", prec::BIT_OR),
+            Mul => ("&", prec::BIT_AND),
+            Sub => ("-", prec::ADD),
+            Eq => ("==", prec::CMP),
+            NotEq => ("!=", prec::CMP),
+            LtEq | GtEq => {
+                let method = if op == LtEq { "is_subset" } else { "is_superset" };
+                // `&` borrows the right-hand set; a literal needs no `&`
+                // around its parentheses, `&pset![...]` is fine.
+                return (format!("{}.{method}(&{})", paren(l, prec::POSTFIX), paren(r, prec::UNARY)), prec::POSTFIX);
+            }
+            _ => unreachable!("sema checked the set operator"),
+        };
+        let left_min = if p == prec::CMP { p + 1 } else { p };
+        (format!("{} {rust_op} {}", paren(l, left_min), paren(r, p + 1)), p)
+    }
+
+    /// Can this set element be a `match` pattern: a literal, a named
+    /// constant or an enum value?
+    fn constant_item(&self, elem: &SetElem) -> bool {
+        let constant = |e: &Expr| match &e.kind {
+            ExprKind::Int(_) | ExprKind::Str(_) => true,
+            ExprKind::Name(_) => {
+                self.a.refs.get(&e.id).is_some_and(|&s| matches!(self.a.sym(s).kind, SymKind::Const { .. }))
+            }
+            _ => false,
+        };
+        match elem {
+            SetElem::Single(e) => constant(e),
+            SetElem::Range(lo, hi) => constant(lo) && constant(hi),
         }
     }
 
@@ -171,6 +250,9 @@ impl<'a> Codegen<'a> {
         use BinaryOp::*;
         let ty = self.a.type_of(e.id).clone();
         let (lt, rt) = (self.a.type_of(lhs.id).clone(), self.a.type_of(rhs.id).clone());
+        if op == In || matches!(lt, Type::Set(_)) {
+            return self.set_binary(op, lhs, rhs);
+        }
         let (rust_op, p) = match op {
             Add => ("+", prec::ADD),
             Sub => ("-", prec::ADD),
@@ -738,6 +820,26 @@ impl<'a> Codegen<'a> {
             ConstVal::Bool(b) => b.to_string(),
             ConstVal::Str(bytes) if *ty == Type::Char && bytes.len() == 1 => char_literal(bytes[0]),
             ConstVal::Str(bytes) => str_literal(bytes),
+            // `PSet::from_ranges` is a `const fn`, so it can initialize a
+            // `const`; it takes the elements' ordinals as `u8`s.
+            ConstVal::Set(ranges) => {
+                let elem_ty = match ty {
+                    Type::Set(elem) => elem.concrete(),
+                    _ => Type::Int(IntKind::Byte),
+                };
+                let ord = |n: u8| match &elem_ty {
+                    Type::Char => char_literal(n),
+                    Type::Enum(e) => format!("{}::{} as u8", e.rust_name, e.variants[n as usize]),
+                    _ => n.to_string(),
+                };
+                if ranges.iter().all(|(lo, hi)| lo == hi) {
+                    let elements: Vec<String> = ranges.iter().map(|&(n, _)| ord(n)).collect();
+                    return format!("PSet::of(&[{}])", elements.join(", "));
+                }
+                let ranges: Vec<String> =
+                    ranges.iter().map(|&(lo, hi)| format!("({}, {})", ord(lo), ord(hi))).collect();
+                format!("PSet::from_ranges(&[{}])", ranges.join(", "))
+            }
         }
     }
 }

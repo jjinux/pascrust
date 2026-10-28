@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::names::{self, screaming_snake_case, snake_case};
-use super::types::{ArrayType, EnumType, Field, ObjectType, PointerType, RecordType};
+use super::types::{ArrayType, EnumType, Field, ObjectType, PointerType, RecordType, same_ordinal_kind};
 use super::*;
 use crate::ast::*;
 
@@ -494,6 +494,8 @@ impl Checker {
             ConstVal::Bool(_) => Type::Bool,
             ConstVal::Str(s) if s.len() == 1 => Type::Char,
             ConstVal::Str(s) => Type::StrLit(s.len()),
+            // The literal's type says what the elements are.
+            ConstVal::Set(_) => self.expr(e),
         };
         let rust_name = Self::unique_in(&mut self.used_const_names, screaming_snake_case(&c.name.name));
         let sym = self.add_symbol(&c.name.name, rust_name, SymKind::Const { value, ty });
@@ -853,6 +855,39 @@ impl Checker {
                 self.a.type_defs.push((ty.clone(), t.span()));
                 ty
             }
+            TypeExpr::Set(elem, span) => {
+                // TP sets hold up to 256 values, with ordinals 0 to 255.
+                let is_subrange = match &**elem {
+                    TypeExpr::Subrange { .. } => true,
+                    TypeExpr::Named(id) => self.lookup(&id.key()).is_some_and(|s| self.subrange_types.contains_key(&s)),
+                    _ => false,
+                };
+                if !is_subrange {
+                    let elem_ty = self.resolve_type(elem);
+                    return match &elem_ty {
+                        Type::Char | Type::Bool | Type::Int(IntKind::Byte) | Type::Error => Type::Set(Rc::new(elem_ty)),
+                        Type::Enum(e) if e.variants.len() <= 256 => Type::Set(Rc::new(elem_ty)),
+                        _ => {
+                            self.error(
+                                *span,
+                                format!("a set's elements must have ordinals from 0 to 255, which {elem_ty} doesn't (a subrange like `0..255` would)"),
+                            );
+                            Type::Error
+                        }
+                    };
+                }
+                let Some((elem_ty, lo, hi)) = self.index_type(elem) else { return Type::Error };
+                if lo < 0 || hi > 255 {
+                    self.error(
+                        *span,
+                        format!(
+                            "a set's elements must have ordinals from 0 to 255, but {elem_ty} goes from {lo} to {hi}"
+                        ),
+                    );
+                    return Type::Error;
+                }
+                Type::Set(Rc::new(elem_ty))
+            }
             other => {
                 self.error(other.span(), "this kind of type is not supported yet");
                 Type::Error
@@ -944,6 +979,22 @@ impl Checker {
                 SymKind::Const { value, .. } => Some(value.clone()),
                 _ => None,
             },
+            ExprKind::Set(elems) => {
+                let ord = |e: &Expr| match self.eval_const(e)? {
+                    Int(n) => u8::try_from(n).ok(),
+                    Str(s) if s.len() == 1 => Some(s[0]),
+                    Bool(b) => Some(b as u8),
+                    _ => None,
+                };
+                let mut ranges = Vec::new();
+                for elem in elems {
+                    ranges.push(match elem {
+                        SetElem::Single(e) => (ord(e)?, ord(e)?),
+                        SetElem::Range(lo, hi) => (ord(lo)?, ord(hi)?),
+                    });
+                }
+                Some(Set(ranges))
+            }
             ExprKind::Unary { op, operand } => match (op, self.eval_const(operand)?) {
                 (UnaryOp::Neg, Int(n)) => Some(Int(-n)),
                 (UnaryOp::Neg, Real(x)) => Some(Real(-x)),
@@ -1472,7 +1523,31 @@ impl Checker {
                 let base_ty = self.expr(base);
                 self.deref_type(base_ty, e.span)
             }
-            ExprKind::Set(_) | ExprKind::AddrOf(_) => {
+            ExprKind::Set(elems) => {
+                // The element type is the first element's; the others must mix with it.
+                let mut elem_ty = Type::Void;
+                for elem in elems {
+                    let values = match elem {
+                        SetElem::Single(e) => vec![e],
+                        SetElem::Range(lo, hi) => vec![lo, hi],
+                    };
+                    for value in values {
+                        let ty = self.expr(value);
+                        if ty == Type::Error {
+                            continue;
+                        }
+                        if !ty.is_ordinal() {
+                            self.error(value.span, format!("set elements must be ordinal values, found {ty}"));
+                        } else if elem_ty == Type::Void {
+                            elem_ty = ty.concrete();
+                        } else if !same_ordinal_kind(&elem_ty, &ty) {
+                            self.error(value.span, format!("a set of {elem_ty} can't hold a {}", ty.concrete()));
+                        }
+                    }
+                }
+                Type::Set(Rc::new(elem_ty))
+            }
+            ExprKind::AddrOf(_) => {
                 self.error(e.span, "this kind of expression is not supported yet");
                 Type::Error
             }
@@ -1490,7 +1565,24 @@ impl Checker {
         {
             return Type::IntLit(v);
         }
-        let result = match op {
+        let result = match (op, l, r) {
+            // Union, difference and intersection.
+            (Add | Sub | Mul, Type::Set(a), Type::Set(_)) => {
+                if **a == Type::Void {
+                    Some(r.clone())
+                } else {
+                    l.accepts(r).then(|| Type::Set(a.clone()))
+                }
+            }
+            (In, _, Type::Set(elem)) => {
+                (l.is_ordinal() && (**elem == Type::Void || same_ordinal_kind(l, elem))).then_some(Type::Bool)
+            }
+            (Eq | NotEq | LtEq | GtEq, Type::Set(_), Type::Set(_)) => {
+                (l.accepts(r) || r.accepts(l)).then_some(Type::Bool)
+            }
+            _ => None,
+        };
+        let result = result.or_else(|| match op {
             Add if l.is_stringish() && r.is_stringish() => Some(Type::Str { cap: 255 }),
             Add | Sub | Mul => numeric_common(l, r),
             RealDiv if l.is_numeric() && r.is_numeric() => Some(Type::Real),
@@ -1502,7 +1594,7 @@ impl Checker {
             And | Or | Xor => int_common(l, r),
             Eq | NotEq | Lt | LtEq | Gt | GtEq => comparable(l, r).then_some(Type::Bool),
             _ => None,
-        };
+        });
         result.unwrap_or_else(|| {
             self.error(e.span, format!("operator can't combine {l} and {r} values"));
             Type::Error
@@ -2076,6 +2168,21 @@ impl Checker {
             IOResult => {
                 arity(&mut self.errors, span, args.len(), 0..=0, &name);
                 Type::Int(IntKind::Integer)
+            }
+            Include | Exclude => {
+                if arity(&mut self.errors, span, args.len(), 2..=2, &name) {
+                    let set_ty = self.place(&args[0], true);
+                    let elem_ty = self.expr(&args[1]);
+                    match &set_ty {
+                        Type::Set(elem) if same_ordinal_kind(elem, &elem_ty) || elem_ty == Type::Error => {}
+                        Type::Set(elem) => {
+                            self.error(args[1].span, format!("a set of {elem} can't hold a {elem_ty}"));
+                        }
+                        Type::Error => {}
+                        _ => self.error(args[0].span, format!("`{name}` needs a set variable, found {set_ty}")),
+                    }
+                }
+                Type::Void
             }
             TypeOf => {
                 if !arity(&mut self.errors, span, args.len(), 1..=1, &name) {

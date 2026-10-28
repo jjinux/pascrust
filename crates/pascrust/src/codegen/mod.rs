@@ -1161,7 +1161,7 @@ impl<'a> Codegen<'a> {
             crate::sema::ConstVal::Int(n) => *n,
             crate::sema::ConstVal::Str(s) => s.first().copied().unwrap_or(0) as i64,
             crate::sema::ConstVal::Bool(b) => *b as i64,
-            crate::sema::ConstVal::Real(_) => 0,
+            crate::sema::ConstVal::Real(_) | crate::sema::ConstVal::Set(_) => 0,
         }
     }
 
@@ -1422,6 +1422,7 @@ fn default_value(ty: &Type) -> String {
         Type::Text => "PText::default()".to_string(),
         Type::File(_) => "PFile::default()".to_string(),
         Type::TypeInfo => "\"\"".to_string(),
+        Type::Set(_) => "PSet::new()".to_string(),
         Type::Nil | Type::Void | Type::Error => "()".to_string(),
     }
 }

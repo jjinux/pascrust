@@ -87,6 +87,9 @@ pub enum ConstVal {
     Real(f64),
     Bool(bool),
     Str(Vec<u8>),
+    /// A set constant, as ranges of ordinals: `['0'..'9', '_']` is
+    /// `[(48, 57), (95, 95)]`.
+    Set(Vec<(u8, u8)>),
 }
 
 #[derive(Debug, Clone)]

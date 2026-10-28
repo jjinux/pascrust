@@ -10,6 +10,7 @@ pub use crate::io::{FileRecord, PFile, PText, PasWrite, eof, eoln, seek_eof, see
 pub use crate::ordinal::{Enumerated, Ordinal, enum_range};
 pub use crate::ptr::Ptr;
 pub use crate::run::{halt, io_result, io_unchecked, rte};
+pub use crate::set::PSet;
 pub use crate::string::{PString, pos, pstr};
 pub use crate::system::{ch_dir, mk_dir, param_count, param_str, pas_str, random, random_real, randomize, rm_dir, val};
 // The `Crt`, `Dos` and `Graph` units, when the program uses them.
@@ -24,4 +25,4 @@ pub use crate::dos::*;
 pub use crate::graph::*;
 // `#[macro_export]` macros live at the crate root; re-exporting them here
 // lets the generated code's single glob import pick them up as well.
-pub use crate::{file_record, fread, freadln, fwrite, fwriteln, pread, preadln, pwrite, pwriteln};
+pub use crate::{file_record, fread, freadln, fwrite, fwriteln, pread, preadln, pset, pwrite, pwriteln};

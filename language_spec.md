@@ -146,6 +146,10 @@ Files
 
 More language
 
+- Sets: `set of T` (`T` with ordinals 0 to 255: `Char`, `Byte`, `Boolean`,
+  an enumeration, a subrange like `0..9`), literals with ranges
+  (`['a'..'z', '_']`), `in`, `+ - *`, `= <> <= >=`, `Include`/`Exclude`,
+  set constants and typed constants, sets in records and parameters
 - `with` statements (single and multiple record expressions, records and
   objects, through pointers). A body may not change an array index that
   chooses the record (`with a[i] do ... i := 2` is an error)
@@ -202,7 +206,7 @@ Graph unit (BGI, as used in the examples)
 
 Later (real TP features, not in the examples, worth doing in order)
 
-1. `set of T`, set literals, `in`, `+ - *`, `<=`, `Include`/`Exclude`
+1. (Done, now in tier 2: sets.)
 2. Variant records (flattened; no type punning)
 3. (Done, now in tier 2: `virtual` methods, constructors and destructors,
    polymorphic pointers to objects.)

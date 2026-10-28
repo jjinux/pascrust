@@ -1,0 +1,87 @@
+program Sets;
+{ set of T: literals with ranges, in, + - *, comparisons, Include and
+  Exclude, set constants, and sets in records and parameters. }
+type
+  Color = (Red, Green, Blue, Yellow);
+  Colors = set of Color;
+  CharSet = set of Char;
+  Digit = 0..9;
+  Digits = set of Digit;
+  Palette = record
+    name: string[10];
+    colors: Colors;
+  end;
+
+const
+  Vowels = ['a', 'e', 'i', 'o', 'u'];
+  Primary = [Red, Green, Blue];
+  Typed: CharSet = ['x'..'z'];
+
+var
+  letters, found: CharSet;
+  c: Char;
+  d: Digits;
+  i: Integer;
+  p: Palette;
+  warm: Colors;
+
+procedure Show(s: CharSet);
+var
+  ch: Char;
+begin
+  Write('[');
+  for ch := 'a' to 'z' do
+    if ch in s then
+      Write(ch);
+  WriteLn(']');
+end;
+
+procedure AddDigit(var s: Digits; n: Integer);
+begin
+  if n in [0..9] then
+    Include(s, n);
+end;
+
+function Count(s: Digits): Integer;
+var
+  n, k: Integer;
+begin
+  k := 0;
+  for n := 0 to 9 do
+    if n in s then
+      k := k + 1;
+  Count := k;
+end;
+
+begin
+  letters := ['a'..'f', 'x', 'q'];
+  Show(letters);
+  Show(letters * Vowels);
+  Show(letters - Vowels);
+  Show(letters + ['m'..'o']);
+  Show(Typed);
+  found := [];
+  for c := 'a' to 'z' do
+    if (c in Vowels) and not (c in ['i', 'o']) then
+      Include(found, c);
+  Show(found);
+  Exclude(found, 'a');
+  Show(found);
+  WriteLn(found <= Vowels, ' ', Vowels <= found, ' ', Vowels >= found, ' ', found = ['e', 'u'], ' ', found <> []);
+  c := 'k';
+  WriteLn(c in ['a'..'m'], ' ', c in letters, ' ', 'e' in letters);
+  d := [];
+  for i := 1 to 12 do
+    if i mod 3 = 0 then
+      AddDigit(d, i);
+  WriteLn(Count(d), ' ', 3 in d, ' ', 12 in d, ' ', 4 in d);
+  p.name := 'flag';
+  p.colors := Primary - [Green];
+  warm := [Red, Yellow];
+  WriteLn(Red in p.colors, ' ', Green in p.colors, ' ', p.colors * warm = [Red], ' ', Yellow in Primary);
+  i := 0;
+  for c := 'a' to 'z' do
+    if c in Vowels + ['y'] then
+      i := i + 1;
+  WriteLn(i);
+end.

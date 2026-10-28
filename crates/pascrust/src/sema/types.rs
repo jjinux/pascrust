@@ -90,6 +90,9 @@ pub enum Type {
     Text,
     /// `file of T`.
     File(Rc<Type>),
+    /// `set of T`. The empty set literal `[]` is a `Set` of `Void`, which
+    /// fits any set type.
+    Set(Rc<Type>),
     /// The type of `nil`.
     Nil,
     /// What `TypeOf` returns: which object type something really is. (In
@@ -290,6 +293,7 @@ impl Type {
                 None => a.rust_unaliased(),
             },
             Type::TypeInfo => "&'static str".to_string(),
+            Type::Set(elem) => format!("PSet<{}>", elem.concrete().rust()),
             Type::Nil | Type::Void | Type::Error => "()".to_string(),
         }
     }
@@ -318,6 +322,7 @@ impl Type {
             (Type::Char, Type::Char | Type::StrLit(1)) => true,
             (Type::Str { .. }, t) if t.is_stringish() => true,
             (Type::Pointer(_), Type::Nil) => true,
+            (Type::Set(a), Type::Set(b)) => **b == Type::Void || same_ordinal_kind(a, b),
             // A pointer to an object may point to any object descended from it.
             (Type::Pointer(to), Type::Pointer(from)) if to != from => match (to.target(), from.target()) {
                 (Type::Object(to), Type::Object(from)) => from.lineage().iter().any(|(o, _)| *o == to),
@@ -356,9 +361,20 @@ impl fmt::Display for Type {
             Type::File(elem) => write!(f, "file of {elem}"),
             Type::Array(a) => write!(f, "array[{}..{}] of {}", a.lo, a.hi, a.elem),
             Type::Nil | Type::TypeInfo => write!(f, "Pointer"),
+            Type::Set(elem) if **elem == Type::Void => write!(f, "empty set"),
+            Type::Set(elem) => write!(f, "set of {elem}"),
             Type::Void => write!(f, "no value"),
             Type::Error => write!(f, "<error>"),
         }
+    }
+}
+
+/// Can values of these two ordinal types mix, as set elements? Integers go
+/// with integers, characters with characters, an enum with itself.
+pub fn same_ordinal_kind(a: &Type, b: &Type) -> bool {
+    match (a.concrete(), b.concrete()) {
+        (x, y) if x.is_integer() && y.is_integer() => true,
+        (x, y) => x == y,
     }
 }
 

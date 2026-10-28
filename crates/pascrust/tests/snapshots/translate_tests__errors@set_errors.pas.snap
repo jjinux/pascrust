@@ -1,0 +1,20 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/set_errors.pas
+---
+set_errors.pas:6:8: error: a set's elements must have ordinals from 0 to 255, which Integer doesn't (a subrange like `0..255` would)
+  big: set of Integer;
+       ^^^^^^^^^^^^^^
+
+set_errors.pas:10:19: error: a set of Color can't hold a Char
+  colors := [Red, 'a'];
+                  ^^^
+
+set_errors.pas:11:18: error: a set of Char can't hold a Color
+  Include(chars, Red);
+                 ^^^
+
+set_errors.pas:12:6: error: operator can't combine Integer and set of Char values
+  if 1 in chars then
+     ^^^^^^^^^^

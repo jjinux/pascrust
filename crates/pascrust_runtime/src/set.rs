@@ -1,0 +1,233 @@
+//! Pascal sets: `set of T`, where `T` is an ordinal type with at most 256
+//! values whose ordinals are 0..=255 (`Char`, `Byte`, `Boolean`, an
+//! enumeration, a subrange like `0..9`).
+//!
+//! Like Turbo Pascal, a set is a fixed 256-bit bitmap: bit `n` says whether
+//! the value with ordinal `n` is in the set. That makes every operation a few
+//! machine instructions and the type `Copy`, like TP's 32-byte sets.
+
+use std::fmt;
+use std::marker::PhantomData;
+use std::ops::{BitAnd, BitOr, RangeInclusive, Sub};
+
+use crate::ordinal::Ordinal;
+
+/// Pascal `set of T`.
+///
+/// `PhantomData<T>` is a zero-sized field that only records the element
+/// type, so a `PSet<u8>` (set of Char) and a `PSet<Color>` are different
+/// types even though both are just 256 bits.
+pub struct PSet<T> {
+    bits: [u64; 4],
+    elem: PhantomData<T>,
+}
+
+impl<T> PSet<T> {
+    /// The empty set, `[]`.
+    pub const fn new() -> PSet<T> {
+        PSet { bits: [0; 4], elem: PhantomData }
+    }
+
+    /// A set from ranges of ordinals, for set constants:
+    /// `const DIGITS: PSet<u8> = PSet::from_ranges(&[(b'0', b'9')]);`.
+    /// A `const fn` can run at compile time, so this can initialize a
+    /// `const`; it takes plain `u8` ordinals because trait methods (like
+    /// `Ordinal::ord`) can't be called there.
+    pub const fn from_ranges(ranges: &[(u8, u8)]) -> PSet<T> {
+        let mut bits = [0u64; 4];
+        // `for` loops aren't allowed in a `const fn` yet; `while` is.
+        let mut i = 0;
+        while i < ranges.len() {
+            let (lo, hi) = ranges[i];
+            let mut n = lo as usize;
+            while n <= hi as usize {
+                bits[n / 64] |= 1 << (n % 64);
+                n += 1;
+            }
+            i += 1;
+        }
+        PSet { bits, elem: PhantomData }
+    }
+
+    /// A set of single elements, given as ordinals, for set constants:
+    /// `const VOWELS: PSet<u8> = PSet::of(&[b'a', b'e', b'i', b'o', b'u']);`.
+    pub const fn of(elements: &[u8]) -> PSet<T> {
+        let mut bits = [0u64; 4];
+        let mut i = 0;
+        while i < elements.len() {
+            let n = elements[i] as usize;
+            bits[n / 64] |= 1 << (n % 64);
+            i += 1;
+        }
+        PSet { bits, elem: PhantomData }
+    }
+
+    /// The bit for `x`, or `None` if its ordinal is outside 0..=255 (then
+    /// it can't be in any set).
+    fn bit(x: impl Ordinal) -> Option<(usize, u64)> {
+        let n = usize::try_from(x.ord()).ok().filter(|&n| n < 256)?;
+        Some((n / 64, 1 << (n % 64)))
+    }
+
+    /// Pascal `x in s`. Any ordinal value may be tested: `300 in s` is
+    /// simply false.
+    pub fn contains(&self, x: impl Ordinal) -> bool {
+        Self::bit(x).is_some_and(|(word, mask)| self.bits[word] & mask != 0)
+    }
+
+    /// Pascal `Include(s, x)`: `s := s + [x]`.
+    pub fn include(&mut self, x: impl Ordinal) {
+        if let Some((word, mask)) = Self::bit(x) {
+            self.bits[word] |= mask;
+        }
+    }
+
+    /// Pascal `Exclude(s, x)`: `s := s - [x]`.
+    pub fn exclude(&mut self, x: impl Ordinal) {
+        if let Some((word, mask)) = Self::bit(x) {
+            self.bits[word] &= !mask;
+        }
+    }
+
+    /// The set with `items` (a value or a range of values) added; used by
+    /// the `pset!` macro.
+    pub fn with(mut self, items: impl SetItems) -> PSet<T> {
+        items.add_to(&mut self.bits);
+        self
+    }
+
+    /// Pascal `a <= b`: every element of `a` is in `b`.
+    pub fn is_subset(&self, other: &PSet<T>) -> bool {
+        self.bits.iter().zip(&other.bits).all(|(a, b)| a & !b == 0)
+    }
+
+    /// Pascal `a >= b`: every element of `b` is in `a`.
+    pub fn is_superset(&self, other: &PSet<T>) -> bool {
+        other.is_subset(self)
+    }
+
+    /// Combine two sets word by word.
+    fn zip_with(self, other: PSet<T>, f: impl Fn(u64, u64) -> u64) -> PSet<T> {
+        let mut bits = [0; 4];
+        for (i, bit) in bits.iter_mut().enumerate() {
+            *bit = f(self.bits[i], other.bits[i]);
+        }
+        PSet { bits, elem: PhantomData }
+    }
+}
+
+/// Something a set literal can list: a single value (`x`) or a range of
+/// values (`b'a'..=b'z'`).
+pub trait SetItems {
+    fn add_to(self, bits: &mut [u64; 4]);
+}
+
+impl<U: Ordinal> SetItems for U {
+    fn add_to(self, bits: &mut [u64; 4]) {
+        if let Ok(n @ 0..=255) = usize::try_from(self.ord()) {
+            bits[n / 64] |= 1 << (n % 64);
+        }
+    }
+}
+
+// This impl doesn't overlap the one above: `RangeInclusive` isn't an
+// `Ordinal`, and since `Ordinal` is this crate's trait, Rust can be sure no
+// other crate will make it one.
+impl<U: Ordinal> SetItems for RangeInclusive<U> {
+    fn add_to(self, bits: &mut [u64; 4]) {
+        let (lo, hi) = (self.start().ord().max(0), self.end().ord().min(255));
+        for n in lo..=hi {
+            let n = n as usize;
+            bits[n / 64] |= 1 << (n % 64);
+        }
+    }
+}
+
+/// A Pascal set literal: `pset![b'a'..=b'z', b'_']` is `['a'..'z', '_']`.
+#[macro_export]
+macro_rules! pset {
+    ($($item:expr),* $(,)?) => {
+        $crate::set::PSet::new()$(.with($item))*
+    };
+}
+
+// Pascal's set operators, as Rust's bitwise ones: `+` (union) is `|`, `*`
+// (intersection) is `&`, and `-` (difference) stays `-`.
+impl<T> BitOr for PSet<T> {
+    type Output = PSet<T>;
+    fn bitor(self, other: PSet<T>) -> PSet<T> {
+        self.zip_with(other, |a, b| a | b)
+    }
+}
+
+impl<T> BitAnd for PSet<T> {
+    type Output = PSet<T>;
+    fn bitand(self, other: PSet<T>) -> PSet<T> {
+        self.zip_with(other, |a, b| a & b)
+    }
+}
+
+impl<T> Sub for PSet<T> {
+    type Output = PSet<T>;
+    fn sub(self, other: PSet<T>) -> PSet<T> {
+        self.zip_with(other, |a, b| a & !b)
+    }
+}
+
+// These are written out rather than derived: `#[derive]` would require `T`
+// itself to be `Clone`, `PartialEq`, ..., but only the bits matter.
+impl<T> Clone for PSet<T> {
+    fn clone(&self) -> PSet<T> {
+        *self
+    }
+}
+
+impl<T> Copy for PSet<T> {}
+
+impl<T> PartialEq for PSet<T> {
+    fn eq(&self, other: &PSet<T>) -> bool {
+        self.bits == other.bits
+    }
+}
+
+impl<T> Eq for PSet<T> {}
+
+impl<T> Default for PSet<T> {
+    fn default() -> PSet<T> {
+        PSet::new()
+    }
+}
+
+impl<T> fmt::Debug for PSet<T> {
+    /// The ordinals in the set: `{1, 3, 4, 5}`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let members = (0..256).filter(|&n| self.bits[n / 64] & (1 << (n % 64)) != 0);
+        f.debug_set().entries(members).finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn membership_and_operators() {
+        let letters: PSet<u8> = pset![b'a'..=b'z', b'_'];
+        assert!(letters.contains(b'q') && letters.contains(b'_'));
+        assert!(!letters.contains(b'A') && !letters.contains(300));
+        let vowels: PSet<u8> = pset![b'a', b'e', b'i', b'o', b'u'];
+        assert!(vowels.is_subset(&letters) && !letters.is_subset(&vowels));
+        assert_eq!(vowels & letters, vowels);
+        assert!(!(letters - vowels).contains(b'e'));
+        let mut s = PSet::<u8>::new();
+        s.include(3);
+        s.include(200);
+        assert_eq!(s, pset![3, 200]);
+        s.exclude(3);
+        assert_eq!(s | pset![1], pset![1, 200]);
+        const DIGITS: PSet<u8> = PSet::from_ranges(&[(b'0', b'9')]);
+        assert_eq!(DIGITS, pset![b'0'..=b'9']);
+        const ODD: PSet<u8> = PSet::of(&[1, 3, 5]);
+        assert_eq!(ODD, pset![1, 3, 5]);
+    }
+}

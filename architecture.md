@@ -201,7 +201,7 @@ via `run()` and `catch_unwind` (§17).
 | `record`                  | `struct` with `#[derive(Clone, Default)]` | see §11 |
 | enumerated type           | `enum` + `Ordinal` impl                | see §13 |
 | subrange `a..b`           | the host integer type (`i16` etc.)     | checked only with `--range-checks` |
-| `set of T`                | `PSet<T>`                              | tier 3; see §14 |
+| `set of T`                | `PSet<T>`                              | see §14 |
 | `^T`                      | `Ptr<T>`                               | see §12 |
 | `Text`                    | `PText`                                | |
 | `file of T`               | `PFile<T>`                             | |
@@ -405,12 +405,21 @@ flag makes codegen wrap assignments into subrange variables with
 
 ## 14. Sets
 
-`set of T` becomes `PSet<T: Ordinal>`, a 256-bit bitset (`[u64; 4]`) with a
-phantom element type, implementing `BitOr`/`BitAnd`/`Sub` for `+`, `*`, `-`,
-`contains` for `in`, and `PartialEq`/`is_subset` for `=`, `<=`. Set literals
-`[1, 3..5, x]` become `pset![1, 3..=5, x]`. p2c's small-set/big-set split is
-unnecessary here; one representation, no optimization. Tier 3 because no
-example uses sets.
+`set of T` becomes `PSet<T>`, a 256-bit bitset (`[u64; 4]`, `Copy`, like
+TP's 32-byte sets) with a phantom element type. `+`, `*` and `-` are
+`|`, `&` and `-` (`BitOr`/`BitAnd`/`Sub`); `=`/`<>` compare the bits;
+`<=`/`>=` are `is_subset`/`is_superset`; `Include`/`Exclude` are methods.
+The element methods take any `Ordinal`, so `300 in s` is simply false
+rather than wrapping to a byte. Set literals `[1, 3..5, x]` become
+`pset![1, 3..=5, x]` (each item is a value or a `RangeInclusive`, through
+the `SetItems` trait), and `x in [...]` with only constants in the list
+becomes `matches!(x, 1 | 3..=5)`, which is what a Rust programmer would
+write. Set constants are Rust `const`s, built by the `const fn`s
+`PSet::of(&[...])` and `PSet::from_ranges(&[...])` from `u8` ordinals,
+since trait methods can't run in a `const`. The element type must have
+ordinals 0 to 255 (`Char`, `Byte`, `Boolean`, an enum, a subrange in that
+range), as in TP. p2c's small-set/big-set split is unnecessary here; one
+representation, no optimization.
 
 ## 15. Procedures, parameters and the aliasing problem
 
