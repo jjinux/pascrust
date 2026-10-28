@@ -31,7 +31,7 @@ fn pascal_main() {
     set_line_style(DOTTED_LN, 0, NORM_WIDTH);
     line(0, 50, 7, 50);
     pwrite!("dotted: ");
-    for i in 0..=7 {
+    for i in 0_i16..=7 {
         pwrite!(get_pixel(i, 50));
     }
     pwriteln!();

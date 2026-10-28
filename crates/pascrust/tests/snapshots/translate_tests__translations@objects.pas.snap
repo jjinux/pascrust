@@ -113,7 +113,7 @@ fn pascal_main() {
     fill(&mut log, &mut q, 3);
     pwriteln!("q total ", q.total(), " full ", q.full());
     nq.init(pstr("numbers"));
-    for i in 1..=7 {
+    for i in 1_i16..=7 {
         nq.base.add(&mut log, i);
     }
     nq.show();

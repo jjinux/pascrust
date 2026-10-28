@@ -832,8 +832,22 @@ impl<'a> Codegen<'a> {
     fn for_loop(&mut self, s: &Stmt, var: &Ident, start: &Expr, end: &Expr, down: bool, body: &Stmt) {
         let sym = self.a.decls[&var.span.start];
         let ty = self.a.var(sym).ty.clone();
+        // With two literal bounds (`for i := 10 to 12`), nothing would tell
+        // Rust that a fresh loop variable is 16 bits, and it would pick
+        // `i32`; then `i * 3000` wouldn't wrap as it does in TP. A suffix on
+        // the first bound (`10_i16..=12`) settles it.
+        // (A loop variable that's used outside the loop is declared with its
+        // type already.)
+        let scoped = self.a.scoped_for_loops.contains(&s.span.start);
+        let literal = |e: &Expr| matches!(self.a.type_of(e.id), Type::IntLit(_));
+        let suffix = match &ty {
+            Type::Int(kind) if scoped && literal(start) && literal(end) => format!("_{}", kind.rust()),
+            _ => String::new(),
+        };
         let lo_hi = |g: &mut Self| {
             let (start, end) = (g.coerce(start, &ty).0, g.coerce(end, &ty).0);
+            // The suffix goes on whichever bound comes first in the range.
+            let (start, end) = if down { (start, format!("{end}{suffix}")) } else { (format!("{start}{suffix}"), end) };
             match (&ty, down) {
                 // Rust ranges only work for numbers (and `u8` chars); the
                 // runtime's `enum_range` steps through enum values instead.
@@ -845,7 +859,7 @@ impl<'a> Codegen<'a> {
         };
         let range = lo_hi(self);
         let name = self.a.sym(sym).rust_name.clone();
-        if self.a.scoped_for_loops.contains(&s.span.start) {
+        if scoped {
             // Pascal's `for i := 1 to n` evaluates both bounds once and does
             // nothing if `n < 1`, exactly like Rust's inclusive range `1..=n`.
             self.line(format!("for {name} in {range} {{"));

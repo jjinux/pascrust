@@ -126,7 +126,7 @@ fn pascal_main() {
     let mut ok: bool = false;
     let mut k: Key = Key::default();
     head = Ptr::nil();
-    for i in 1..=5 {
+    for i in 1_i16..=5 {
         push(&mut head, i * i);
     }
     pwriteln!("sum = ", sum(head.clone()));
