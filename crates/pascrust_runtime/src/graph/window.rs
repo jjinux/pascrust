@@ -41,8 +41,12 @@ static STATE: AtomicU8 = AtomicU8::new(CLOSED);
 static KEYS: Mutex<VecDeque<u8>> = Mutex::new(VecDeque::new());
 static KEY_PUSHED: Condvar = Condvar::new();
 
+// These three are how `Crt`'s `ReadKey` and `KeyPressed` read the window's
+// keys; without the `crt` feature nothing calls them.
+
 /// True while the window is showing.
-pub fn is_open() -> bool {
+#[cfg(feature = "crt")]
+pub(crate) fn is_open() -> bool {
     STATE.load(Ordering::SeqCst) == OPEN
 }
 
@@ -67,6 +71,10 @@ pub(super) fn close() {
     KEYS.lock().unwrap().clear();
 }
 
+/// Wait for the main thread to move on from `state`. Polling is simpler
+/// than a second `Condvar`, and it only happens when the window opens or
+/// closes. (If the program isn't started by `run`, nothing services the
+/// window and this would wait forever; generated programs always use `run`.)
 fn wait_while(state: u8) {
     while STATE.load(Ordering::SeqCst) == state {
         std::thread::sleep(Duration::from_millis(1));
@@ -74,12 +82,14 @@ fn wait_while(state: u8) {
 }
 
 /// `KeyPressed` while the window is open.
-pub fn key_pressed() -> bool {
+#[cfg(feature = "crt")]
+pub(crate) fn key_pressed() -> bool {
     !KEYS.lock().unwrap().is_empty()
 }
 
 /// `ReadKey` while the window is open: wait for a key typed into it.
-pub fn read_key() -> u8 {
+#[cfg(feature = "crt")]
+pub(crate) fn read_key() -> u8 {
     let mut keys = KEYS.lock().unwrap();
     loop {
         if let Some(key) = keys.pop_front() {
@@ -182,6 +192,7 @@ pub(crate) fn main_loop(worker: &JoinHandle<()>) {
             Some(w) => {
                 if !w.is_open() {
                     // Closing the window ends the program, like Ctrl-Break.
+                    super::save_if_requested();
                     crate::io::shutdown();
                     std::process::exit(0);
                 }
