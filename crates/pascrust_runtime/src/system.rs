@@ -83,9 +83,15 @@ impl ValTarget for f64 {
 /// the 1-based position of the first bad character.
 pub fn val<T: ValTarget>(s: impl Into<PString>, x: &mut T, code: &mut i16) {
     let s = s.into();
-    let text = String::from_utf8_lossy(s.as_bytes()).trim_start().to_string();
-    let leading = s.length() as usize - text.len();
-    match T::parse_pascal(&text) {
+    let bytes = s.as_bytes();
+    let leading = bytes.iter().take_while(|b| b.is_ascii_whitespace()).count();
+    // A number is plain ASCII, so a character from the upper half of code
+    // page 437 (an accented letter, say) is where it stops. Up to there the
+    // bytes are valid UTF-8, so we can slice them as a `&str`.
+    let ascii = bytes[leading..].iter().take_while(|b| b.is_ascii()).count();
+    let text = std::str::from_utf8(&bytes[leading..leading + ascii]).expect("ASCII is valid UTF-8");
+    let parsed = if leading + ascii == bytes.len() { T::parse_pascal(text) } else { None };
+    match parsed {
         Some(v) => {
             *x = v;
             *code = 0;
@@ -95,7 +101,7 @@ pub fn val<T: ValTarget>(s: impl Into<PString>, x: &mut T, code: &mut i16) {
             // number, for the error code.
             let bad = (1..=text.len())
                 .find(|&n| T::parse_pascal(&text[..n]).is_none() && !matches!(&text[..n], "-" | "+" | "$"))
-                .unwrap_or(text.len().max(1));
+                .unwrap_or(text.len() + 1);
             *code = (leading + bad) as i16;
         }
     }
@@ -209,6 +215,13 @@ mod tests {
         assert_eq!(code, 3);
         val("$1F", &mut x, &mut code);
         assert_eq!((x, code), (31, 0));
+        // A non-ASCII byte (CP437 200) is a bad character, not a crash.
+        val(PString::from_bytes(b"12\xc8"), &mut x, &mut code);
+        assert_eq!(code, 3);
+        val(PString::from_bytes(b"\xc812"), &mut x, &mut code);
+        assert_eq!(code, 1);
+        val(" 7", &mut x, &mut code);
+        assert_eq!((x, code), (7, 0));
     }
 
     #[test]
