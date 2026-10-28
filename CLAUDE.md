@@ -2,7 +2,8 @@
 
 A Turbo Pascal → Rust transpiler, written in Rust. It's a learning project:
 the user is an intermediate Rust programmer who's fascinated by language
-implementation. The opening prompt is in `README.md`.
+implementation. The opening prompt is in `README.md` before it was removed
+(`git show 726b781:README.md`).
 
 ## Where things are decided
 

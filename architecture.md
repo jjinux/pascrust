@@ -7,7 +7,7 @@ core architectural decisions" section of `TODO.md`. The language subset is in
 `language_spec.md`; prior art is in `notes/p2c.md`; things only the user can
 decide are in `notes/open_questions.md`.
 
-Guiding priorities, in order (from the opening prompt in `README.md`):
+Guiding priorities, in order (from the opening prompt, in `README.md` as of commit 726b781):
 
 1. **Correct and memory-safe.** Translated programs must behave like the Turbo
    Pascal originals and must never cause undefined behaviour in Rust. Speed is
