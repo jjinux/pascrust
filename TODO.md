@@ -171,6 +171,7 @@ chosen so each step is testable with the previous ones.
 
 ## Phase 6: Polish and readability
 
+- [ ] Keep the generated Rust reasonably readable by a human. It's fine for it to call helper functions in the runtime (`pascrust_runtime`) when a Pascal construct needs support code; what matters is that a reader can follow the translated program.
 - [ ] Read through the generated Rust for `life.pas` and `bstunit.pas` as if reviewing a colleague's code; fix anything an intermediate Rust programmer would not write (unneeded clones, casts, parentheses, `mut`).
 - [ ] Commit showcase generated output for `hello.pas` and `life.pas` (per open question 7) with a refresh script.
 - [ ] Carry Pascal comments into the Rust output at statement boundaries.
