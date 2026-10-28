@@ -45,10 +45,7 @@ pub struct ParsedProgram {
 pub fn parse_program(source: &[u8]) -> PResult<ParsedProgram> {
     let mut parser = Parser::new(lexer::tokenize(source)?);
     let program = parser.program()?;
-    Ok(ParsedProgram {
-        program,
-        directives: parser.directives,
-    })
+    Ok(ParsedProgram { program, directives: parser.directives })
 }
 
 pub(crate) struct Parser {
@@ -67,19 +64,11 @@ impl Parser {
         let mut directives = Vec::new();
         for token in all_tokens {
             match token.kind {
-                TokenKind::Directive(text) => directives.push(Directive {
-                    text,
-                    span: token.span,
-                }),
+                TokenKind::Directive(text) => directives.push(Directive { text, span: token.span }),
                 _ => tokens.push(token),
             }
         }
-        Parser {
-            tokens,
-            pos: 0,
-            next_id: 0,
-            directives,
-        }
+        Parser { tokens, pos: 0, next_id: 0, directives }
     }
 
     // ----- Token helpers -------------------------------------------------
@@ -135,18 +124,11 @@ impl Parser {
     }
 
     fn expected(&self, what: &str) -> Diagnostic {
-        Diagnostic::new(
-            self.span(),
-            format!("expected {what}, found {}", self.peek().describe()),
-        )
+        Diagnostic::new(self.span(), format!("expected {what}, found {}", self.peek().describe()))
     }
 
     fn expect(&mut self, kind: &TokenKind) -> PResult<Span> {
-        if self.at(kind) {
-            Ok(self.bump().span)
-        } else {
-            Err(self.expected(&kind.describe()))
-        }
+        if self.at(kind) { Ok(self.bump().span) } else { Err(self.expected(&kind.describe())) }
     }
 
     fn expect_keyword(&mut self, kw: Keyword) -> PResult<Span> {
@@ -181,11 +163,7 @@ impl Parser {
     }
 
     fn mk_expr(&mut self, kind: ExprKind, span: Span) -> Expr {
-        Expr {
-            id: self.new_id(),
-            kind,
-            span,
-        }
+        Expr { id: self.new_id(), kind, span }
     }
 
     // ----- Programs and blocks -------------------------------------------
@@ -202,10 +180,7 @@ impl Parser {
             self.expect(&TokenKind::Semi)?;
             name
         } else {
-            Ident {
-                name: "Main".to_string(),
-                span: Span::default(),
-            }
+            Ident { name: "Main".to_string(), span: Span::default() }
         };
         let uses = self.uses_clause()?;
         let block = self.block()?;
@@ -233,10 +208,7 @@ impl Parser {
                     decls.push(Decl::Proc(self.proc_decl()?));
                 }
                 TokenKind::Keyword(Keyword::Label) => {
-                    return Err(Diagnostic::new(
-                        self.span(),
-                        "labels and `goto` are not supported",
-                    ));
+                    return Err(Diagnostic::new(self.span(), "labels and `goto` are not supported"));
                 }
                 _ => break,
             }
@@ -244,11 +216,7 @@ impl Parser {
         let start = self.expect_keyword(Keyword::Begin)?;
         let body = self.statement_list()?;
         let end = self.expect_keyword(Keyword::End)?;
-        Ok(Block {
-            decls,
-            body,
-            body_span: start.to(end),
-        })
+        Ok(Block { decls, body, body_span: start.to(end) })
     }
 
     // ----- Declarations --------------------------------------------------
@@ -259,17 +227,9 @@ impl Parser {
         // ends when another section (or `begin`) starts.
         while matches!(self.peek(), TokenKind::Ident(_)) {
             let name = self.expect_ident()?;
-            let ty = if self.eat(&TokenKind::Colon) {
-                Some(self.type_expr()?)
-            } else {
-                None
-            };
+            let ty = if self.eat(&TokenKind::Colon) { Some(self.type_expr()?) } else { None };
             self.expect(&TokenKind::Eq)?;
-            let value = if ty.is_some() {
-                self.typed_const_value()?
-            } else {
-                ConstValue::Expr(self.expression()?)
-            };
+            let value = if ty.is_some() { self.typed_const_value()? } else { ConstValue::Expr(self.expression()?) };
             self.expect(&TokenKind::Semi)?;
             decls.push(Decl::Const(ConstDecl { name, ty, value }));
         }
@@ -303,19 +263,11 @@ impl Parser {
         let saved_pos = self.pos;
         let saved_id = self.next_id;
         if let Ok(list) = self.const_list(start) {
-            let ConstValue::List(items, _) = &list else {
-                unreachable!()
-            };
+            let ConstValue::List(items, _) = &list else { unreachable!() };
             // A one-element list followed by an operator was really a
             // parenthesized expression, e.g. `(1 + 2) * 3`.
-            let ends_value = matches!(
-                self.peek(),
-                TokenKind::Semi | TokenKind::Comma | TokenKind::RParen
-            );
-            if ends_value
-                && (items.len() > 1
-                    || matches!(items[0], ConstValue::List(..) | ConstValue::Record(..)))
-            {
+            let ends_value = matches!(self.peek(), TokenKind::Semi | TokenKind::Comma | TokenKind::RParen);
+            if ends_value && (items.len() > 1 || matches!(items[0], ConstValue::List(..) | ConstValue::Record(..))) {
                 return Ok(list);
             }
         }
@@ -353,10 +305,7 @@ impl Parser {
             self.expect(&TokenKind::Colon)?;
             let ty = self.type_expr()?;
             if self.peek().is_ident("absolute") {
-                return Err(Diagnostic::new(
-                    self.span(),
-                    "`absolute` variables are not supported",
-                ));
+                return Err(Diagnostic::new(self.span(), "`absolute` variables are not supported"));
             }
             self.expect(&TokenKind::Semi)?;
             decls.push(Decl::Var(VarDecl { names, ty }));
@@ -373,18 +322,11 @@ impl Parser {
             ProcKind::Procedure
         };
         let name = self.expect_ident()?;
-        let params = if self.at(&TokenKind::LParen) {
-            self.param_list()?
-        } else {
-            Vec::new()
-        };
+        let params = if self.at(&TokenKind::LParen) { self.param_list()? } else { Vec::new() };
         // The result type may be left out when repeating the header of a
         // function that was declared `forward`.
-        let ret = if kind == ProcKind::Function && self.eat(&TokenKind::Colon) {
-            Some(self.type_expr()?)
-        } else {
-            None
-        };
+        let ret =
+            if kind == ProcKind::Function && self.eat(&TokenKind::Colon) { Some(self.type_expr()?) } else { None };
         let header_span = start.to(self.expect(&TokenKind::Semi)?);
 
         // Directives after the header. `far` and `near` were about 16-bit
@@ -412,15 +354,7 @@ impl Parser {
                 ProcBody::Block(Box::new(block))
             }
         };
-        Ok(ProcDecl {
-            kind,
-            name,
-            params,
-            ret,
-            body,
-            span: start.to(self.prev_span()),
-            header_span,
-        })
+        Ok(ProcDecl { kind, name, params, ret, body, span: start.to(self.prev_span()), header_span })
     }
 
     fn param_list(&mut self) -> PResult<Vec<ParamGroup>> {
@@ -435,11 +369,7 @@ impl Parser {
                 ParamMode::Value
             };
             let names = self.ident_list()?;
-            let ty = if self.eat(&TokenKind::Colon) {
-                Some(self.type_expr()?)
-            } else {
-                None
-            };
+            let ty = if self.eat(&TokenKind::Colon) { Some(self.type_expr()?) } else { None };
             groups.push(ParamGroup { mode, names, ty });
             if !self.eat(&TokenKind::Semi) {
                 break;

@@ -36,34 +36,21 @@ impl Parser {
                 // The "dangling else": in `if a then if b then x else y`, the
                 // `else` belongs to the nearest `if`. Greedily taking any
                 // `else` we see right here gives exactly that rule.
-                let else_branch = if self.eat_keyword(Keyword::Else) {
-                    Some(Box::new(self.statement()?))
-                } else {
-                    None
-                };
-                StmtKind::If {
-                    cond,
-                    then_branch,
-                    else_branch,
-                }
+                let else_branch =
+                    if self.eat_keyword(Keyword::Else) { Some(Box::new(self.statement()?)) } else { None };
+                StmtKind::If { cond, then_branch, else_branch }
             }
             TokenKind::Keyword(Keyword::While) => {
                 self.bump();
                 let cond = self.expression()?;
                 self.expect_keyword(Keyword::Do)?;
-                StmtKind::While {
-                    cond,
-                    body: Box::new(self.statement()?),
-                }
+                StmtKind::While { cond, body: Box::new(self.statement()?) }
             }
             TokenKind::Keyword(Keyword::Repeat) => {
                 self.bump();
                 let body = self.statement_list()?;
                 self.expect_keyword(Keyword::Until)?;
-                StmtKind::Repeat {
-                    body,
-                    cond: self.expression()?,
-                }
+                StmtKind::Repeat { body, cond: self.expression()? }
             }
             TokenKind::Keyword(Keyword::For) => {
                 self.bump();
@@ -78,13 +65,7 @@ impl Parser {
                 };
                 let end = self.expression()?;
                 self.expect_keyword(Keyword::Do)?;
-                StmtKind::For {
-                    var,
-                    start,
-                    end,
-                    down,
-                    body: Box::new(self.statement()?),
-                }
+                StmtKind::For { var, start, end, down, body: Box::new(self.statement()?) }
             }
             TokenKind::Keyword(Keyword::Case) => self.case_statement()?,
             TokenKind::Keyword(Keyword::With) => {
@@ -94,10 +75,7 @@ impl Parser {
                     records.push(self.designator()?);
                 }
                 self.expect_keyword(Keyword::Do)?;
-                StmtKind::With {
-                    records,
-                    body: Box::new(self.statement()?),
-                }
+                StmtKind::With { records, body: Box::new(self.statement()?) }
             }
             TokenKind::Keyword(Keyword::Goto) => {
                 return Err(Diagnostic::new(start, "`goto` is not supported"));
@@ -105,10 +83,7 @@ impl Parser {
             TokenKind::Ident(_) => {
                 let target = self.designator()?;
                 if self.eat(&TokenKind::Assign) {
-                    StmtKind::Assign {
-                        target,
-                        value: self.expression()?,
-                    }
+                    StmtKind::Assign { target, value: self.expression()? }
                 } else {
                     StmtKind::Call(target)
                 }
@@ -117,11 +92,8 @@ impl Parser {
             // statement is empty.
             _ => StmtKind::Empty,
         };
-        let span = if kind == StmtKind::Empty {
-            Span::new(start.start, start.start)
-        } else {
-            start.to(self.prev_span())
-        };
+        let span =
+            if kind == StmtKind::Empty { Span::new(start.start, start.start) } else { start.to(self.prev_span()) };
         Ok(Stmt { kind, span })
     }
 
@@ -152,11 +124,7 @@ impl Parser {
             }
         }
         self.expect_keyword(Keyword::End)?;
-        Ok(StmtKind::Case {
-            scrutinee,
-            arms,
-            else_body,
-        })
+        Ok(StmtKind::Case { scrutinee, arms, else_body })
     }
 
     fn case_label(&mut self) -> PResult<CaseLabel> {

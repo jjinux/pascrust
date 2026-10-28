@@ -155,6 +155,9 @@ pub struct Analysis {
     /// variable is only ever used inside that loop. Those become an idiomatic
     /// `for i in a..=b`, with `i` scoped to the loop.
     pub scoped_for_loops: HashSet<usize>,
+    /// Enum, record and named array types, in declaration order, for codegen
+    /// to emit as Rust items.
+    pub type_defs: Vec<(Type, Span)>,
     /// The value of every `case` label, computed at compile time.
     pub case_labels: HashMap<NodeId, ConstVal>,
     /// Variables that need no `let` declaration because they're only used as
@@ -199,16 +202,9 @@ impl Analysis {
             };
         }
         match self.procs[proc].captures.iter().find(|c| c.sym == sym) {
-            Some(Capture {
-                mode: CaptureMode::Value,
-                ..
-            }) => Access::Direct,
+            Some(Capture { mode: CaptureMode::Value, .. }) => Access::Direct,
             Some(_) => Access::Reference,
-            None => panic!(
-                "procedure {} uses `{}` without capturing it",
-                self.procs[proc].name,
-                self.sym(sym).name
-            ),
+            None => panic!("procedure {} uses `{}` without capturing it", self.procs[proc].name, self.sym(sym).name),
         }
     }
 }
@@ -220,11 +216,7 @@ pub fn analyze(program: &Program) -> Result<Analysis, Vec<Diagnostic>> {
     let (mut analysis, mut errors, call_sites) = checker.finish();
     lift::lift(&mut analysis);
     errors.extend(lift::check_aliasing(&analysis, &call_sites));
-    if errors.is_empty() {
-        Ok(analysis)
-    } else {
-        Err(errors)
-    }
+    if errors.is_empty() { Ok(analysis) } else { Err(errors) }
 }
 
 /// A call that passes some arguments by `var`, remembered so that aliasing

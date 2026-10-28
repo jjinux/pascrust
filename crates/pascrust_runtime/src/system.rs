@@ -83,9 +83,7 @@ impl ValTarget for f64 {
 /// the 1-based position of the first bad character.
 pub fn val<T: ValTarget>(s: impl Into<PString>, x: &mut T, code: &mut i16) {
     let s = s.into();
-    let text = String::from_utf8_lossy(s.as_bytes())
-        .trim_start()
-        .to_string();
+    let text = String::from_utf8_lossy(s.as_bytes()).trim_start().to_string();
     let leading = s.length() as usize - text.len();
     match T::parse_pascal(&text) {
         Some(v) => {
@@ -96,9 +94,7 @@ pub fn val<T: ValTarget>(s: impl Into<PString>, x: &mut T, code: &mut i16) {
             // Find the first position where the prefix stops being a valid
             // number, for the error code.
             let bad = (1..=text.len())
-                .find(|&n| {
-                    T::parse_pascal(&text[..n]).is_none() && !matches!(&text[..n], "-" | "+" | "$")
-                })
+                .find(|&n| T::parse_pascal(&text[..n]).is_none() && !matches!(&text[..n], "-" | "+" | "$"))
                 .unwrap_or(text.len().max(1));
             *code = (leading + bad) as i16;
         }

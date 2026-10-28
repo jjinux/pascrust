@@ -98,17 +98,9 @@ pub enum TypeExpr {
     String(Option<Box<Expr>>, Span),
     /// `array[0..9, 'a'..'z'] of T`. Each index is itself a type (usually a
     /// subrange; an enum or `char` name is also allowed).
-    Array {
-        indexes: Vec<TypeExpr>,
-        elem: Box<TypeExpr>,
-        span: Span,
-    },
+    Array { indexes: Vec<TypeExpr>, elem: Box<TypeExpr>, span: Span },
     /// `lo..hi`, where both ends are constant expressions.
-    Subrange {
-        lo: Box<Expr>,
-        hi: Box<Expr>,
-        span: Span,
-    },
+    Subrange { lo: Box<Expr>, hi: Box<Expr>, span: Span },
     /// `(red, green, blue)`.
     Enum(Vec<Ident>, Span),
     /// `record ... end`.

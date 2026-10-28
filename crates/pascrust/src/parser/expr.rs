@@ -75,14 +75,7 @@ impl Parser {
 
     fn binary(&mut self, op: BinaryOp, lhs: Expr, rhs: Expr) -> Expr {
         let span = lhs.span.to(rhs.span);
-        self.mk_expr(
-            ExprKind::Binary {
-                op,
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
-            },
-            span,
-        )
+        self.mk_expr(ExprKind::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs) }, span)
     }
 
     fn factor(&mut self) -> PResult<Expr> {
@@ -110,10 +103,7 @@ impl Parser {
                 self.expect(&TokenKind::RParen)?;
                 // Parentheses only group; they don't need their own node.
                 // Widen the span to include them for better error messages.
-                return Ok(Expr {
-                    span: start.to(self.prev_span()),
-                    ..inner
-                });
+                return Ok(Expr { span: start.to(self.prev_span()), ..inner });
             }
             // Turbo Pascal allows a sign in front of any factor, so
             // `a * -b` is legal. ISO Pascal only allows it at the start of a
@@ -125,10 +115,7 @@ impl Parser {
                     _ => UnaryOp::Not,
                 };
                 let operand = self.factor()?;
-                ExprKind::Unary {
-                    op,
-                    operand: Box::new(operand),
-                }
+                ExprKind::Unary { op, operand: Box::new(operand) }
             }
             TokenKind::At => {
                 self.bump();
@@ -191,10 +178,7 @@ impl Parser {
                 }
                 TokenKind::LParen => {
                     let args = self.arguments()?;
-                    ExprKind::Call {
-                        callee: Box::new(expr),
-                        args,
-                    }
+                    ExprKind::Call { callee: Box::new(expr), args }
                 }
                 _ => return Ok(expr),
             };
@@ -215,20 +199,9 @@ impl Parser {
             let value = self.expression()?;
             let arg = if self.eat(&TokenKind::Colon) {
                 let width = self.expression()?;
-                let decimals = if self.eat(&TokenKind::Colon) {
-                    Some(Box::new(self.expression()?))
-                } else {
-                    None
-                };
+                let decimals = if self.eat(&TokenKind::Colon) { Some(Box::new(self.expression()?)) } else { None };
                 let span = value.span.to(self.prev_span());
-                self.mk_expr(
-                    ExprKind::Format {
-                        value: Box::new(value),
-                        width: Box::new(width),
-                        decimals,
-                    },
-                    span,
-                )
+                self.mk_expr(ExprKind::Format { value: Box::new(value), width: Box::new(width), decimals }, span)
             } else {
                 value
             };

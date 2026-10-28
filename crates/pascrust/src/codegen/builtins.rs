@@ -24,10 +24,7 @@ impl<'a> Codegen<'a> {
             }
             Halt => match args.first() {
                 None => "halt(0)".to_string(),
-                Some(code) => format!(
-                    "halt({})",
-                    self.coerce(code, &Type::Int(IntKind::LongInt)).0
-                ),
+                Some(code) => format!("halt({})", self.coerce(code, &Type::Int(IntKind::LongInt)).0),
             },
             Exit => {
                 if self.a.procs[self.proc].result.is_some() {
@@ -60,6 +57,10 @@ impl<'a> Codegen<'a> {
             }
             Succ | Pred => {
                 let t = ty(self, &args[0]).concrete();
+                if let Type::Enum(_) = t {
+                    let method = if b == Succ { "succ" } else { "pred" };
+                    return format!("{}.{method}()", self.postfix(&args[0], &t));
+                }
                 let op = if b == Succ { "+" } else { "-" };
                 format!("{} {op} 1", paren(self.coerce(&args[0], &t), prec::ADD))
             }
@@ -75,10 +76,7 @@ impl<'a> Codegen<'a> {
             }
             Hi => {
                 let t = ty(self, &args[0]).concrete();
-                format!(
-                    "({} >> 8) as u8",
-                    paren(self.coerce(&args[0], &t), prec::SHIFT + 1)
-                )
+                format!("({} >> 8) as u8", paren(self.coerce(&args[0], &t), prec::SHIFT + 1))
             }
             Lo => {
                 let t = ty(self, &args[0]).concrete();
@@ -116,17 +114,11 @@ impl<'a> Codegen<'a> {
                 None => "random_real()".to_string(),
             },
             Randomize => "randomize()".to_string(),
-            UpCase => format!(
-                "{}.to_ascii_uppercase()",
-                self.postfix(&args[0], &Type::Char)
-            ),
+            UpCase => format!("{}.to_ascii_uppercase()", self.postfix(&args[0], &Type::Char)),
             Length => match ty(self, &args[0]) {
                 Type::StrLit(n) => n.to_string(),
                 Type::Char => "1".to_string(),
-                _ => format!(
-                    "{}.length()",
-                    self.postfix(&args[0], &Type::Str { cap: 255 })
-                ),
+                _ => format!("{}.length()", self.postfix(&args[0], &Type::Str { cap: 255 })),
             },
             Copy => {
                 let s = self.postfix(&args[0], &Type::Str { cap: 255 });
@@ -185,11 +177,7 @@ impl<'a> Codegen<'a> {
     /// One argument of `Write`/`Writeln`/`Str`, with its `:width:decimals`.
     fn write_arg(&mut self, arg: &Expr) -> String {
         let (value, width, decimals) = match &arg.kind {
-            ExprKind::Format {
-                value,
-                width,
-                decimals,
-            } => (&**value, Some(&**width), decimals.as_deref()),
+            ExprKind::Format { value, width, decimals } => (&**value, Some(&**width), decimals.as_deref()),
             _ => (arg, None, None),
         };
         let ty = self.a.type_of(value.id).clone();
@@ -197,9 +185,7 @@ impl<'a> Codegen<'a> {
             // `Byte` is a `u8` in Rust, which the runtime prints as a
             // character (that's what `Char` is). Widen it so it prints as a
             // number.
-            Type::Int(IntKind::Byte) => {
-                convert(self.expr(value), &ty, &Type::Int(IntKind::Integer)).0
-            }
+            Type::Int(IntKind::Byte) => convert(self.expr(value), &ty, &Type::Int(IntKind::Integer)).0,
             _ => self.expr(value).0,
         };
         match (width, decimals) {

@@ -32,10 +32,7 @@ pub struct Diagnostic {
 
 impl Diagnostic {
     pub fn new(span: Span, message: impl Into<String>) -> Diagnostic {
-        Diagnostic {
-            span,
-            message: message.into(),
-        }
+        Diagnostic { span, message: message.into() }
     }
 
     /// Render as `file:line:col: error: message`, followed by the offending
@@ -43,8 +40,7 @@ impl Diagnostic {
     pub fn render(&self, file_name: &str, source: &[u8]) -> String {
         let (line, col) = line_col(source, self.span.start);
         let line_text = source_line(source, self.span.start);
-        let width =
-            (self.span.end.saturating_sub(self.span.start)).clamp(1, line_text.len().max(1));
+        let width = (self.span.end.saturating_sub(self.span.start)).clamp(1, line_text.len().max(1));
         format!(
             "{file_name}:{line}:{col}: error: {}\n{line_text}\n{}{}",
             self.message,
@@ -64,27 +60,16 @@ impl fmt::Display for Diagnostic {
 pub fn line_col(source: &[u8], offset: usize) -> (usize, usize) {
     let before = &source[..offset.min(source.len())];
     let line = before.iter().filter(|&&b| b == b'\n').count() + 1;
-    let line_start = before
-        .iter()
-        .rposition(|&b| b == b'\n')
-        .map_or(0, |i| i + 1);
+    let line_start = before.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
     (line, offset - line_start + 1)
 }
 
 /// The text of the line containing byte `offset`, without its line ending.
 fn source_line(source: &[u8], offset: usize) -> String {
     let offset = offset.min(source.len());
-    let start = source[..offset]
-        .iter()
-        .rposition(|&b| b == b'\n')
-        .map_or(0, |i| i + 1);
-    let end = source[offset..]
-        .iter()
-        .position(|&b| b == b'\n')
-        .map_or(source.len(), |i| offset + i);
+    let start = source[..offset].iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    let end = source[offset..].iter().position(|&b| b == b'\n').map_or(source.len(), |i| offset + i);
     // `from_utf8_lossy` replaces any non-UTF-8 byte (Pascal sources may be
     // code page 437) with `?`-like replacement characters instead of failing.
-    String::from_utf8_lossy(&source[start..end])
-        .trim_end_matches('\r')
-        .to_string()
+    String::from_utf8_lossy(&source[start..end]).trim_end_matches('\r').to_string()
 }

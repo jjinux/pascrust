@@ -5,8 +5,9 @@
 //! `use some_crate::prelude::*;`. The standard library has one too
 //! (`std::prelude`), which is why `Vec` and `Option` are always in scope.
 
+pub use crate::array::PArray;
 pub use crate::io::{PasWrite, eof, eoln, w, wd};
-pub use crate::ordinal::Ordinal;
+pub use crate::ordinal::{Enumerated, Ordinal, enum_range};
 pub use crate::run::{halt, rte};
 pub use crate::string::{PString, pos, pstr};
 pub use crate::system::{pas_str, random, random_real, randomize, val};

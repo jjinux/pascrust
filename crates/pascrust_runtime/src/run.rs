@@ -26,14 +26,15 @@ pub struct RuntimeError {
 pub fn rte(code: i32, message: impl Into<String>) -> ! {
     // `panic_any` panics with an arbitrary value instead of a string, so
     // `run` can downcast the payload and recover the error code.
-    panic::panic_any(RuntimeError {
-        code,
-        message: message.into(),
-    })
+    panic::panic_any(RuntimeError { code, message: message.into() })
 }
 
 /// Pascal `Halt(code)`: flush output and end the program immediately.
-pub fn halt(code: i32) -> ! {
+///
+/// This never returns, but it's declared to return `()` rather than `!`:
+/// Pascal programs sometimes have statements after a `Halt`, and with `!`
+/// Rust would warn that they're unreachable.
+pub fn halt(code: i32) {
     crate::io::flush_stdout();
     std::process::exit(code)
 }
@@ -87,9 +88,7 @@ fn to_runtime_error(payload: Box<dyn Any + Send>) -> RuntimeError {
     } else {
         "unknown error".to_string()
     };
-    let code = if message.contains("divide by zero")
-        || message.contains("remainder with a divisor of zero")
-    {
+    let code = if message.contains("divide by zero") || message.contains("remainder with a divisor of zero") {
         200
     } else if message.contains("already borrowed") || message.contains("already mutably borrowed") {
         204

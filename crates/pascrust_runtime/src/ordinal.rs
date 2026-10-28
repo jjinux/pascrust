@@ -20,3 +20,36 @@ impl Ordinal for bool {
         self as i64
     }
 }
+
+/// An enumerated type: implemented by the code pascrust generates for each
+/// Pascal enum. `VALUES` lists every value in order, which is all we need to
+/// convert ordinals back to values (`Color(2)`, `Succ`, `for` loops).
+pub trait Enumerated: Ordinal + 'static {
+    const VALUES: &'static [Self];
+
+    /// The value with ordinal `i`. Out of range is runtime error 201.
+    fn from_ord(i: impl Into<i64>) -> Self {
+        let i = i.into();
+        match usize::try_from(i).ok().and_then(|i| Self::VALUES.get(i)) {
+            Some(&value) => value,
+            None => crate::rte(201, format!("Range check error: {i} is not a valid enumeration value")),
+        }
+    }
+
+    /// Pascal `Succ(x)`: the next value.
+    fn succ(self) -> Self {
+        Self::from_ord(self.ord() + 1)
+    }
+
+    /// Pascal `Pred(x)`: the previous value.
+    fn pred(self) -> Self {
+        Self::from_ord(self.ord() - 1)
+    }
+}
+
+/// The values from `lo` to `hi` inclusive, for `for x := lo to hi` over an
+/// enum. Returning `impl Iterator` hides the concrete iterator type (a `map`
+/// over a range); `DoubleEndedIterator` lets `downto` call `.rev()` on it.
+pub fn enum_range<E: Enumerated>(lo: E, hi: E) -> impl DoubleEndedIterator<Item = E> {
+    (lo.ord()..=hi.ord()).map(E::from_ord)
+}

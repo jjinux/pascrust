@@ -23,11 +23,7 @@ impl Parser {
                 self.expect(&TokenKind::RBracket)?;
                 self.expect_keyword(Keyword::Of)?;
                 let elem = Box::new(self.type_expr()?);
-                Ok(TypeExpr::Array {
-                    indexes,
-                    elem,
-                    span: start.to(self.prev_span()),
-                })
+                Ok(TypeExpr::Array { indexes, elem, span: start.to(self.prev_span()) })
             }
             TokenKind::Keyword(Keyword::Record) => {
                 self.bump();
@@ -59,11 +55,7 @@ impl Parser {
             }
             TokenKind::Keyword(Keyword::File) => {
                 self.bump();
-                let elem = if self.eat_keyword(Keyword::Of) {
-                    Some(Box::new(self.type_expr()?))
-                } else {
-                    None
-                };
+                let elem = if self.eat_keyword(Keyword::Of) { Some(Box::new(self.type_expr()?)) } else { None };
                 Ok(TypeExpr::File(elem, start.to(self.prev_span())))
             }
             TokenKind::LParen => {
@@ -72,9 +64,7 @@ impl Parser {
                 let end = self.expect(&TokenKind::RParen)?;
                 Ok(TypeExpr::Enum(names, start.to(end)))
             }
-            TokenKind::Keyword(Keyword::Object) => {
-                Err(Diagnostic::new(start, "object types are not supported yet"))
-            }
+            TokenKind::Keyword(Keyword::Object) => Err(Diagnostic::new(start, "object types are not supported yet")),
             _ => {
                 // Either a type name or a subrange `lo..hi`. Both ends of a
                 // subrange are constant expressions (`1..maxcol - 1`,
@@ -110,10 +100,7 @@ impl Parser {
             }
         }
         if self.at_keyword(Keyword::Case) {
-            return Err(Diagnostic::new(
-                self.span(),
-                "variant records are not supported yet",
-            ));
+            return Err(Diagnostic::new(self.span(), "variant records are not supported yet"));
         }
         Ok(fields)
     }

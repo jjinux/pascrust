@@ -2,7 +2,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::names::{screaming_snake_case, snake_case};
+use std::rc::Rc;
+
+use super::names::{self, screaming_snake_case, snake_case};
+use super::types::{ArrayType, EnumType, Field, RecordType};
 use super::*;
 use crate::ast::*;
 
@@ -33,6 +36,11 @@ pub(super) struct Checker {
     used_names: Vec<HashSet<String>>,
     used_fn_names: HashSet<String>,
     used_const_names: HashSet<String>,
+    used_type_names: HashSet<String>,
+    /// True while resolving the right-hand side of a `type` declaration.
+    declaring_type: bool,
+    /// Bounds of type names declared as subranges (`Index = 1..10`).
+    subrange_types: HashMap<SymId, (Type, i64, i64)>,
     errors: Vec<Diagnostic>,
     call_sites: Vec<CallSite>,
 }
@@ -49,6 +57,9 @@ impl Checker {
             used_names: vec![HashSet::new()],
             used_fn_names: HashSet::new(),
             used_const_names: HashSet::new(),
+            used_type_names: HashSet::new(),
+            declaring_type: false,
+            subrange_types: HashMap::new(),
             errors: Vec::new(),
             call_sites: Vec::new(),
         };
@@ -79,11 +90,7 @@ impl Checker {
             let only_in_loops = !self.used_outside_for.contains(&f.var);
             a.for_only.insert(f.var, only_in_loops);
         }
-        a.for_loop_list = self
-            .for_loops
-            .iter()
-            .map(|f| (f.stmt_start, f.var, f.proc))
-            .collect();
+        a.for_loop_list = self.for_loops.iter().map(|f| (f.stmt_start, f.var, f.proc)).collect();
         (a, self.errors, self.call_sites)
     }
 
@@ -98,11 +105,7 @@ impl Checker {
     // ----- Symbols and scopes ----------------------------------------------
 
     fn add_symbol(&mut self, name: &str, rust_name: String, kind: SymKind) -> SymId {
-        self.a.symbols.push(Symbol {
-            name: name.to_string(),
-            rust_name,
-            kind,
-        });
+        self.a.symbols.push(Symbol { name: name.to_string(), rust_name, kind });
         self.a.symbols.len() - 1
     }
 
@@ -110,19 +113,13 @@ impl Checker {
     fn bind(&mut self, ident: &Ident, sym: SymId) {
         let scope = self.scopes.last_mut().unwrap();
         if scope.insert(ident.key(), sym).is_some() && self.scopes.len() > 1 {
-            self.error(
-                ident.span,
-                format!("`{}` is declared twice in the same scope", ident.name),
-            );
+            self.error(ident.span, format!("`{}` is declared twice in the same scope", ident.name));
         }
         self.a.decls.insert(ident.span.start, sym);
     }
 
     fn lookup(&self, key: &str) -> Option<SymId> {
-        self.scopes
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(key).copied())
+        self.scopes.iter().rev().find_map(|scope| scope.get(key).copied())
     }
 
     /// Pick a Rust name not yet used in `proc` (or any procedure enclosing
@@ -152,11 +149,7 @@ impl Checker {
 
     fn declare_var(&mut self, ident: &Ident, ty: Type, owner: ProcId, role: VarRole) -> SymId {
         let rust_name = self.unique_var_name(owner, snake_case(&ident.name));
-        let sym = self.add_symbol(
-            &ident.name,
-            rust_name,
-            SymKind::Var(Var { ty, owner, role }),
-        );
+        let sym = self.add_symbol(&ident.name, rust_name, SymKind::Var(Var { ty, owner, role }));
         self.bind(ident, sym);
         sym
     }
@@ -183,18 +176,8 @@ impl Checker {
         let consts = [
             ("true", ConstVal::Bool(true), Type::Bool, "true"),
             ("false", ConstVal::Bool(false), Type::Bool, "false"),
-            (
-                "maxint",
-                ConstVal::Int(32767),
-                Type::Int(IntKind::Integer),
-                "i16::MAX",
-            ),
-            (
-                "maxlongint",
-                ConstVal::Int(i32::MAX as i64),
-                Type::Int(IntKind::LongInt),
-                "i32::MAX",
-            ),
+            ("maxint", ConstVal::Int(32767), Type::Int(IntKind::Integer), "i16::MAX"),
+            ("maxlongint", ConstVal::Int(i32::MAX as i64), Type::Int(IntKind::LongInt), "i32::MAX"),
         ];
         for (name, value, ty, rust) in consts {
             let sym = self.add_symbol(name, rust.to_string(), SymKind::Const { value, ty });
@@ -212,10 +195,7 @@ impl Checker {
         for unit in &program.uses {
             let known = ["crt", "dos", "graph", "printer"];
             if !known.contains(&unit.key().as_str()) {
-                self.error(
-                    unit.span,
-                    format!("unit `{}` is not supported yet", unit.name),
-                );
+                self.error(unit.span, format!("unit `{}` is not supported yet", unit.name));
             }
         }
         self.scopes.push(HashMap::new());
@@ -227,12 +207,27 @@ impl Checker {
             match decl {
                 Decl::Const(c) => self.const_decl(c),
                 Decl::Type(t) => {
-                    let ty = self.resolve_type(&t.ty);
+                    let bounds = match &t.ty {
+                        TypeExpr::Subrange { .. } => self.subrange(&t.ty),
+                        _ => None,
+                    };
+                    let ty = match &bounds {
+                        Some((host, _, _)) => host.clone(),
+                        None => {
+                            self.declaring_type = true;
+                            let ty = self.resolve_named_type(&t.ty, Some(&t.name.name));
+                            self.declaring_type = false;
+                            ty
+                        }
+                    };
                     let sym = self.add_symbol(&t.name.name, ty.rust(), SymKind::TypeName(ty));
                     self.bind(&t.name, sym);
+                    if let Some(bounds) = bounds {
+                        self.subrange_types.insert(sym, bounds);
+                    }
                 }
                 Decl::Var(v) => {
-                    let ty = self.resolve_type(&v.ty);
+                    let ty = self.resolve_named_type(&v.ty, Some(&v.names[0].name));
                     let owner = self.cur();
                     for name in &v.names {
                         let sym = self.declare_var(name, ty.clone(), owner, VarRole::Local);
@@ -247,10 +242,7 @@ impl Checker {
                 && !self.a.procs[p].has_body
             {
                 let span = self.a.procs[p].span;
-                self.error(
-                    span,
-                    format!("`{key}` was declared `forward` but never defined"),
-                );
+                self.error(span, format!("`{key}` was declared `forward` but never defined"));
             }
         }
         self.stmts(&block.body);
@@ -263,17 +255,7 @@ impl Checker {
             // procedure, so it keeps its value between calls. We get the
             // same effect by making it a global, i.e. a local of `main`.
             let ty = self.resolve_type(ty_expr);
-            if let ConstValue::Expr(e) = &c.value {
-                let value_ty = self.expr(e);
-                if !ty.accepts(&value_ty) {
-                    self.error(e.span, format!("expected a {ty} value, found {value_ty}"));
-                }
-            } else {
-                self.error(
-                    c.name.span,
-                    "array and record typed constants are not supported yet",
-                );
-            }
+            self.const_value(&c.value, &ty);
             let sym = self.declare_var(&c.name, ty, MAIN, VarRole::Local);
             self.a.procs[MAIN].locals.push(sym);
             self.a.typed_consts.insert(sym, c.clone());
@@ -281,10 +263,7 @@ impl Checker {
             return;
         }
         let ConstValue::Expr(e) = &c.value else {
-            self.error(
-                c.name.span,
-                "only typed constants can have a list of values",
-            );
+            self.error(c.name.span, "only typed constants can have a list of values");
             return;
         };
         let Some(value) = self.eval_const(e) else {
@@ -298,27 +277,50 @@ impl Checker {
             ConstVal::Str(s) if s.len() == 1 => Type::Char,
             ConstVal::Str(s) => Type::StrLit(s.len()),
         };
-        let rust_name = Self::unique_in(
-            &mut self.used_const_names,
-            screaming_snake_case(&c.name.name),
-        );
+        let rust_name = Self::unique_in(&mut self.used_const_names, screaming_snake_case(&c.name.name));
         let sym = self.add_symbol(&c.name.name, rust_name, SymKind::Const { value, ty });
         self.bind(&c.name, sym);
+    }
+
+    /// Check the initializer of a typed constant against its type.
+    fn const_value(&mut self, value: &ConstValue, ty: &Type) {
+        match (value, ty) {
+            (ConstValue::Expr(e), _) => {
+                let value_ty = self.expr(e);
+                if !ty.accepts(&value_ty) {
+                    self.error(e.span, format!("expected a {ty} value, found {value_ty}"));
+                }
+            }
+            (ConstValue::List(items, span), Type::Array(a)) => {
+                if items.len() as i64 != a.count() {
+                    self.error(*span, format!("expected {} values for this array, found {}", a.count(), items.len()));
+                }
+                for item in items {
+                    self.const_value(item, &a.elem);
+                }
+            }
+            (ConstValue::Record(fields, _), Type::Record(r)) => {
+                for (name, value) in fields {
+                    match r.field(&name.name) {
+                        Some(field) => self.const_value(value, &field.ty.clone()),
+                        None => self.error(name.span, format!("`{}` has no field `{}`", r.rust_name, name.name)),
+                    }
+                }
+            }
+            (ConstValue::List(_, span) | ConstValue::Record(_, span), _) => {
+                self.error(*span, format!("this initializer doesn't fit type {ty}"));
+            }
+        }
     }
 
     fn proc_decl(&mut self, d: &ProcDecl) {
         let parent = self.cur();
         // A procedure declared `forward` earlier in this scope gets its body
         // now; reuse its ProcInfo (and its parameters).
-        let forward = self
-            .scopes
-            .last()
-            .unwrap()
-            .get(&d.name.key())
-            .and_then(|&sym| match self.a.symbols[sym].kind {
-                SymKind::Proc(p) if !self.a.procs[p].has_body => Some(p),
-                _ => None,
-            });
+        let forward = self.scopes.last().unwrap().get(&d.name.key()).and_then(|&sym| match self.a.symbols[sym].kind {
+            SymKind::Proc(p) if !self.a.procs[p].has_body => Some(p),
+            _ => None,
+        });
         let pid = match forward {
             Some(p) => p,
             None => self.new_proc(d, parent),
@@ -350,11 +352,7 @@ impl Checker {
         let base = if parent == MAIN {
             snake_case(&d.name.name)
         } else {
-            format!(
-                "{}_{}",
-                self.a.procs[parent].rust_name,
-                snake_case(&d.name.name)
-            )
+            format!("{}_{}", self.a.procs[parent].rust_name, snake_case(&d.name.name))
         };
         let rust_name = Self::unique_in(&mut self.used_fn_names, base);
         let ret = d.ret.as_ref().map(|t| self.resolve_type(t));
@@ -377,9 +375,10 @@ impl Checker {
             has_body: false,
             span: d.name.span,
         });
-        // Child procedures inherit the names already taken by their parent.
-        let inherited = self.used_names[parent].clone();
-        self.used_names.push(inherited);
+        // Each procedure has its own namespace for variables. If a lifted
+        // procedure's captured variable clashes with one of its own, the
+        // lifting pass renames the captured one.
+        self.used_names.push(HashSet::new());
         self.used_names[pid].insert("result".to_string());
 
         let sym = self.add_symbol(&d.name.name, rust_name, SymKind::Proc(pid));
@@ -407,11 +406,7 @@ impl Checker {
             let result = self.add_symbol(
                 &d.name.name,
                 "result".to_string(),
-                SymKind::Var(Var {
-                    ty: ret,
-                    owner: pid,
-                    role: VarRole::Result,
-                }),
+                SymKind::Var(Var { ty: ret, owner: pid, role: VarRole::Result }),
             );
             self.a.procs[pid].result = Some(result);
             self.a.procs[pid].locals.push(result);
@@ -420,34 +415,162 @@ impl Checker {
     }
 
     fn resolve_type(&mut self, t: &TypeExpr) -> Type {
+        self.resolve_named_type(t, None)
+    }
+
+    /// Resolve a type expression. `name` is the Pascal name the type is
+    /// being declared under (`type GridT = ...`), or the variable it's
+    /// declared for, which names the Rust struct/enum/alias we generate.
+    fn resolve_named_type(&mut self, t: &TypeExpr, name: Option<&str>) -> Type {
         match t {
-            TypeExpr::Named(ident) => {
-                match self.lookup(&ident.key()).map(|s| &self.a.symbols[s].kind) {
-                    Some(SymKind::TypeName(ty)) => ty.clone(),
-                    Some(_) => {
-                        self.error(ident.span, format!("`{}` is not a type", ident.name));
-                        Type::Error
-                    }
-                    None => {
-                        self.error(ident.span, format!("unknown type `{}`", ident.name));
-                        Type::Error
-                    }
+            TypeExpr::Named(ident) => match self.lookup(&ident.key()).map(|s| &self.a.symbols[s].kind) {
+                Some(SymKind::TypeName(ty)) => ty.clone(),
+                Some(_) => {
+                    self.error(ident.span, format!("`{}` is not a type", ident.name));
+                    Type::Error
                 }
-            }
+                None => {
+                    self.error(ident.span, format!("unknown type `{}`", ident.name));
+                    Type::Error
+                }
+            },
             TypeExpr::String(None, _) => Type::Str { cap: 255 },
             TypeExpr::String(Some(len), span) => match self.eval_const(len) {
                 Some(ConstVal::Int(n)) if (1..=255).contains(&n) => Type::Str { cap: n as u8 },
                 _ => {
-                    self.error(
-                        *span,
-                        "a string's maximum length must be a constant from 1 to 255",
-                    );
+                    self.error(*span, "a string's maximum length must be a constant from 1 to 255");
                     Type::Error
                 }
             },
+            // A subrange variable is stored as its host type; the bounds only
+            // matter when the subrange is used as an array index.
+            TypeExpr::Subrange { .. } => match self.subrange(t) {
+                Some((host, _, _)) => host,
+                None => Type::Error,
+            },
+            TypeExpr::Enum(names, _) => {
+                let rust_name = self.type_name(name.unwrap_or("Enum"));
+                let variants = names.iter().map(|n| names::camel_case(&n.name)).collect();
+                let ty = Type::Enum(Rc::new(EnumType { rust_name, variants }));
+                // Each enum value is a constant in the enclosing scope, valued
+                // by its position: `Red` is 0, `Green` 1, ...
+                let Type::Enum(e) = &ty else { unreachable!() };
+                for (i, n) in names.iter().enumerate() {
+                    let rust = format!("{}::{}", e.rust_name, e.variants[i]);
+                    let sym = self.add_symbol(
+                        &n.name,
+                        rust,
+                        SymKind::Const { value: ConstVal::Int(i as i64), ty: ty.clone() },
+                    );
+                    self.bind(n, sym);
+                }
+                self.a.type_defs.push((ty.clone(), t.span()));
+                ty
+            }
+            TypeExpr::Array { indexes, elem, .. } => {
+                let elem_ty = self.resolve_type(elem);
+                // `array[a, b] of T` is shorthand for `array[a] of array[b] of T`,
+                // so build the types from the innermost index outward.
+                let mut ty = elem_ty;
+                for (i, index) in indexes.iter().enumerate().rev() {
+                    let Some((index_ty, lo, hi)) = self.index_type(index) else { return Type::Error };
+                    // Only a `type` declaration gets a Rust type alias; an
+                    // array declared directly on a variable stays anonymous.
+                    let alias = if i == 0 && self.declaring_type { name.map(|n| self.type_name(n)) } else { None };
+                    ty = Type::Array(Rc::new(ArrayType { index: index_ty, lo, hi, elem: ty, alias }));
+                }
+                if name.is_some() && self.declaring_type {
+                    self.a.type_defs.push((ty.clone(), t.span()));
+                }
+                ty
+            }
+            TypeExpr::Record(fields, _) => {
+                let rust_name = self.type_name(name.unwrap_or("Record"));
+                let mut resolved: Vec<Field> = Vec::new();
+                for group in fields {
+                    let ty = self.resolve_type(&group.ty);
+                    for n in &group.names {
+                        if resolved.iter().any(|f| f.name.eq_ignore_ascii_case(&n.name)) {
+                            self.error(n.span, format!("duplicate field `{}`", n.name));
+                        }
+                        resolved.push(Field { name: n.name.clone(), rust_name: snake_case(&n.name), ty: ty.clone() });
+                    }
+                }
+                let ty = Type::Record(Rc::new(RecordType { rust_name, fields: resolved }));
+                self.a.type_defs.push((ty.clone(), t.span()));
+                ty
+            }
             other => {
                 self.error(other.span(), "this kind of type is not supported yet");
                 Type::Error
+            }
+        }
+    }
+
+    /// A unique Rust type name (`CamelCase`) for a Pascal name.
+    fn type_name(&mut self, pascal: &str) -> String {
+        Self::unique_in(&mut self.used_type_names, names::camel_case(pascal))
+    }
+
+    /// The host type and bounds of a subrange type expression `lo..hi`.
+    fn subrange(&mut self, t: &TypeExpr) -> Option<(Type, i64, i64)> {
+        let TypeExpr::Subrange { lo, hi, span } = t else { return None };
+        let lo_ty = self.expr(lo);
+        let (Some(ConstVal::Int(l)), Some(ConstVal::Int(h))) = (self.ordinal_const(lo), self.ordinal_const(hi)) else {
+            self.error(*span, "subrange bounds must be ordinal constants");
+            return None;
+        };
+        if l > h {
+            self.error(*span, "a subrange's lower bound must not exceed its upper bound");
+            return None;
+        }
+        let host = match lo_ty.concrete() {
+            Type::Int(k) => Type::Int(if IntKind::Integer.contains(l) && IntKind::Integer.contains(h) {
+                IntKind::Integer
+            } else {
+                k
+            }),
+            other => other,
+        };
+        Some((host, l, h))
+    }
+
+    /// A constant's ordinal value (characters count by their code).
+    fn ordinal_const(&self, e: &Expr) -> Option<ConstVal> {
+        match self.eval_const(e)? {
+            ConstVal::Str(s) if s.len() == 1 => Some(ConstVal::Int(s[0] as i64)),
+            ConstVal::Bool(b) => Some(ConstVal::Int(b as i64)),
+            v @ ConstVal::Int(_) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// The type and bounds of an array index: a subrange, or the name of an
+    /// ordinal type with a small range (`Char`, `Boolean`, an enum, `Byte`).
+    fn index_type(&mut self, t: &TypeExpr) -> Option<(Type, i64, i64)> {
+        if let TypeExpr::Subrange { .. } = t {
+            return self.subrange(t);
+        }
+        if let TypeExpr::Named(ident) = t
+            && let Some(sym) = self.lookup(&ident.key())
+            && let Some(bounds) = self.subrange_types.get(&sym)
+        {
+            return Some(bounds.clone());
+        }
+        let ty = self.resolve_type(t);
+        match &ty {
+            Type::Char => Some((ty, 0, 255)),
+            Type::Bool => Some((ty, 0, 1)),
+            Type::Int(IntKind::Byte) => Some((ty, 0, 255)),
+            Type::Int(IntKind::ShortInt) => Some((ty, -128, 127)),
+            Type::Enum(e) => {
+                let hi = e.variants.len() as i64 - 1;
+                Some((ty, 0, hi))
+            }
+            Type::Error => None,
+            other => {
+                self.error(t.span(), format!("{other} is too big to be an array index type"));
+                None
             }
         }
     }
@@ -550,11 +673,7 @@ impl Checker {
             }
             StmtKind::Call(e) => self.call_statement(e),
             StmtKind::Compound(body) => self.stmts(body),
-            StmtKind::If {
-                cond,
-                then_branch,
-                else_branch,
-            } => {
+            StmtKind::If { cond, then_branch, else_branch } => {
                 self.condition(cond);
                 self.stmt(then_branch);
                 if let Some(e) = else_branch {
@@ -569,13 +688,7 @@ impl Checker {
                 self.stmts(body);
                 self.condition(cond);
             }
-            StmtKind::For {
-                var,
-                start,
-                end,
-                body,
-                ..
-            } => {
+            StmtKind::For { var, start, end, body, .. } => {
                 let var_ty = self.for_variable(var, s.span.start);
                 for bound in [start, end] {
                     let ty = self.expr(bound);
@@ -584,17 +697,10 @@ impl Checker {
                 self.stmt(body);
                 self.active_for_vars.pop();
             }
-            StmtKind::Case {
-                scrutinee,
-                arms,
-                else_body,
-            } => {
+            StmtKind::Case { scrutinee, arms, else_body } => {
                 let ty = self.expr(scrutinee);
                 if !ty.is_ordinal() && ty != Type::Error {
-                    self.error(
-                        scrutinee.span,
-                        format!("`case` needs an ordinal value, found {ty}"),
-                    );
+                    self.error(scrutinee.span, format!("`case` needs an ordinal value, found {ty}"));
                 }
                 for arm in arms {
                     for label in &arm.labels {
@@ -610,10 +716,7 @@ impl Checker {
                                 self.error(e.span, "`case` labels must be constants");
                             }
                             if !ty.accepts(&label_ty) {
-                                self.error(
-                                    e.span,
-                                    format!("expected a {ty} label, found {label_ty}"),
-                                );
+                                self.error(e.span, format!("expected a {ty} label, found {label_ty}"));
                             }
                         }
                     }
@@ -643,17 +746,10 @@ impl Checker {
         };
         let ty = v.ty.clone();
         if !ty.is_ordinal() {
-            self.error(
-                var.span,
-                format!("a `for` loop variable must be an ordinal type, not {ty}"),
-            );
+            self.error(var.span, format!("a `for` loop variable must be an ordinal type, not {ty}"));
         }
         self.a.decls.insert(var.span.start, sym);
-        self.for_loops.push(ForLoop {
-            stmt_start,
-            var: sym,
-            proc: self.cur(),
-        });
+        self.for_loops.push(ForLoop { stmt_start, var: sym, proc: self.cur() });
         // Record the write without counting it as a use outside the loop.
         self.active_for_vars.push(sym);
         self.use_var(sym, true);
@@ -663,19 +759,13 @@ impl Checker {
     fn condition(&mut self, cond: &Expr) {
         let ty = self.expr(cond);
         if ty != Type::Bool && ty != Type::Error {
-            self.error(
-                cond.span,
-                format!("expected a Boolean condition, found {ty}"),
-            );
+            self.error(cond.span, format!("expected a Boolean condition, found {ty}"));
         }
     }
 
     fn check_assignable(&mut self, target: &Type, value: &Type, span: Span) {
         if !target.accepts(value) {
-            self.error(
-                span,
-                format!("cannot assign a {value} value to a {target} variable"),
-            );
+            self.error(span, format!("cannot assign a {value} value to a {target} variable"));
         }
     }
 
@@ -737,10 +827,7 @@ impl Checker {
                     // A bare function name is a call with no arguments.
                     SymKind::Proc(_) | SymKind::Builtin(_) => self.call(e, e, &[]),
                     SymKind::TypeName(_) => {
-                        self.error(
-                            ident.span,
-                            format!("`{}` is a type, not a value", ident.name),
-                        );
+                        self.error(ident.span, format!("`{}` is a type, not a value", ident.name));
                         Type::Error
                     }
                 }
@@ -756,10 +843,7 @@ impl Checker {
                     UnaryOp::Not if ty == Type::Bool || ty.is_integer() => ty.concrete(),
                     _ if ty == Type::Error => Type::Error,
                     _ => {
-                        self.error(
-                            e.span,
-                            format!("this operator can't be applied to a {ty} value"),
-                        );
+                        self.error(e.span, format!("this operator can't be applied to a {ty} value"));
                         Type::Error
                     }
                 }
@@ -770,17 +854,18 @@ impl Checker {
                 self.binary_type(e, *op, &l, &r)
             }
             ExprKind::Format { value, .. } => {
-                self.error(
-                    value.span,
-                    "`:width` formatting is only allowed in `Write`, `Writeln` and `Str`",
-                );
+                self.error(value.span, "`:width` formatting is only allowed in `Write`, `Writeln` and `Str`");
                 Type::Error
             }
-            ExprKind::Field(..)
-            | ExprKind::Index(..)
-            | ExprKind::Deref(_)
-            | ExprKind::Set(_)
-            | ExprKind::AddrOf(_) => {
+            ExprKind::Field(base, field) => {
+                let base_ty = self.expr(base);
+                self.select_field(base_ty, field)
+            }
+            ExprKind::Index(base, indexes) => {
+                let base_ty = self.expr(base);
+                self.select_index(base_ty, indexes, e.span)
+            }
+            ExprKind::Deref(_) | ExprKind::Set(_) | ExprKind::AddrOf(_) => {
                 self.error(e.span, "this kind of expression is not supported yet");
                 Type::Error
             }
@@ -831,9 +916,7 @@ impl Checker {
                         v.ty
                     }
                     // Assigning to a function's own name sets its result.
-                    SymKind::Proc(p)
-                        if self.proc_stack.contains(&p) && self.a.procs[p].result.is_some() =>
-                    {
+                    SymKind::Proc(p) if self.proc_stack.contains(&p) && self.a.procs[p].result.is_some() => {
                         let result = self.a.procs[p].result.unwrap();
                         self.a.refs.insert(e.id, result);
                         self.use_var(result, write);
@@ -845,15 +928,65 @@ impl Checker {
                     }
                 },
             },
+            ExprKind::Field(base, field) => {
+                let base_ty = self.place(base, write);
+                self.select_field(base_ty, field)
+            }
+            ExprKind::Index(base, indexes) => {
+                let base_ty = self.place(base, write);
+                self.select_index(base_ty, indexes, e.span)
+            }
             _ => {
-                self.error(
-                    e.span,
-                    "this kind of assignment target is not supported yet",
-                );
+                self.error(e.span, "this can't be assigned to or passed by `var`");
                 Type::Error
             }
         };
         self.a.types.insert(e.id, ty.clone());
+        ty
+    }
+
+    fn select_field(&mut self, base: Type, field: &Ident) -> Type {
+        match &base {
+            Type::Record(r) => match r.field(&field.name) {
+                Some(f) => f.ty.clone(),
+                None => {
+                    self.error(field.span, format!("`{}` has no field `{}`", r.rust_name, field.name));
+                    Type::Error
+                }
+            },
+            Type::Error => Type::Error,
+            other => {
+                self.error(field.span, format!("a {other} value has no fields"));
+                Type::Error
+            }
+        }
+    }
+
+    /// The element type of `base[i, j, ...]`, checking each index.
+    fn select_index(&mut self, base: Type, indexes: &[Expr], span: Span) -> Type {
+        let mut ty = base;
+        for index in indexes {
+            let index_ty = self.expr(index);
+            ty = match &ty {
+                Type::Array(a) => {
+                    if !a.index.accepts(&index_ty) && !(a.index.is_integer() && index_ty.is_integer()) {
+                        self.error(index.span, format!("this array is indexed by {}, not {index_ty}", a.index));
+                    }
+                    a.elem.clone()
+                }
+                Type::Str { .. } => {
+                    if !index_ty.is_integer() && index_ty != Type::Error {
+                        self.error(index.span, format!("a string index must be an integer, not {index_ty}"));
+                    }
+                    Type::Char
+                }
+                Type::Error => Type::Error,
+                other => {
+                    self.error(span, format!("a {other} value can't be indexed"));
+                    Type::Error
+                }
+            };
+        }
         ty
     }
 
@@ -895,10 +1028,7 @@ impl Checker {
             }
             SymKind::Var(_) | SymKind::Const { .. } => {
                 if !args.is_empty() {
-                    self.error(
-                        ident.span,
-                        format!("`{}` is not a procedure or function", ident.name),
-                    );
+                    self.error(ident.span, format!("`{}` is not a procedure or function", ident.name));
                     return Type::Error;
                 }
                 self.expr(callee)
@@ -912,14 +1042,7 @@ impl Checker {
         let params = self.a.procs[p].params.clone();
         if params.len() != args.len() {
             let name = self.a.procs[p].name.clone();
-            self.error(
-                e.span,
-                format!(
-                    "`{name}` takes {} argument(s) but {} were given",
-                    params.len(),
-                    args.len()
-                ),
-            );
+            self.error(e.span, format!("`{name}` takes {} argument(s) but {} were given", params.len(), args.len()));
             return self.a.procs[p].ret.clone().unwrap_or(Type::Void);
         }
         let mut var_roots = Vec::new();
@@ -928,7 +1051,10 @@ impl Checker {
             if role == VarRole::Param(ParamMode::Var) {
                 let arg_ty = self.place(arg, true);
                 if arg_ty != ty && arg_ty != Type::Error && ty != Type::Error {
-                    self.error(arg.span, format!("a `var` parameter of type {ty} needs a variable of exactly that type, found {arg_ty}"));
+                    self.error(
+                        arg.span,
+                        format!("a `var` parameter of type {ty} needs a variable of exactly that type, found {arg_ty}"),
+                    );
                 }
                 if let Some(root) = self.place_root(arg) {
                     var_roots.push((root, arg.span));
@@ -936,19 +1062,12 @@ impl Checker {
             } else {
                 let arg_ty = self.expr(arg);
                 if !ty.accepts(&arg_ty) {
-                    self.error(
-                        arg.span,
-                        format!("expected a {ty} argument, found {arg_ty}"),
-                    );
+                    self.error(arg.span, format!("expected a {ty} argument, found {arg_ty}"));
                 }
             }
         }
         if !var_roots.is_empty() {
-            self.call_sites.push(CallSite {
-                caller: cur,
-                callee: p,
-                var_roots,
-            });
+            self.call_sites.push(CallSite { caller: cur, callee: p, var_roots });
         }
         self.a.procs[p].ret.clone().unwrap_or(Type::Void)
     }
@@ -968,10 +1087,7 @@ impl Checker {
         ) -> bool {
             let ok = range.contains(&n);
             if !ok {
-                errors.push(Diagnostic::new(
-                    span,
-                    format!("wrong number of arguments to `{name}`"),
-                ));
+                errors.push(Diagnostic::new(span, format!("wrong number of arguments to `{name}`")));
             }
             ok
         }
@@ -980,20 +1096,12 @@ impl Checker {
             Write | Writeln => {
                 for arg in args {
                     let (value, width, decimals) = match &arg.kind {
-                        ExprKind::Format {
-                            value,
-                            width,
-                            decimals,
-                        } => (&**value, Some(width), decimals.as_ref()),
+                        ExprKind::Format { value, width, decimals } => (&**value, Some(width), decimals.as_ref()),
                         _ => (arg, None, None),
                     };
                     let ty = self.expr(value);
                     self.a.types.insert(arg.id, ty.clone());
-                    if !(ty.is_ordinal()
-                        || ty.is_numeric()
-                        || ty.is_stringish()
-                        || ty == Type::Error)
-                    {
+                    if !(ty.is_ordinal() || ty.is_numeric() || ty.is_stringish() || ty == Type::Error) {
                         self.error(value.span, format!("cannot write a {ty} value"));
                     }
                     for n in width.into_iter().chain(decimals) {
@@ -1008,11 +1116,7 @@ impl Checker {
             Read | Readln => {
                 for arg in args {
                     let ty = self.place(arg, true);
-                    if !(ty.is_numeric()
-                        || ty == Type::Char
-                        || matches!(ty, Type::Str { .. })
-                        || ty == Type::Error)
-                    {
+                    if !(ty.is_numeric() || ty == Type::Char || matches!(ty, Type::Str { .. }) || ty == Type::Error) {
                         self.error(arg.span, format!("cannot read a {ty} value"));
                     }
                 }
@@ -1045,43 +1149,17 @@ impl Checker {
             ),
             Chr => self.unary_builtin(span, args, &name, |t| t.is_integer(), |_| Type::Char),
             Odd => self.unary_builtin(span, args, &name, |t| t.is_integer(), |_| Type::Bool),
-            Succ | Pred => {
-                self.unary_builtin(span, args, &name, |t| t.is_ordinal(), |t| t.concrete())
-            }
-            Hi | Lo => self.unary_builtin(
-                span,
-                args,
-                &name,
-                |t| t.is_integer(),
-                |_| Type::Int(IntKind::Byte),
-            ),
-            Abs | Sqr => {
-                self.unary_builtin(span, args, &name, |t| t.is_numeric(), |t| t.concrete())
-            }
+            Succ | Pred => self.unary_builtin(span, args, &name, |t| t.is_ordinal(), |t| t.concrete()),
+            Hi | Lo => self.unary_builtin(span, args, &name, |t| t.is_integer(), |_| Type::Int(IntKind::Byte)),
+            Abs | Sqr => self.unary_builtin(span, args, &name, |t| t.is_numeric(), |t| t.concrete()),
             Sqrt | Sin | Cos | ArcTan | Ln | Exp | Int | Frac => {
                 self.unary_builtin(span, args, &name, |t| t.is_numeric(), |_| Type::Real)
             }
-            Trunc | Round => self.unary_builtin(
-                span,
-                args,
-                &name,
-                |t| t.is_numeric(),
-                |_| Type::Int(IntKind::LongInt),
-            ),
-            UpCase => self.unary_builtin(
-                span,
-                args,
-                &name,
-                |t| *t == Type::Char || *t == Type::StrLit(1),
-                |_| Type::Char,
-            ),
-            Length => self.unary_builtin(
-                span,
-                args,
-                &name,
-                |t| t.is_stringish(),
-                |_| Type::Int(IntKind::Integer),
-            ),
+            Trunc | Round => self.unary_builtin(span, args, &name, |t| t.is_numeric(), |_| Type::Int(IntKind::LongInt)),
+            UpCase => {
+                self.unary_builtin(span, args, &name, |t| *t == Type::Char || *t == Type::StrLit(1), |_| Type::Char)
+            }
+            Length => self.unary_builtin(span, args, &name, |t| t.is_stringish(), |_| Type::Int(IntKind::Integer)),
             Random => {
                 if arity(&mut self.errors, span, args.len(), 0..=1, &name) && args.len() == 1 {
                     self.int_arg(&args[0]);
@@ -1094,10 +1172,7 @@ impl Checker {
                 if arity(&mut self.errors, span, args.len(), 1..=2, &name) {
                     let ty = self.place(&args[0], true);
                     if !ty.is_ordinal() && ty != Type::Error {
-                        self.error(
-                            args[0].span,
-                            format!("`{name}` needs an ordinal variable, found {ty}"),
-                        );
+                        self.error(args[0].span, format!("`{name}` needs an ordinal variable, found {ty}"));
                     }
                     if let Some(n) = args.get(1) {
                         self.int_arg(n);
@@ -1145,11 +1220,7 @@ impl Checker {
             Str => {
                 if arity(&mut self.errors, span, args.len(), 2..=2, &name) {
                     let (value, width, decimals) = match &args[0].kind {
-                        ExprKind::Format {
-                            value,
-                            width,
-                            decimals,
-                        } => (&**value, Some(width), decimals.as_ref()),
+                        ExprKind::Format { value, width, decimals } => (&**value, Some(width), decimals.as_ref()),
                         _ => (&args[0], None, None),
                     };
                     let ty = self.expr(value);
@@ -1169,17 +1240,11 @@ impl Checker {
                     self.string_arg(&args[0]);
                     let ty = self.place(&args[1], true);
                     if !ty.is_numeric() && ty != Type::Error {
-                        self.error(
-                            args[1].span,
-                            format!("`Val` needs a numeric variable, found {ty}"),
-                        );
+                        self.error(args[1].span, format!("`Val` needs a numeric variable, found {ty}"));
                     }
                     let code = self.place(&args[2], true);
                     if !code.is_integer() && code != Type::Error {
-                        self.error(
-                            args[2].span,
-                            "`Val`'s error code variable must be an integer",
-                        );
+                        self.error(args[2].span, "`Val`'s error code variable must be an integer");
                     }
                 }
                 Type::Void
@@ -1204,10 +1269,7 @@ impl Checker {
             return Type::Error;
         }
         if !accepts(&ty) {
-            self.error(
-                args[0].span,
-                format!("`{name}` can't be applied to a {ty} value"),
-            );
+            self.error(args[0].span, format!("`{name}` can't be applied to a {ty} value"));
             return Type::Error;
         }
         result(&ty)
@@ -1247,17 +1309,14 @@ pub fn numeric_common(l: &Type, r: &Type) -> Option<Type> {
 pub fn int_common(l: &Type, r: &Type) -> Option<Type> {
     match (l, r) {
         (Type::Int(a), Type::Int(b)) => Some(Type::Int(IntKind::common(*a, *b))),
-        (Type::Int(k), Type::IntLit(v)) | (Type::IntLit(v), Type::Int(k)) => {
-            Some(Type::Int(if k.contains(*v) {
-                IntKind::common(*k, *k)
-            } else {
-                IntKind::common(*k, IntKind::for_literal(*v))
-            }))
+        (Type::Int(k), Type::IntLit(v)) | (Type::IntLit(v), Type::Int(k)) => Some(Type::Int(if k.contains(*v) {
+            IntKind::common(*k, *k)
+        } else {
+            IntKind::common(*k, IntKind::for_literal(*v))
+        })),
+        (Type::IntLit(a), Type::IntLit(b)) => {
+            Some(Type::Int(IntKind::common(IntKind::for_literal(*a), IntKind::for_literal(*b))))
         }
-        (Type::IntLit(a), Type::IntLit(b)) => Some(Type::Int(IntKind::common(
-            IntKind::for_literal(*a),
-            IntKind::for_literal(*b),
-        ))),
         _ => None,
     }
 }

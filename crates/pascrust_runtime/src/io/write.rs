@@ -46,20 +46,12 @@ pub struct Formatted<T> {
 
 /// Pascal `x:width`.
 pub fn w<T: PasWrite>(value: T, width: impl Into<i32>) -> Formatted<T> {
-    Formatted {
-        value,
-        width: width.into(),
-        decimals: None,
-    }
+    Formatted { value, width: width.into(), decimals: None }
 }
 
 /// Pascal `x:width:decimals`.
 pub fn wd<T: PasWrite>(value: T, width: impl Into<i32>, decimals: impl Into<i32>) -> Formatted<T> {
-    Formatted {
-        value,
-        width: width.into(),
-        decimals: Some(decimals.into()),
-    }
+    Formatted { value, width: width.into(), decimals: Some(decimals.into()) }
 }
 
 impl<T: PasWrite> PasWrite for Formatted<T> {

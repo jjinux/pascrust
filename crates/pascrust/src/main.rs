@@ -74,8 +74,7 @@ fn run(command: Cmd) -> Result<ExitCode, String> {
 fn project(file: &Path, out: Option<PathBuf>) -> Result<PathBuf, String> {
     let generated = pascrust::driver::transpile_file(file)?;
     let dir = out.unwrap_or_else(|| Path::new("out").join(&generated.name));
-    pascrust::driver::write_project(&dir, &generated)
-        .map_err(|e| format!("cannot write {}: {e}", dir.display()))?;
+    pascrust::driver::write_project(&dir, &generated).map_err(|e| format!("cannot write {}: {e}", dir.display()))?;
     Ok(dir)
 }
 

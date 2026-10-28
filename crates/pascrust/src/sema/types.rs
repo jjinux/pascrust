@@ -1,6 +1,7 @@
 //! Pascal types as sema understands them, and how each maps to Rust.
 
 use std::fmt;
+use std::rc::Rc;
 
 /// The integer types of Turbo Pascal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -54,11 +55,7 @@ impl IntKind {
 
     /// The smallest type for an integer literal, as Turbo Pascal picks it.
     pub fn for_literal(value: i64) -> IntKind {
-        if IntKind::Integer.contains(value) {
-            IntKind::Integer
-        } else {
-            IntKind::LongInt
-        }
+        if IntKind::Integer.contains(value) { IntKind::Integer } else { IntKind::LongInt }
     }
 }
 
@@ -80,6 +77,11 @@ pub enum Type {
     /// A string literal. Like [`Type::IntLit`], it adapts to its context: a
     /// one-character literal can be a `Char`.
     StrLit(usize),
+    /// An enumerated type, `(Red, Green, Blue)`.
+    Enum(Rc<EnumType>),
+    /// `array[lo..hi] of T`. A multi-dimensional array is an array of arrays.
+    Array(Rc<ArrayType>),
+    Record(Rc<RecordType>),
     /// The type of `nil`.
     Nil,
     /// The "type" of a procedure call, which has no value.
@@ -87,6 +89,54 @@ pub enum Type {
     /// Produced after a type error so that one mistake doesn't cascade into
     /// many error messages.
     Error,
+}
+
+// The structured types live behind `Rc` (a reference-counted pointer), so
+// cloning a `Type` is cheap even for a big record: it just bumps a count.
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumType {
+    /// The Rust name of the generated `enum`.
+    pub rust_name: String,
+    /// The Rust names of the variants, in order.
+    pub variants: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrayType {
+    /// The index type (an integer type, `Char`, `Boolean` or an enum).
+    pub index: Type,
+    pub lo: i64,
+    pub hi: i64,
+    pub elem: Type,
+    /// The Rust type alias generated for a named array type (`GridT`).
+    pub alias: Option<String>,
+}
+
+impl ArrayType {
+    pub fn count(&self) -> i64 {
+        self.hi - self.lo + 1
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordType {
+    pub rust_name: String,
+    pub fields: Vec<Field>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    /// The name as declared, for case-insensitive lookup and messages.
+    pub name: String,
+    pub rust_name: String,
+    pub ty: Type,
+}
+
+impl RecordType {
+    pub fn field(&self, name: &str) -> Option<&Field> {
+        self.fields.iter().find(|f| f.name.eq_ignore_ascii_case(name))
+    }
 }
 
 impl Type {
@@ -106,7 +156,7 @@ impl Type {
     /// and subranges). Only these can index arrays, drive `for` loops and
     /// appear in `case` labels.
     pub fn is_ordinal(&self) -> bool {
-        self.is_integer() || matches!(self, Type::Char | Type::Bool | Type::StrLit(1))
+        self.is_integer() || matches!(self, Type::Char | Type::Bool | Type::StrLit(1) | Type::Enum(_))
     }
 
     /// Replace "literal" types with the concrete type a variable of that type
@@ -129,6 +179,12 @@ impl Type {
             Type::Bool => "bool".to_string(),
             Type::Char => "u8".to_string(),
             Type::Str { .. } | Type::StrLit(_) => "PString".to_string(),
+            Type::Enum(e) => e.rust_name.clone(),
+            Type::Record(r) => r.rust_name.clone(),
+            Type::Array(a) => match &a.alias {
+                Some(alias) => alias.clone(),
+                None => a.rust_unaliased(),
+            },
             Type::Nil | Type::Void | Type::Error => "()".to_string(),
         }
     }
@@ -136,7 +192,11 @@ impl Type {
     /// Does the Rust type implement `Copy`? Decides whether codegen needs
     /// `.clone()` when Pascal copies a value.
     pub fn is_copy(&self) -> bool {
-        true
+        match self {
+            Type::Array(a) => a.elem.is_copy(),
+            Type::Record(r) => r.fields.iter().all(|f| f.ty.is_copy()),
+            _ => true,
+        }
     }
 
     /// Is a value of type `from` assignable to a variable of type `self`?
@@ -153,6 +213,15 @@ impl Type {
     }
 }
 
+impl ArrayType {
+    /// `PArray<T, LO, N>`, spelled out without the alias. A negative const
+    /// generic argument needs braces in Rust: `PArray<i16, { -5 }, 11>`.
+    pub fn rust_unaliased(&self) -> String {
+        let lo = if self.lo < 0 { format!("{{ {} }}", self.lo) } else { self.lo.to_string() };
+        format!("PArray<{}, {lo}, {}>", self.elem.rust(), self.count())
+    }
+}
+
 impl fmt::Display for Type {
     /// Pascal spelling, for error messages.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -164,6 +233,9 @@ impl fmt::Display for Type {
             Type::Char => write!(f, "Char"),
             Type::Str { cap: 255 } | Type::StrLit(_) => write!(f, "String"),
             Type::Str { cap } => write!(f, "String[{cap}]"),
+            Type::Enum(e) => write!(f, "{}", e.rust_name),
+            Type::Record(r) => write!(f, "{}", r.rust_name),
+            Type::Array(a) => write!(f, "array[{}..{}] of {}", a.lo, a.hi, a.elem),
             Type::Nil => write!(f, "Pointer"),
             Type::Void => write!(f, "no value"),
             Type::Error => write!(f, "<error>"),

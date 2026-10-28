@@ -36,20 +36,8 @@ pub(super) fn lift(a: &mut Analysis) {
     let mut need: Vec<BTreeSet<SymId>> = Vec::with_capacity(n);
     let mut write_need: Vec<BTreeSet<SymId>> = Vec::with_capacity(n);
     for (p, info) in a.procs.iter().enumerate() {
-        need.push(
-            info.uses
-                .iter()
-                .copied()
-                .filter(|&v| owner(a, v) != p)
-                .collect(),
-        );
-        write_need.push(
-            info.writes
-                .iter()
-                .copied()
-                .filter(|&v| owner(a, v) != p)
-                .collect(),
-        );
+        need.push(info.uses.iter().copied().filter(|&v| owner(a, v) != p).collect());
+        write_need.push(info.writes.iter().copied().filter(|&v| owner(a, v) != p).collect());
     }
 
     let mut changed = true;
@@ -65,8 +53,7 @@ pub(super) fn lift(a: &mut Analysis) {
                     }
                 }
                 for &v in &write_need[q].clone() {
-                    if owner(a, v) != p && is_ancestor(a, owner(a, v), p) && write_need[p].insert(v)
-                    {
+                    if owner(a, v) != p && is_ancestor(a, owner(a, v), p) && write_need[p].insert(v) {
                         changed = true;
                     }
                 }
@@ -93,6 +80,8 @@ pub(super) fn lift(a: &mut Analysis) {
             .collect();
         a.procs[p].captures = captures;
     }
+
+    rename_clashing_captures(a);
 
     // Which variables need `mut`: those written by their owner, or handed to
     // a callee that writes them.
@@ -121,6 +110,29 @@ pub(super) fn lift(a: &mut Analysis) {
         if scoped {
             a.scoped_for_loops.insert(stmt_start);
             a.elided_vars.insert(var);
+        }
+    }
+}
+
+/// A lifted procedure receives its captured variables as parameters, so
+/// their Rust names must not clash with its own parameters and locals. In
+/// Pascal they can't clash (an inner declaration hides the outer one), but a
+/// procedure may still need to pass a hidden outer variable through to
+/// something it calls. Rename the captured variable everywhere if so.
+fn rename_clashing_captures(a: &mut Analysis) {
+    for p in 0..a.procs.len() {
+        let own: HashSet<String> =
+            a.procs[p].params.iter().chain(&a.procs[p].locals).map(|&s| a.sym(s).rust_name.clone()).collect();
+        for cap in a.procs[p].captures.clone() {
+            let name = a.sym(cap.sym).rust_name.clone();
+            if own.contains(&name) {
+                let owner = a.var(cap.sym).owner;
+                a.symbols[cap.sym].rust_name = if owner == MAIN {
+                    format!("global_{name}")
+                } else {
+                    format!("{}_{name}", a.procs[owner].rust_name)
+                };
+            }
         }
     }
 }

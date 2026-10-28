@@ -105,9 +105,7 @@ pub fn pos(substr: impl Into<PString>, s: impl Into<PString>) -> i16 {
         return 0;
     }
     // `windows(n)` yields every run of `n` consecutive bytes.
-    hay.windows(needle.len())
-        .position(|w| w == needle)
-        .map_or(0, |i| i as i16 + 1)
+    hay.windows(needle.len()).position(|w| w == needle).map_or(0, |i| i as i16 + 1)
 }
 
 /// Convert anything string-like into a `PString`: string literals, byte
@@ -177,10 +175,7 @@ impl<I: Ordinal> IndexMut<I> for PString {
 fn string_index<I: Ordinal>(i: I) -> usize {
     let i = i.ord();
     if !(0..=255).contains(&i) {
-        crate::rte(
-            201,
-            format!("Range check error: string index {i} is not in 0..255"),
-        );
+        crate::rte(201, format!("Range check error: string index {i} is not in 0..255"));
     }
     i as usize
 }

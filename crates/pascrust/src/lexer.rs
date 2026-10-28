@@ -20,11 +20,7 @@ use crate::token::{Keyword, Token, TokenKind};
 
 /// Tokenize a whole source file. The last token is always [`TokenKind::Eof`].
 pub fn tokenize(source: &[u8]) -> Result<Vec<Token>, Diagnostic> {
-    let mut lexer = Lexer {
-        src: source,
-        pos: 0,
-        tokens: Vec::new(),
-    };
+    let mut lexer = Lexer { src: source, pos: 0, tokens: Vec::new() };
     lexer.run()?;
     Ok(lexer.tokens)
 }
@@ -54,10 +50,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn push(&mut self, kind: TokenKind, start: usize) {
-        self.tokens.push(Token {
-            kind,
-            span: Span::new(start, self.pos),
-        });
+        self.tokens.push(Token { kind, span: Span::new(start, self.pos) });
     }
 
     fn run(&mut self) -> Result<(), Diagnostic> {
@@ -141,9 +134,7 @@ impl<'a> Lexer<'a> {
             self.pos += 1;
         }
         // Identifiers are ASCII by construction, so this can't fail.
-        let text = std::str::from_utf8(&self.src[start..self.pos])
-            .unwrap()
-            .to_string();
+        let text = std::str::from_utf8(&self.src[start..self.pos]).unwrap().to_string();
         let kind = match Keyword::from_lowercase(&text.to_ascii_lowercase()) {
             Some(kw) => TokenKind::Keyword(kw),
             None => TokenKind::Ident(text),
@@ -177,15 +168,9 @@ impl<'a> Lexer<'a> {
         }
         let text = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
         let kind = if is_real {
-            TokenKind::Real(
-                text.parse()
-                    .map_err(|_| self.error(start, "invalid real number"))?,
-            )
+            TokenKind::Real(text.parse().map_err(|_| self.error(start, "invalid real number"))?)
         } else {
-            TokenKind::Integer(
-                text.parse()
-                    .map_err(|_| self.error(start, "integer literal is too large"))?,
-            )
+            TokenKind::Integer(text.parse().map_err(|_| self.error(start, "integer literal is too large"))?)
         };
         self.push(kind, start);
         Ok(())
@@ -199,8 +184,7 @@ impl<'a> Lexer<'a> {
             self.pos += 1;
         }
         let text = std::str::from_utf8(&self.src[digits_start..self.pos]).unwrap();
-        let value = i64::from_str_radix(text, 16)
-            .map_err(|_| self.error(start, "invalid hexadecimal number"))?;
+        let value = i64::from_str_radix(text, 16).map_err(|_| self.error(start, "invalid hexadecimal number"))?;
         self.push(TokenKind::Integer(value), start);
         Ok(())
     }
@@ -241,9 +225,7 @@ impl<'a> Lexer<'a> {
                                 break;
                             }
                             b'\n' | b'\r' => {
-                                return Err(
-                                    self.error(start, "string literal is not closed on this line")
-                                );
+                                return Err(self.error(start, "string literal is not closed on this line"));
                             }
                             0 if self.pos >= self.src.len() => {
                                 return Err(self.error(start, "unterminated string literal"));
@@ -264,16 +246,11 @@ impl<'a> Lexer<'a> {
                         while self.peek().is_ascii_hexdigit() {
                             self.pos += 1;
                         }
-                        u32::from_str_radix(
-                            std::str::from_utf8(&self.src[digits_start..self.pos]).unwrap(),
-                            16,
-                        )
+                        u32::from_str_radix(std::str::from_utf8(&self.src[digits_start..self.pos]).unwrap(), 16)
                     } else {
                         let digits_start = self.pos;
                         self.digits();
-                        std::str::from_utf8(&self.src[digits_start..self.pos])
-                            .unwrap()
-                            .parse::<u32>()
+                        std::str::from_utf8(&self.src[digits_start..self.pos]).unwrap().parse::<u32>()
                     };
                     match value {
                         Ok(v) if v <= 255 => bytes.push(v as u8),
@@ -338,10 +315,7 @@ impl<'a> Lexer<'a> {
             b'@' => At,
             other => {
                 self.pos += 1;
-                return Err(self.error(
-                    start,
-                    format!("unexpected character `{}`", other.escape_ascii()),
-                ));
+                return Err(self.error(start, format!("unexpected character `{}`", other.escape_ascii())));
             }
         };
         self.pos += 1;
@@ -357,11 +331,7 @@ mod tests {
 
     /// Tokenize and drop the spans and the final `Eof`, for compact asserts.
     fn kinds(src: &str) -> Vec<TokenKind> {
-        let mut tokens: Vec<TokenKind> = tokenize(src.as_bytes())
-            .unwrap()
-            .into_iter()
-            .map(|t| t.kind)
-            .collect();
+        let mut tokens: Vec<TokenKind> = tokenize(src.as_bytes()).unwrap().into_iter().map(|t| t.kind).collect();
         assert_eq!(tokens.pop(), Some(Eof));
         tokens
     }
@@ -385,10 +355,7 @@ mod tests {
 
     #[test]
     fn identifiers_keep_their_spelling() {
-        assert_eq!(
-            kinds("GridT gridT _x1"),
-            vec![ident("GridT"), ident("gridT"), ident("_x1")]
-        );
+        assert_eq!(kinds("GridT gridT _x1"), vec![ident("GridT"), ident("gridT"), ident("_x1")]);
     }
 
     #[test]
@@ -400,30 +367,14 @@ mod tests {
     fn numbers() {
         assert_eq!(
             kinds("42 $FF 1.5 2e3 1.5E-2"),
-            vec![
-                Integer(42),
-                Integer(255),
-                Real(1.5),
-                Real(2000.0),
-                Real(0.015)
-            ]
+            vec![Integer(42), Integer(255), Real(1.5), Real(2000.0), Real(0.015)]
         );
     }
 
     #[test]
     fn range_dots_are_not_a_real() {
         assert_eq!(kinds("1..5"), vec![Integer(1), DotDot, Integer(5)]);
-        assert_eq!(
-            kinds("a[1..maxcol]"),
-            vec![
-                ident("a"),
-                LBracket,
-                Integer(1),
-                DotDot,
-                ident("maxcol"),
-                RBracket
-            ]
-        );
+        assert_eq!(kinds("a[1..maxcol]"), vec![ident("a"), LBracket, Integer(1), DotDot, ident("maxcol"), RBracket]);
     }
 
     #[test]
@@ -437,32 +388,16 @@ mod tests {
 
     #[test]
     fn caret_characters_vs_pointers() {
-        assert_eq!(
-            kinds("x := ^M;"),
-            vec![ident("x"), Assign, Str(vec![13]), Semi]
-        );
-        assert_eq!(
-            kinds("p^.next"),
-            vec![ident("p"), Caret, Dot, ident("next")]
-        );
-        assert_eq!(
-            kinds("T = ^Node;"),
-            vec![ident("T"), Eq, Caret, ident("Node"), Semi]
-        );
+        assert_eq!(kinds("x := ^M;"), vec![ident("x"), Assign, Str(vec![13]), Semi]);
+        assert_eq!(kinds("p^.next"), vec![ident("p"), Caret, Dot, ident("next")]);
+        assert_eq!(kinds("T = ^Node;"), vec![ident("T"), Eq, Caret, ident("Node"), Semi]);
     }
 
     #[test]
     fn comments_and_directives() {
         assert_eq!(
             kinds("a { one } b (* two *) c // three\n d {$I-} e"),
-            vec![
-                ident("a"),
-                ident("b"),
-                ident("c"),
-                ident("d"),
-                Directive("I-".to_string()),
-                ident("e")
-            ]
+            vec![ident("a"), ident("b"), ident("c"), ident("d"), Directive("I-".to_string()), ident("e")]
         );
     }
 
@@ -471,8 +406,8 @@ mod tests {
         assert_eq!(
             kinds(":= <> <= >= < > = + - * / .. . , ; : ( ) [ ] ^ @"),
             vec![
-                Assign, NotEq, LtEq, GtEq, Lt, Gt, Eq, Plus, Minus, Star, Slash, DotDot, Dot,
-                Comma, Semi, Colon, LParen, RParen, LBracket, RBracket, Caret, At
+                Assign, NotEq, LtEq, GtEq, Lt, Gt, Eq, Plus, Minus, Star, Slash, DotDot, Dot, Comma, Semi, Colon,
+                LParen, RParen, LBracket, RBracket, Caret, At
             ]
         );
     }

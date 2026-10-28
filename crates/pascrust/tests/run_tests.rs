@@ -14,10 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap()
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
 }
 
 #[test]
@@ -47,17 +44,11 @@ fn run_tests() {
     for path in &programs {
         match pascrust::driver::transpile_file(path) {
             Ok(generated) => {
-                std::fs::write(
-                    bin_dir.join(format!("{}.rs", generated.name)),
-                    &generated.main_rs,
-                )
-                .unwrap();
+                std::fs::write(bin_dir.join(format!("{}.rs", generated.name)), &generated.main_rs).unwrap();
                 features.extend(generated.features);
                 built.push((path.clone(), generated.name));
             }
-            Err(message) => {
-                failures.push(format!("{}: transpile failed:\n{message}", path.display()))
-            }
+            Err(message) => failures.push(format!("{}: transpile failed:\n{message}", path.display())),
         }
     }
     features.sort();
@@ -69,16 +60,9 @@ fn run_tests() {
     std::fs::write(scratch.join("Cargo.toml"), toml).unwrap();
     std::fs::write(scratch.join("src/lib.rs"), "").unwrap();
 
-    let build = Command::new("cargo")
-        .args(["build", "--quiet"])
-        .current_dir(&scratch)
-        .output()
-        .unwrap();
+    let build = Command::new("cargo").args(["build", "--quiet"]).current_dir(&scratch).output().unwrap();
     if !build.status.success() {
-        panic!(
-            "generated code failed to compile:\n{}",
-            String::from_utf8_lossy(&build.stderr)
-        );
+        panic!("generated code failed to compile:\n{}", String::from_utf8_lossy(&build.stderr));
     }
 
     for (path, name) in built {
@@ -103,9 +87,8 @@ fn run_tests() {
                 String::from_utf8_lossy(&output.stderr),
             ));
         }
-        let expected_code: i32 = std::fs::read_to_string(path.with_extension("exitcode"))
-            .map(|s| s.trim().parse().unwrap())
-            .unwrap_or(0);
+        let expected_code: i32 =
+            std::fs::read_to_string(path.with_extension("exitcode")).map(|s| s.trim().parse().unwrap()).unwrap_or(0);
         if output.status.code() != Some(expected_code) {
             failures.push(format!(
                 "{}: exit code {:?}, expected {expected_code}\n{}",
@@ -116,10 +99,6 @@ fn run_tests() {
         }
     }
     if !failures.is_empty() {
-        panic!(
-            "{} run test failure(s):\n\n{}",
-            failures.len(),
-            failures.join("\n\n")
-        );
+        panic!("{} run test failure(s):\n\n{}", failures.len(), failures.join("\n\n"));
     }
 }

@@ -32,11 +32,7 @@ pub(super) type Code = (String, u8);
 
 /// Wrap `code` in parentheses if it binds looser than `min`.
 pub(super) fn paren(code: Code, min: u8) -> String {
-    if code.1 < min {
-        format!("({})", code.0)
-    } else {
-        code.0
-    }
+    if code.1 < min { format!("({})", code.0) } else { code.0 }
 }
 
 impl<'a> Codegen<'a> {
@@ -60,6 +56,7 @@ impl<'a> Codegen<'a> {
             }
             ExprKind::Binary { op, lhs, rhs } => self.binary(e, *op, lhs, rhs),
             ExprKind::Format { value, .. } => self.expr(value),
+            ExprKind::Field(..) | ExprKind::Index(..) => (self.selector(e), prec::POSTFIX),
             _ => unreachable!("sema rejects this expression"),
         }
     }
@@ -97,6 +94,11 @@ impl<'a> Codegen<'a> {
         {
             return (format!("{n}.0"), prec::ATOM);
         }
+        if let (Type::Str { .. }, ExprKind::Str(bytes)) = (to, &e.kind)
+            && bytes.is_empty()
+        {
+            return ("PString::new()".to_string(), prec::POSTFIX);
+        }
         let code = self.expr(e);
         convert(code, &from, to)
     }
@@ -114,21 +116,28 @@ impl<'a> Codegen<'a> {
         {
             return self.a.sym(sym).rust_name.clone();
         }
-        match (&e.kind, ty) {
-            (ExprKind::Int(n), Type::Int(k)) => format!("{n}_{}", k.rust()),
-            (ExprKind::Int(n), Type::Real) => format!("{n}.0_f64"),
-            (ExprKind::Real(x), _) => format!("{}_f64", real_literal(*x)),
-            _ => paren(self.coerce(e, ty), prec::POSTFIX),
+        // Literals get a type suffix: `5_i16.abs()`, `(-2.5_f64).round()`.
+        let literal = match (self.a.type_of(e.id), ty, &e.kind) {
+            (Type::IntLit(n), Type::Int(k), _) => Some(format!("{n}_{}", k.rust())),
+            (Type::IntLit(n), Type::Real, _) => Some(format!("{n}.0_f64")),
+            (_, _, ExprKind::Real(x)) => Some(format!("{}_f64", real_literal(*x))),
+            (_, _, ExprKind::Unary { op: UnaryOp::Neg, operand }) => match operand.kind {
+                ExprKind::Real(x) => Some(format!("-{}_f64", real_literal(x))),
+                _ => None,
+            },
+            _ => None,
+        };
+        match literal {
+            Some(text) if text.starts_with('-') => format!("({text})"),
+            Some(text) => text,
+            None => paren(self.coerce(e, ty), prec::POSTFIX),
         }
     }
 
     fn binary(&mut self, e: &Expr, op: BinaryOp, lhs: &Expr, rhs: &Expr) -> Code {
         use BinaryOp::*;
         let ty = self.a.type_of(e.id).clone();
-        let (lt, rt) = (
-            self.a.type_of(lhs.id).clone(),
-            self.a.type_of(rhs.id).clone(),
-        );
+        let (lt, rt) = (self.a.type_of(lhs.id).clone(), self.a.type_of(rhs.id).clone());
         let (rust_op, p) = match op {
             Add => ("+", prec::ADD),
             Sub => ("-", prec::ADD),
@@ -160,30 +169,20 @@ impl<'a> Codegen<'a> {
         let right = match (op, &operand_ty, &rt) {
             // `PString` implements `+` and `==` for string literals and
             // chars directly, so the right operand can stay as it is.
-            (
-                Add | Eq | NotEq | Lt | LtEq | Gt | GtEq,
-                Type::Str { .. },
-                Type::StrLit(_) | Type::Char,
-            ) => self.expr(rhs),
+            (Add | Eq | NotEq | Lt | LtEq | Gt | GtEq, Type::Str { .. }, Type::StrLit(_) | Type::Char) => {
+                self.expr(rhs)
+            }
             (Shl | Shr, _, _) => self.expr(rhs),
             _ => self.coerce(rhs, &operand_ty),
         };
         // `x as i16 < y` would parse `<` as the start of generic arguments,
         // so a cast on the left of `<` or `<<` always gets parentheses.
-        let left_min = if left.1 == prec::AS && matches!(op, Lt | Shl) {
-            prec::UNARY
-        } else {
-            p
-        };
+        let left_min = if left.1 == prec::AS && matches!(op, Lt | Shl) { prec::UNARY } else { p };
         // Comparisons don't chain in Rust, so both sides need higher
         // precedence; arithmetic is left-associative, so only the right side
         // does.
         let left_min = if p == prec::CMP { p + 1 } else { left_min };
-        let code = format!(
-            "{} {rust_op} {}",
-            paren(left, left_min),
-            paren(right, p + 1)
-        );
+        let code = format!("{} {rust_op} {}", paren(left, left_min), paren(right, p + 1));
         (code, p)
     }
 
@@ -191,7 +190,41 @@ impl<'a> Codegen<'a> {
     pub(super) fn place(&mut self, e: &Expr) -> String {
         match &e.kind {
             ExprKind::Name(_) => self.var_place(self.a.refs[&e.id]),
+            ExprKind::Field(..) | ExprKind::Index(..) => self.selector(e),
             _ => unreachable!("sema rejects other assignment targets"),
+        }
+    }
+
+    /// `record.field` or `array[i][j]`. Pascal's `a[i, j]` becomes Rust's
+    /// `a[i][j]`; the runtime's `PArray` does the bounds arithmetic.
+    fn selector(&mut self, e: &Expr) -> String {
+        match &e.kind {
+            ExprKind::Field(base, field) => {
+                let Type::Record(r) = self.a.type_of(base.id).clone() else { unreachable!("sema checked the field") };
+                let field = r.field(&field.name).expect("sema checked the field");
+                format!("{}.{}", self.selector_base(base), field.rust_name)
+            }
+            ExprKind::Index(base, indexes) => {
+                let mut code = self.selector_base(base);
+                for index in indexes {
+                    code.push_str(&format!("[{}]", self.expr(index).0));
+                }
+                code
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// The left side of `.field` or `[index]`. Rust dereferences
+    /// automatically there, so a variable we hold by reference can be used
+    /// as is (`grid[c][r]`, not `(*grid)[c][r]`).
+    fn selector_base(&mut self, base: &Expr) -> String {
+        match &base.kind {
+            ExprKind::Name(_) if matches!(self.a.sym(self.a.refs[&base.id]).kind, SymKind::Var(_)) => {
+                self.a.sym(self.a.refs[&base.id]).rust_name.clone()
+            }
+            ExprKind::Field(..) | ExprKind::Index(..) => self.selector(base),
+            _ => paren(self.expr(base), prec::POSTFIX),
         }
     }
 
@@ -259,7 +292,11 @@ impl<'a> Codegen<'a> {
     /// The Rust literal for a constant of type `ty`.
     pub(super) fn const_value(&self, value: &ConstVal, ty: &Type) -> String {
         match value {
-            ConstVal::Int(n) => n.to_string(),
+            ConstVal::Int(n) => match ty {
+                Type::Enum(e) => format!("{}::{}", e.rust_name, e.variants[*n as usize]),
+                Type::Char => char_literal(*n as u8),
+                _ => n.to_string(),
+            },
             ConstVal::Real(x) => real_literal(*x),
             ConstVal::Bool(b) => b.to_string(),
             ConstVal::Str(bytes) if *ty == Type::Char && bytes.len() == 1 => char_literal(bytes[0]),
@@ -283,15 +320,11 @@ pub(super) fn convert(code: Code, from: &Type, to: &Type) -> Code {
     match (from, to) {
         (a, b) if a == b => code,
         (Type::IntLit(_), Type::Int(_)) => code,
-        (Type::Int(_) | Type::IntLit(_) | Type::Char | Type::Bool, Type::Int(_) | Type::Char) => {
+        (Type::Int(_) | Type::IntLit(_) | Type::Char | Type::Bool | Type::Enum(_), Type::Int(_) | Type::Char) => {
             cast(code, &from.concrete(), to)
         }
-        (Type::Int(_) | Type::IntLit(_), Type::Real) => {
-            (format!("f64::from({})", code.0), prec::POSTFIX)
-        }
-        (Type::StrLit(_) | Type::Char, Type::Str { .. }) => {
-            (format!("pstr({})", code.0), prec::POSTFIX)
-        }
+        (Type::Int(_) | Type::IntLit(_), Type::Real) => (format!("f64::from({})", code.0), prec::POSTFIX),
+        (Type::StrLit(_) | Type::Char, Type::Str { .. }) => (format!("pstr({})", code.0), prec::POSTFIX),
         _ => code,
     }
 }
@@ -315,6 +348,9 @@ pub(super) fn cast(code: Code, from: &Type, to: &Type) -> Code {
         _ => false,
     };
     let rust = to.rust();
+    if let Type::Enum(_) = to {
+        return (format!("{rust}::from_ord({})", code.0), prec::POSTFIX);
+    }
     if lossless {
         (format!("{rust}::from({})", code.0), prec::POSTFIX)
     } else {
@@ -334,11 +370,7 @@ pub(super) fn real_literal(x: f64) -> String {
 /// normal `"..."` string; anything else (code page 437 box drawing, for
 /// instance) becomes a byte string `b"..."`, since Rust strings must be UTF-8.
 pub(super) fn str_literal(bytes: &[u8]) -> String {
-    let prefix = if bytes.iter().all(|b| b.is_ascii()) {
-        ""
-    } else {
-        "b"
-    };
+    let prefix = if bytes.iter().all(|b| b.is_ascii()) { "" } else { "b" };
     let mut s = format!("{prefix}\"");
     for &b in bytes {
         match b {
