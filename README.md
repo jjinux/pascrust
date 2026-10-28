@@ -1,6 +1,76 @@
 Pascrust
 ========
 
+Pascrust transpiles Turbo Pascal programs into Rust. It writes a small Cargo
+project for each program, so you can build and run your old Pascal code
+natively, and read the Rust it turned into.
+
+## Inspiration
+
+My first programming language was Borland's Turbo Pascal running in DOS or
+Windows 3.1. I've always thought that Pascal was the Python of its day in that
+it was a really pleasant language to code in and was great for newbies. I had
+all these Turbo Pascal programs that I had written as a student, but I had no
+way to run them. I'm really inspired by the idea of creating a native
+compiler, but there's hardly a point now that LLVM exists. I also wanted a
+chance to play with Rust a bit more and to use Claude. Hence, my project to
+transpile Turbo Pascal code to Rust. If you have some old Turbo Pascal code
+lying around, give it a try!
+
+## Usage
+
+You need a Rust toolchain (`rustup`, stable). From the repository root:
+
+```sh
+# Transpile, build and run a program. The Cargo project goes in out/<name>/.
+cargo run -p pascrust -- run examples/life.pas
+
+# Arguments after `--` go to the Pascal program (ParamStr / ParamCount).
+cargo run -p pascrust -- run myprog.pas -- first second
+
+# Just print the generated Rust.
+cargo run -p pascrust -- emit examples/paper.pas
+
+# Transpile and build, without running. `-o` picks the project directory.
+cargo run -p pascrust -- build examples/magic_square.pas -o /tmp/magic
+```
+
+Or install the tool once with `cargo install --path crates/pascrust` and use
+`pascrust run foo.pas`.
+
+Units named in a `uses` clause are looked up (case-insensitively) as
+`<unit>.pas` next to the program, so a multi-file program runs from its main
+file:
+
+```sh
+cargo run -p pascrust -- run examples/airport/airport4.pas
+cargo run -p pascrust -- run examples/database/filesys.pas
+```
+
+The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
+
+### Environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `PASCRUST_TERM=plain` | Don't take over the terminal for `Crt`; `ReadKey` reads standard input. This is automatic when stdin or stdout isn't a terminal, so you can script a program: `printf 'y\nq' \| pascrust run game.pas`. |
+| `PASCRUST_FAST=1` | Skip `Delay`. |
+| `PASCRUST_DRIVE_C=/some/dir` | Where the DOS drive `C:` lives for file names like `C:\DATA\X.DAT` (default: the current directory). Any drive letter works. |
+
+### What's supported
+
+Most of Turbo Pascal 5.5/6.0 as students used it: the usual types, strings,
+arrays, records, enums, pointers, nested procedures, units, objects (without
+virtual methods yet), text and typed files, and the `Crt`, `Dos` and `Graph`
+units. See `language_spec.md` for the details and `TODO.md` for what's next.
+Runtime errors print Turbo Pascal's message and exit code
+(e.g. `Runtime error 201: Range check error ...`).
+
+## Developing
+
+See `CLAUDE.md` for the layout and commands, `architecture.md` for the design,
+and run `cargo test` for the whole test suite.
+
 ## Opening prompt
 
 For the sake of posterity, here's the opening prompt:
