@@ -534,8 +534,9 @@ The examples use `object` types heavily, always with static methods (no
 - Virtual methods and constructors/destructors (tier 3): a trait per
   hierarchy holding the virtual methods and the methods that call them, so
   `Self` dispatch works without `dyn`; `&mut dyn Trait` for `var`
-  parameters and `Ptr<dyn Trait>` for polymorphic pointers. The plan and
-  its cost are in `notes/virtual_methods.md`. Not needed for the examples.
+  parameters; and an enum of the hierarchy's objects that every pointer
+  into it points to, which implements the trait by `match`ing. The plan
+  and its cost are in `notes/virtual_methods.md`. Not needed for the examples.
   `private` sections are a no-op.
 
 Rejected: a `Deref` to `base` trick to make inherited fields look flat. It
