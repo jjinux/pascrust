@@ -1,6 +1,6 @@
 //! Calls to Turbo Pascal's built-in procedures and functions.
 
-use super::Codegen;
+use super::{Codegen, LoopLabels};
 use super::expr::{convert, paren, prec};
 use crate::ast::*;
 use crate::sema::{Builtin, IntKind, Type};
@@ -84,8 +84,14 @@ impl<'a> Codegen<'a> {
                     "return;".to_string()
                 }
             }
-            Break => "break;".to_string(),
-            Continue => "continue;".to_string(),
+            Break => match self.loops.last() {
+                Some(Some(LoopLabels { loop_label: Some(label), .. })) => format!("break {label};"),
+                _ => "break;".to_string(),
+            },
+            Continue => match self.loops.last() {
+                Some(Some(labels)) => format!("break {};", labels.body_label),
+                _ => "continue;".to_string(),
+            },
             Ord => {
                 let result = self.call_type(args);
                 let from = ty(self, &args[0]).concrete();

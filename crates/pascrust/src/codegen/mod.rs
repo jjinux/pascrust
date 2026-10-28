@@ -16,7 +16,7 @@ mod expr;
 
 use crate::ast::*;
 use crate::diag::SourceMap;
-use crate::sema::{Access, Analysis, CaptureMode, MAIN, ProcId, SymId, SymKind, Type, VarRole};
+use crate::sema::{Access, Analysis, Builtin, CaptureMode, MAIN, ProcId, SymId, SymKind, Type, VarRole};
 
 /// Generate the Rust source for a program and its units: one file per
 /// Pascal source file, `main.rs` first.
@@ -33,6 +33,7 @@ pub fn generate(program: &Program, units: &[Unit], analysis: &Analysis, map: &So
         vis: "",
         mutable_place: false,
         pending: Vec::new(),
+        loops: Vec::new(),
     };
     g.program(program);
     files.push(("main.rs".to_string(), std::mem::take(&mut g.out)));
@@ -64,6 +65,20 @@ struct Codegen<'a> {
     /// `let` statements to emit before the next line (see
     /// `expr::call_args`).
     pending: Vec<String>,
+    /// The loops we're inside, innermost last: the labels `Break` and
+    /// `Continue` must use for a `repeat` that has a `Continue` in it (see
+    /// `repeat_loop`), or `None` for a loop where plain `break` and
+    /// `continue` do the right thing.
+    loops: Vec<Option<LoopLabels>>,
+}
+
+/// Labels for a `repeat ... until` loop whose body uses `Continue`.
+struct LoopLabels {
+    /// `Break` jumps out of the loop: `break 'repeat_loop;`. (Only if the
+    /// body uses `Break`: Rust warns about unused labels.)
+    loop_label: Option<String>,
+    /// `Continue` jumps to the `until` test: `break 'repeat_body;`.
+    body_label: String,
 }
 
 impl<'a> Codegen<'a> {
@@ -620,25 +635,95 @@ impl<'a> Codegen<'a> {
             StmtKind::While { cond, body } => {
                 let cond = self.condition(cond);
                 self.line(format!("while {cond} {{"));
+                self.loops.push(None);
                 self.block_body(body);
+                self.loops.pop();
                 self.line("}");
             }
-            StmtKind::Repeat { body, cond } => {
-                self.line("// Pascal `repeat ... until`: the body always runs at least once.");
-                self.line("loop {");
-                self.indent += 1;
-                self.stmts(body);
-                let cond = self.condition(cond);
-                self.line(format!("if {cond} {{"));
-                self.line("    break;");
-                self.line("}");
-                self.indent -= 1;
-                self.line("}");
+            StmtKind::Repeat { body, cond } => self.repeat_loop(body, cond),
+            StmtKind::For { var, start, end, down, body } => {
+                self.loops.push(None);
+                self.for_loop(s, var, start, end, *down, body);
+                self.loops.pop();
             }
-            StmtKind::For { var, start, end, down, body } => self.for_loop(s, var, start, end, *down, body),
             StmtKind::Case { scrutinee, arms, else_body } => self.case(scrutinee, arms, else_body.as_deref()),
             StmtKind::With { .. } => unreachable!("sema rejects `with`"),
         }
+    }
+
+    /// `repeat ... until cond` becomes `loop { ...; if cond { break; } }`.
+    fn repeat_loop(&mut self, body: &[Stmt], cond: &Expr) {
+        self.line("// Pascal `repeat ... until`: the body always runs at least once.");
+        // Rust's `continue` would skip the `if cond { break; }` at the end of
+        // the loop, but Pascal's `Continue` goes on to the `until` test. So a
+        // body that uses `Continue` goes in a labeled block, and `Continue`
+        // leaves the block with `break 'repeat_body;`. Inside that block a
+        // plain `break` isn't allowed, so `Break` needs a label for the loop.
+        let labels = self.uses(body, Builtin::Continue).then(|| {
+            let n = self.loops.iter().flatten().count();
+            let suffix = if n == 0 { String::new() } else { (n + 1).to_string() };
+            LoopLabels {
+                loop_label: self.uses(body, Builtin::Break).then(|| format!("'repeat_loop{suffix}")),
+                body_label: format!("'repeat_body{suffix}"),
+            }
+        });
+        match &labels {
+            Some(l) => {
+                if self.first_time("repeat-continue") {
+                    self.line("// `Continue` must still test the `until` condition, so it jumps out of");
+                    self.line("// the labeled block below rather than back to the top of the loop.");
+                }
+                match &l.loop_label {
+                    Some(label) => self.line(format!("{label}: loop {{")),
+                    None => self.line("loop {"),
+                }
+                self.indent += 1;
+                self.line(format!("{}: {{", l.body_label));
+            }
+            None => self.line("loop {"),
+        }
+        self.indent += 1;
+        let labeled = labels.is_some();
+        self.loops.push(labels);
+        self.stmts(body);
+        self.loops.pop();
+        if labeled {
+            self.indent -= 1;
+            self.line("}");
+        }
+        let cond = self.condition(cond);
+        self.line(format!("if {cond} {{"));
+        self.line("    break;");
+        self.line("}");
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    /// Does `body` call `Break` or `Continue` (`b`) for the loop around it,
+    /// rather than for a loop nested inside?
+    fn uses(&self, body: &[Stmt], b: Builtin) -> bool {
+        body.iter().any(|s| match &s.kind {
+            StmtKind::Call(e) => {
+                let callee = match &e.kind {
+                    ExprKind::Call { callee, .. } => callee,
+                    _ => e,
+                };
+                self.a.refs.get(&callee.id).is_some_and(|sym| matches!(self.a.sym(*sym).kind, SymKind::Builtin(found) if found == b))
+            }
+            // `std::slice::from_ref` views one statement as a one-element
+            // slice, without copying it.
+            StmtKind::Compound(stmts) => self.uses(stmts, b),
+            StmtKind::If { then_branch, else_branch, .. } => {
+                self.uses(std::slice::from_ref(then_branch), b)
+                    || else_branch.as_ref().is_some_and(|e| self.uses(std::slice::from_ref(e), b))
+            }
+            StmtKind::Case { arms, else_body, .. } => {
+                arms.iter().any(|arm| self.uses(std::slice::from_ref(&arm.body), b))
+                    || else_body.as_deref().is_some_and(|body| self.uses(body, b))
+            }
+            // A `Break` or `Continue` inside a nested loop belongs to that loop.
+            _ => false,
+        })
     }
 
     /// `case` becomes `match`.
