@@ -108,7 +108,7 @@ chosen so each step is testable with the previous ones.
 - [x] Pointers: `Ptr<T>` runtime type (`nil`, `new_`, `dispose` with use-after-dispose detection, `get`/`get_mut`, `ptr_eq`), temporaries hoisted for `p := p^.next` and for call arguments containing derefs, `var` args of heap fields as `&mut p.get_mut().field`. Tests: linked list push/pop, BST insert/delete (the `bstunit.pas` algorithm verbatim), `Root^ := TempPtr^`.
 - [x] `RefCell` double-borrow panics mapped to a clear "pointer aliasing" runtime error message with the Pascal procedure name.
 - [ ] `with` statements by path rewriting; warning when the `with` expression has side effects. (No example uses `with`; methods get the same effect through `Self` resolution.)
-- [ ] `{$I-}` and a real `IOResult` (currently always 0, since I/O errors stop the program).
+- [x] `{$I-}` and a real `IOResult`: I/O calls in a `{$I-}` region are wrapped in `io_unchecked`, which keeps the error code for `IOResult`.
 - [x] Hoist pointer dereferences out of call arguments too, so `f(p^.x)` never holds a `RefCell` guard across the call.
 - [ ] Methods that don't modify `Self` could take `&self` instead of `&mut self`.
 - [ ] `Break`/`Continue`; `FillChar`/`Move` on arrays of scalars; `ParamCount`/`ParamStr`; `SizeOf` for sized types; `{$N+}` float types.
@@ -145,7 +145,8 @@ chosen so each step is testable with the previous ones.
   - [ ] `x shl n` with `n` at least the type's width doesn't compile (constant) or panics (variable); TP gives 0.
   - [ ] `p^.x := p^.x + 1` hoists a temporary instead of becoming `p.get_mut().x += 1`.
   - [x] `Random(n)`: checked against a disassembly of TP's System unit (github.com/daelsepara/turbo-pascal-assembly): it uses the full 32-bit seed, `(seed * n) shr 32`, as we do. `n` is now truncated to a `Word`, as TP's parameter is. Not done: `RandSeed` as an assignable variable.
-  - [ ] `{$I-}` and a real `IOResult`, `SeekEof`/`SeekEoln`, `LastMode` (were listed as done; they aren't).
+  - [x] `{$I-}` and a real `IOResult`.
+  - [ ] `SeekEof`/`SeekEoln`, `LastMode` (were listed as done; they aren't).
   - [ ] `Val` corner cases: `Val('40000', i, code)` for an `Integer` is an error for us, wraps (code 0) in TP/FPC.
   - [ ] Graph: should `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners in the real BGI? `FExpand` ignores `ChDir`.
   - [ ] `i16::MIN div -1` panics (runtime error 255); TP wraps.

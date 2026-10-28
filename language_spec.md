@@ -40,8 +40,9 @@ Program structure
   parsed but `goto` is rejected (tier 3)
 - `procedure` / `function` declarations, nested to any depth, recursive
 - `forward` declarations
-- Compiler directives `{$...}` parsed and ignored (with a warning for ones that
-  change semantics: `{$B+}`, `{$R+}`, `{$I-}`, `{$Q+}`); `{$M}` and `{$N+}`
+- Compiler directives `{$...}`: `{$I-}`/`{$I+}` switch I/O checking (see
+  Files). The others are parsed and ignored, with a warning for ones that
+  change semantics (`{$B+}`, `{$R+}`, `{$Q+}`); `{$M}` and `{$N+}` are
   ignored silently; include files (`{$I name}`) are an error
 - Comments `{ }` and `(* *)`, including the examples' `{t ... }` headers
 - Main block `begin ... end.`
@@ -123,8 +124,9 @@ Files
 
 - `Text` files: `Assign`, `Reset`, `Rewrite`, `Append`, `Close`, `Read`,
   `Readln`, `Write`, `Writeln`, `Eof`, `Eoln`, `Erase`, `Rename`, `Flush`.
-  Not yet: `SeekEof`, `SeekEoln`, and `{$I-}` with `IOResult` (`IOResult`
-  is always 0, as I/O errors stop the program)
+  `{$I-}` with `IOResult`: an I/O error (including a bad number in `Read`)
+  sets `IOResult` instead of stopping the program, and further I/O is
+  skipped until `IOResult` is read. Not yet: `SeekEof`, `SeekEoln`
 - `file of T`: `Assign`, `Reset`, `Rewrite`, `Close`, `Read`, `Write`,
   `Seek`, `FilePos`, `FileSize`, `Eof`, `Erase`, `Truncate`; records with
   `string[n]`, integer and real fields serialized to a fixed-size layout

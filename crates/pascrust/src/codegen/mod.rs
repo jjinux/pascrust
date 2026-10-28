@@ -15,12 +15,19 @@ mod builtins;
 mod expr;
 
 use crate::ast::*;
-use crate::diag::SourceMap;
+use crate::diag::{SourceMap, Span};
 use crate::sema::{Access, Analysis, Builtin, CaptureMode, MAIN, ProcId, SymId, SymKind, Type, VarRole};
 
 /// Generate the Rust source for a program and its units: one file per
 /// Pascal source file, `main.rs` first.
-pub fn generate(program: &Program, units: &[Unit], analysis: &Analysis, map: &SourceMap) -> Vec<(String, String)> {
+/// `io_unchecked` lists the parts of the source compiled with `{$I-}`.
+pub fn generate(
+    program: &Program,
+    units: &[Unit],
+    analysis: &Analysis,
+    map: &SourceMap,
+    io_unchecked: &[Span],
+) -> Vec<(String, String)> {
     let mut files = Vec::new();
     let mut g = Codegen {
         a: analysis,
@@ -34,6 +41,7 @@ pub fn generate(program: &Program, units: &[Unit], analysis: &Analysis, map: &So
         mutable_place: false,
         pending: Vec::new(),
         loops: Vec::new(),
+        io_unchecked,
     };
     g.program(program);
     files.push(("main.rs".to_string(), std::mem::take(&mut g.out)));
@@ -70,6 +78,9 @@ struct Codegen<'a> {
     /// `repeat_loop`), or `None` for a loop where plain `break` and
     /// `continue` do the right thing.
     loops: Vec<Option<LoopLabels>>,
+    /// The parts of the source compiled with `{$I-}`, where I/O errors go
+    /// to `IOResult` instead of stopping the program.
+    io_unchecked: &'a [Span],
 }
 
 /// Labels for a `repeat ... until` loop whose body uses `Continue`.

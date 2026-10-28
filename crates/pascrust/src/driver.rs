@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::ast::Unit;
-use crate::diag::{Diagnostic, SourceMap};
+use crate::diag::{Diagnostic, SourceMap, Span};
 use crate::parser::SourceFile;
 use crate::{codegen, parser, sema};
 
@@ -77,12 +77,13 @@ fn transpile(source: Vec<u8>, file_name: &str, dir: Option<&Path>) -> Result<Gen
     }
     let UnitLoader { map, loaded, directives, .. } = loader;
     let warnings = check_directives(&directives).map_err(|d| map.render(&d))?;
+    let io_unchecked = io_unchecked_regions(&directives, &map);
     let warnings = warnings.iter().map(|d| map.render(d)).collect();
     let units: Vec<Unit> = loaded.into_iter().map(|(_, unit)| unit).collect();
 
     let analysis = sema::analyze(&program, &units)
         .map_err(|errors| errors.iter().map(|d| map.render(d)).collect::<Vec<_>>().join("\n\n"))?;
-    let files = codegen::generate(&program, &units, &analysis, &map);
+    let files = codegen::generate(&program, &units, &analysis, &map, &io_unchecked);
     let files = files.into_iter().map(|(name, code)| (name, format_rust(&code))).collect();
 
     let mut features: Vec<String> = program
@@ -115,7 +116,6 @@ fn check_directives(directives: &[parser::Directive]) -> Result<Vec<Diagnostic>,
             let meaning = match switch.as_str() {
                 "B+" => "complete Boolean evaluation; `and` and `or` still short-circuit",
                 "R+" => "range checks on subranges; only array indexes are checked",
-                "I-" => "I/O errors going to IOResult; they still stop the program",
                 "Q+" => "overflow checks; integer arithmetic still wraps",
                 _ => continue,
             };
@@ -123,6 +123,41 @@ fn check_directives(directives: &[parser::Directive]) -> Result<Vec<Diagnostic>,
         }
     }
     Ok(warnings)
+}
+
+/// The parts of the source compiled with `{$I-}`: from each `{$I-}` to the
+/// next `{$I+}` or the end of that file. `{$I-}` is a compile-time switch, so
+/// it applies to the text it covers, not to whatever runs in between.
+fn io_unchecked_regions(directives: &[parser::Directive], map: &SourceMap) -> Vec<Span> {
+    let mut regions = Vec::new();
+    // Where the current `{$I-}` region started, and in which file.
+    let mut open: Option<(usize, usize)> = None;
+    let close = |regions: &mut Vec<Span>, (start, file): (usize, usize), end: Option<usize>| {
+        let source = map.file(file);
+        regions.push(Span::new(start, end.unwrap_or(source.base + source.text.len())));
+    };
+    for d in directives {
+        let file = map.file_index(d.span.start);
+        if let Some(region) = open.filter(|&(_, f)| f != file) {
+            close(&mut regions, region, None);
+            open = None;
+        }
+        for switch in d.text.split(',') {
+            match switch.trim().to_ascii_uppercase().as_str() {
+                "I-" if open.is_none() => open = Some((d.span.end, file)),
+                "I+" => {
+                    if let Some(region) = open.take() {
+                        close(&mut regions, region, Some(d.span.start));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if let Some(region) = open {
+        close(&mut regions, region, None);
+    }
+    regions
 }
 
 /// Finds, parses and orders the units a program uses.
@@ -277,10 +312,24 @@ mod tests {
 
     #[test]
     fn directives_that_change_meaning_give_warnings() {
-        let source = b"program P;\n{$R+,B-}\n{$I-}\n{$M 16384,0,0}\nbegin\nend.\n";
+        let source = b"program P;\n{$R+,B-}\n{$I-}\n{$M 16384,0,0}\n{$Q+}\nbegin\nend.\n";
         let generated = transpile_source(source, "p.pas").unwrap();
         assert_eq!(generated.warnings.len(), 2);
         assert!(generated.warnings[0].starts_with("p.pas:2:1: warning: `{$R+}`"));
-        assert!(generated.warnings[1].starts_with("p.pas:3:1: warning: `{$I-}`"));
+        assert!(generated.warnings[1].starts_with("p.pas:5:1: warning: `{$Q+}`"));
+    }
+
+    #[test]
+    fn io_checks_switch_off_between_directives() {
+        let mut map = SourceMap::new();
+        map.add("a.pas", vec![b' '; 100]);
+        map.add("b.pas", vec![b' '; 50]);
+        let d = |text: &str, start| parser::Directive { text: text.to_string(), span: Span::new(start, start + 5) };
+        // Off from 10 to 40 and from 60 to the end of a.pas. b.pas starts on
+        // with checks on, then turns them off (with another switch) to its end.
+        let b = map.file(1).base;
+        let directives = [d("I-", 10), d("I+", 40), d("I-", 60), d("R+,I-", b + 20)];
+        let regions = io_unchecked_regions(&directives, &map);
+        assert_eq!(regions, vec![Span::new(15, 40), Span::new(65, 100), Span::new(b + 25, b + 50)]);
     }
 }

@@ -8,6 +8,7 @@
 //! generated code free of `?` on every array index and `writeln`.
 
 use std::any::Any;
+use std::cell::Cell;
 use std::panic;
 
 /// The payload of a Pascal runtime error panic.
@@ -27,6 +28,47 @@ pub fn rte(code: i32, message: impl Into<String>) -> ! {
     // `panic_any` panics with an arbitrary value instead of a string, so
     // `run` can downcast the payload and recover the error code.
     panic::panic_any(RuntimeError { code, message: message.into() })
+}
+
+thread_local! {
+    /// Turbo Pascal's `InOutRes`: the code of the last I/O error made with
+    /// `{$I-}`, until `IOResult` reads it.
+    static IO_RESULT: Cell<i16> = const { Cell::new(0) };
+}
+
+/// An I/O call compiled with `{$I-}`: `io_unchecked(|| f.reset())`. An I/O
+/// error (code below 200) doesn't stop the program; its code is kept for
+/// `IOResult`, and the call returns a default value (`false` for `Eof`).
+/// As in TP, while an error is waiting to be read, further unchecked I/O
+/// calls do nothing.
+pub fn io_unchecked<R: Default>(f: impl FnOnce() -> R) -> R {
+    if IO_RESULT.get() != 0 {
+        return R::default();
+    }
+    // `catch_unwind` stops a panic (our runtime errors are panics, see
+    // `rte`) and returns it as an `Err`. `AssertUnwindSafe` promises Rust
+    // that nothing is left half-changed when it does, which holds here: an
+    // I/O error is raised before the file's state changes.
+    match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
+        Ok(value) => value,
+        Err(payload) => {
+            let code = payload.downcast_ref::<RuntimeError>().map(|error| error.code);
+            match code {
+                Some(code) if code < 200 => {
+                    IO_RESULT.set(code as i16);
+                    R::default()
+                }
+                // Range errors and the like still stop the program.
+                _ => panic::resume_unwind(payload),
+            }
+        }
+    }
+}
+
+/// Pascal `IOResult`: the code of the last I/O error under `{$I-}` (0 if
+/// there was none), which it then clears.
+pub fn io_result() -> i16 {
+    IO_RESULT.replace(0)
 }
 
 /// Pascal `Halt(code)`: flush output and end the program immediately.
@@ -108,4 +150,22 @@ fn to_runtime_error(payload: Box<dyn Any + Send>) -> RuntimeError {
         255
     };
     RuntimeError { code, message }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn io_unchecked_keeps_the_error_for_io_result() {
+        let eof: bool = io_unchecked(|| rte(2, "File not found"));
+        assert!(!eof);
+        // While the error waits, other unchecked I/O is skipped.
+        let ran = io_unchecked(|| true);
+        assert!(!ran);
+        assert_eq!(io_result(), 2);
+        assert_eq!(io_result(), 0);
+        // A range check isn't an I/O error: it still stops the program.
+        assert!(panic::catch_unwind(|| io_unchecked::<()>(|| rte(201, "Range check error"))).is_err());
+    }
 }

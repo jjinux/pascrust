@@ -94,9 +94,7 @@ impl<'a> Codegen<'a> {
                     None => format!("{method}()"),
                 }
             }
-            // With `{$I+}`, Turbo Pascal's default, an I/O error stops the
-            // program, so a program that gets to call `IOResult` always sees 0.
-            IOResult => "0".to_string(),
+            IOResult => "io_result()".to_string(),
             Halt => match args.first() {
                 None => "halt(0)".to_string(),
                 Some(code) => format!("halt({})", self.coerce(code, &Type::Int(IntKind::LongInt)).0),

@@ -604,8 +604,12 @@ window meanwhile (§19).
   is tier 3 and an open question, since the examples ship `.dat` files.
   `Assign`, `Reset`, `Rewrite`, `Append`, `Close`, `Seek`, `FilePos`,
   `FileSize`, `Eof`, `Eoln`, `Erase`, `Rename`, `Truncate`, `IOResult` are
-  runtime methods; `{$I-}` sets a flag so errors go to `IOResult` instead of
-  panicking.
+  runtime methods. `{$I-}` is a compile-time switch, so the driver works
+  out which source ranges it covers, and codegen wraps each I/O call there
+  in `io_unchecked(|| f.reset())`. That catches the runtime error panic (for
+  codes below 200; others still stop the program) and keeps the code for
+  `IOResult`. Not modelled: TP also skips *checked* I/O, and then stops, while
+  an unchecked error is still waiting to be read.
 
 ## 19. Crt, Dos and Graph
 

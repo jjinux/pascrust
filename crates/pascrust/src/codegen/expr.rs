@@ -365,7 +365,11 @@ impl<'a> Codegen<'a> {
         let sym = self.a.refs[&callee.id];
         match &self.a.sym(sym).kind {
             SymKind::Proc(p) => self.user_call(*p, args),
-            SymKind::Builtin(b) => self.builtin(*b, args),
+            SymKind::Builtin(b) => {
+                let b = *b;
+                let code = self.builtin(b, args);
+                if b.is_io() { self.io_checked(code, callee.span) } else { code }
+            }
             SymKind::UnitRoutine(r) => {
                 use crate::sema::units::Param;
                 let r: &crate::sema::units::UnitRoutine = r;
@@ -382,7 +386,8 @@ impl<'a> Codegen<'a> {
                         Param::VarWord | Param::VarInteger | Param::VarFillPattern => self.place_mut(arg),
                     })
                     .collect();
-                format!("{}({})", r.rust, parts.join(", "))
+                let code = format!("{}({})", r.rust, parts.join(", "));
+                if matches!(r.rust, "ch_dir" | "mk_dir" | "rm_dir") { self.io_checked(code, callee.span) } else { code }
             }
             SymKind::TypeName(ty) => {
                 let ty = ty.clone();
@@ -392,6 +397,25 @@ impl<'a> Codegen<'a> {
             }
             SymKind::Var(_) | SymKind::Const { .. } => self.expr(callee).0,
         }
+    }
+
+    /// An I/O call at `span`: as is, or, if it was compiled with `{$I-}`,
+    /// wrapped so that an error goes to `IOResult`: `io_unchecked(|| f.reset())`.
+    fn io_checked(&mut self, code: String, span: crate::diag::Span) -> String {
+        if !self.io_unchecked.iter().any(|r| r.start <= span.start && span.start < r.end) {
+            return code;
+        }
+        if self.first_time("io_unchecked") {
+            self.pending.push("// `{$I-}`: an I/O error in `io_unchecked` sets `IOResult` instead of".to_string());
+            self.pending.push("// stopping the program.".to_string());
+        }
+        let body = match code.strip_suffix(';') {
+            // A single statement, `f.reset();`, becomes an expression.
+            Some(stmt) if !stmt.contains(';') => stmt.to_string(),
+            Some(_) => format!("{{ {code} }}"),
+            None => code,
+        };
+        format!("io_unchecked(|| {body})")
     }
 
     pub(super) fn user_call(&mut self, p: usize, args: &[Expr]) -> String {

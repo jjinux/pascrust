@@ -46,6 +46,32 @@ builtins! {
 }
 
 impl Builtin {
+    /// Builtins that do file or console I/O, which `{$I-}` makes report
+    /// errors through `IOResult`.
+    pub fn is_io(self) -> bool {
+        use Builtin::*;
+        matches!(
+            self,
+            Write
+                | Writeln
+                | Read
+                | Readln
+                | Reset
+                | Rewrite
+                | Append
+                | Close
+                | Erase
+                | Rename
+                | Flush
+                | Truncate
+                | Seek
+                | FilePos
+                | FileSize
+                | Eof
+                | Eoln
+        )
+    }
+
     /// Builtins that produce a value (functions), as opposed to procedures.
     pub fn is_function(self) -> bool {
         use Builtin::*;
