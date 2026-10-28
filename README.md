@@ -39,18 +39,63 @@ cargo run -p pascrust -- emit examples/paper.pas
 
 # Transpile and build, without running. `-o` picks the project directory.
 cargo run -p pascrust -- build examples/magic_square.pas -o /tmp/magic
-
-# Tidy up indentation, spacing and identifier casing. Pass a program and its
-# units together so names are spelled the same in all of them.
-cargo run -p pascrust -- fmt examples/database/*.pas
 ```
 
 Old sources with DOS (`\r\n`) line endings are fine everywhere: the
 transpiler, `Readln` on standard input and text files, and `fmt` (which
 writes UNIX line endings).
 
-Or install the tool once with `cargo install --path crates/pascrust` and use
+Or install the tools once with `cargo install --path crates/pascrust`, which
+puts `pascrust` and `tpc` (below) on your `PATH`, and use
 `pascrust run foo.pas`.
+
+### Formatting Pascal sources: `pascrust fmt`
+
+`fmt` tidies up old sources without changing what they mean. It re-indents
+by the block structure (3 spaces a level, with a routine's `var` section,
+nested routines and `begin ... end` one level in from its heading),
+normalizes spacing (`x := y`, `a, b`, `name: string`), lowercases keywords,
+and spells each identifier the way it's spelled most often. Line breaks,
+strings and comments stay as they are, columns you lined up by hand stay
+lined up, and DOS line endings become UNIX ones.
+
+```sh
+# Format files in place, printing the ones that changed. Give a program and
+# its units together, so each name is spelled the same in all of them.
+cargo run -p pascrust -- fmt examples/database/*.pas
+
+# Only check: list the files that would change, and fail if there are any
+# (handy in CI; this repository's tests check examples/ this way).
+cargo run -p pascrust -- fmt --check examples/*.pas examples/*/*.pas
+```
+
+### A Turbo Pascal style compiler: `tpc`
+
+`tpc` takes the command line of Turbo Pascal's `TPC.EXE`, so old build
+scripts and habits carry over. `tpc game` compiles `game.pas` (the extension
+is optional, and names match ignoring case, as in DOS) and writes the
+executable `game` next to it, as `TPC GAME` wrote `GAME.EXE`. The Cargo
+project is built in a cache directory (`~/.cache/pascrust/tpc/`), so only the
+program appears beside the source.
+
+```sh
+cargo install --path crates/pascrust      # once; or use target/debug/tpc
+
+tpc life                                  # life.pas -> ./life
+tpc -Ebin '-Uunits;lib' game              # executable in bin/, units also in units/ and lib/
+tpc -Q '-$I-' backup                      # quiet, and I/O errors go to IOResult
+```
+
+| Option | Meaning |
+| --- | --- |
+| `-$<switches>` | Compiler switches, as at the top of each file: `-$I-`, `-$R+,I-`. Quote them in a Unix shell, which would read `$I` as a variable. |
+| `-E<dir>` | Where to write the executable. |
+| `-U<dirs>` | More directories to find units in, separated by `;` (quote the argument in a Unix shell). |
+| `-Q` | Quiet: no messages unless something goes wrong. |
+| `-B`, `-M` | Build all / make: accepted; units are always compiled with the program. |
+| `-D`, `-F`, `-G…`, `-I`, `-L`, `-O`, `-T`, `-V` | Accepted and ignored, with a note. They were about conditional defines, DOS memory, map files and the IDE's debugger. |
+
+Options start with `-`. TP also took `/`, but on Unix a `/` starts a path.
 
 Units named in a `uses` clause are looked up (case-insensitively) as
 `<unit>.pas` next to the program, so a multi-file program runs from its main

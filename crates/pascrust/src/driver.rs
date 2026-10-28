@@ -48,19 +48,36 @@ const STANDARD_UNITS: &[&str] = &["system", "crt", "dos", "graph", "printer"];
 /// Errors come back already rendered for printing, with file names, line
 /// numbers and carets.
 pub fn transpile_file(path: &Path) -> Result<Generated, String> {
+    transpile_file_with(path, &Options::default())
+}
+
+/// Settings that come from the command line rather than the source, as with
+/// Turbo Pascal's `TPC` (see `src/bin/tpc.rs`).
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Options {
+    /// More directories to look for units in, after the program's own.
+    pub unit_dirs: Vec<PathBuf>,
+    /// Compiler switches that apply from the start of every file, as if
+    /// each began with `{$I-}` (for `I-`), and so on.
+    pub switches: Vec<String>,
+}
+
+/// [`transpile_file`] with command-line [`Options`].
+pub fn transpile_file_with(path: &Path, options: &Options) -> Result<Generated, String> {
     let source = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let file_name = path.file_name().map_or_else(|| "input.pas".into(), |n| n.to_string_lossy().into_owned());
-    let dir = path.parent().unwrap_or(Path::new("."));
-    transpile(source, &file_name, Some(dir))
+    let mut dirs = vec![path.parent().unwrap_or(Path::new(".")).to_path_buf()];
+    dirs.extend(options.unit_dirs.iter().cloned());
+    transpile(source, &file_name, &dirs, &options.switches)
 }
 
 /// Transpile a program held in memory. `file_name` is used in messages and
 /// to name the package. Units can't be found without a directory to look in.
 pub fn transpile_source(source: &[u8], file_name: &str) -> Result<Generated, String> {
-    transpile(source.to_vec(), file_name, None)
+    transpile(source.to_vec(), file_name, &[], &[])
 }
 
-fn transpile(source: Vec<u8>, file_name: &str, dir: Option<&Path>) -> Result<Generated, String> {
+fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[String]) -> Result<Generated, String> {
     let mut map = SourceMap::new();
     let base = map.add(file_name, source.clone());
     let (program, directives) = parser::parse_file(&source, base).map_err(|d| map.render(&d))?;
@@ -71,13 +88,25 @@ fn transpile(source: Vec<u8>, file_name: &str, dir: Option<&Path>) -> Result<Gen
         }
     };
 
-    let mut loader = UnitLoader { dir, map, loaded: Vec::new(), visiting: Vec::new(), directives };
+    let mut loader = UnitLoader { dirs, map, loaded: Vec::new(), visiting: Vec::new(), directives };
     for name in &program.uses {
         loader.load(name)?;
     }
     let UnitLoader { map, loaded, directives, .. } = loader;
-    let warnings = check_directives(&directives).map_err(|d| map.render(&d))?;
-    let io_unchecked = io_unchecked_regions(&directives, &map);
+    // Command-line switches act like directives at the start of each file.
+    // (Their warnings, if any, are given once, at the start of the program.)
+    let at_start = |file: usize| {
+        let base = map.file(file).base;
+        switches.iter().map(move |text| parser::Directive { text: text.clone(), span: Span::new(base, base) })
+    };
+    let warnings: Vec<parser::Directive> = at_start(0).chain(directives.iter().cloned()).collect();
+    let warnings = check_directives(&warnings).map_err(|d| map.render(&d))?;
+    let mut with_switches: Vec<parser::Directive> = Vec::new();
+    for file in 0..map.len() {
+        with_switches.extend(at_start(file));
+        with_switches.extend(directives.iter().filter(|d| map.file_index(d.span.start) == file).cloned());
+    }
+    let io_unchecked = io_unchecked_regions(&with_switches, &map);
     let warnings = warnings.iter().map(|d| map.render(d)).collect();
     let units: Vec<Unit> = loaded.into_iter().map(|(_, unit)| unit).collect();
 
@@ -162,7 +191,8 @@ fn io_unchecked_regions(directives: &[parser::Directive], map: &SourceMap) -> Ve
 
 /// Finds, parses and orders the units a program uses.
 struct UnitLoader<'a> {
-    dir: Option<&'a Path>,
+    /// Where to look for units, in order.
+    dirs: &'a [PathBuf],
     map: SourceMap,
     /// Loaded units in dependency order: each after the units it uses.
     loaded: Vec<(String, Unit)>,
@@ -189,7 +219,7 @@ impl UnitLoader<'_> {
                 format!("cannot find unit `{}` (looked for {key}.pas)", name.name),
             ))
         };
-        let Some(path) = self.dir.and_then(|dir| find_file(dir, &format!("{key}.pas"))) else {
+        let Some(path) = self.dirs.iter().find_map(|dir| find_file(dir, &format!("{key}.pas"))) else {
             return Err(not_found(&self.map));
         };
         let source = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
@@ -294,6 +324,21 @@ overflow-checks = false
 "#,
         runtime.display()
     )
+}
+
+/// Build the Cargo project in `dir` (written by [`write_project`] for
+/// `generated`) and return the path of the executable.
+pub fn build(dir: &Path, generated: &Generated) -> Result<PathBuf, String> {
+    let status = Command::new("cargo")
+        .args(["build", "--quiet", "--manifest-path"])
+        .arg(dir.join("Cargo.toml"))
+        .status()
+        .map_err(|e| format!("cannot run cargo: {e}"))?;
+    if !status.success() {
+        return Err(format!("cargo build failed for {}", dir.display()));
+    }
+    let exe = dir.join("target").join("debug").join(format!("{}{}", generated.name, std::env::consts::EXE_SUFFIX));
+    Ok(exe)
 }
 
 /// Write `generated` as a Cargo project in `dir`.

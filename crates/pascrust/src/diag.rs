@@ -112,6 +112,15 @@ impl SourceMap {
         base
     }
 
+    /// How many files there are.
+    pub fn len(&self) -> usize {
+        self.files.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
     /// The index of the file containing `offset`.
     pub fn file_index(&self, offset: usize) -> usize {
         // `partition_point` is a binary search: the number of files whose

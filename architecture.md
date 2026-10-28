@@ -62,7 +62,13 @@ foo.pas (+ units)                                   out/foo/
   (if available) so our formatter does not need to be perfect.
 - **driver**: writes a Cargo project, optionally runs `cargo build` /
   `cargo run`. The CLI is `pascrust build foo.pas`, `pascrust run foo.pas`,
-  `pascrust emit foo.pas` (print the Rust). `run` uses `cargo run
+  `pascrust emit foo.pas` (print the Rust), and `pascrust fmt`. A second
+  binary, `tpc` (`src/bin/tpc.rs`), takes Turbo Pascal's `TPC.EXE` command
+  line: it builds in a cache directory and copies the executable next to
+  the source; `-U` adds unit directories and `-$` switches act as
+  directives at the start of every file (`driver::Options`). We don't
+  provide an `fpc` look-alike: it would hide the real Free Pascal, which
+  `tests/gen_expected.sh` runs. `run` uses `cargo run
   --manifest-path out/foo/Cargo.toml` rather than running cargo inside
   `out/foo`, so the program starts in the user's current directory and
   relative file names and drive mappings mean what they'd expect. The
@@ -668,7 +674,10 @@ window meanwhile (§19).
   in `io_unchecked(|| f.reset())`. That catches the runtime error panic (for
   codes below 200; others still stop the program) and keeps the code for
   `IOResult`. Not modelled: TP also skips *checked* I/O, and then stops, while
-  an unchecked error is still waiting to be read.
+  an unchecked error is still waiting to be read; and TP runs each argument
+  of `Write`/`Writeln` as its own call, so in `WriteLn('x', IOResult)` the
+  `'x'` is skipped but `IOResult` clears the error and the rest prints. We
+  wrap the whole `Writeln`, so all of it is skipped.
 
 ## 19. Crt, Dos and Graph
 
