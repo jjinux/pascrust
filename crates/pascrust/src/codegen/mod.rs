@@ -802,9 +802,9 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    /// A condition. If it needed temporaries, they go in a block expression
-    /// (`{ let n = ...; f(&mut x, n) }`): a loop condition is evaluated
-    /// every time round, so they can't be hoisted above the loop.
+    /// A loop condition. If it needed temporaries, they go in a block
+    /// expression (`{ let n = ...; f(&mut x, n) }`): a loop condition is
+    /// evaluated every time round, so they can't be hoisted above the loop.
     fn condition(&mut self, cond: &Expr) -> String {
         let code = self.expr(cond).0;
         if self.pending.is_empty() {
@@ -818,7 +818,10 @@ impl<'a> Codegen<'a> {
     /// them.
     fn if_chain(&mut self, s: &Stmt, prefix: &str) {
         let StmtKind::If { cond, then_branch, else_branch } = &s.kind else { unreachable!() };
-        let cond = self.condition(cond);
+        // Unlike a loop's condition, an `if` condition is evaluated once, so
+        // `line` can put its temporaries on the lines before it. (Except in
+        // an `else if`, where there's no line before it to put them on.)
+        let cond = if prefix.is_empty() { self.expr(cond).0 } else { self.condition(cond) };
         self.line(format!("{prefix}if {cond} {{"));
         self.block_body(then_branch);
         match else_branch.as_deref() {
