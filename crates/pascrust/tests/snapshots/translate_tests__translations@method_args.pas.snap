@@ -52,8 +52,8 @@ impl Counter {
         let x = self.next();
         self.show(x);
         let x = self.next();
-        let x = self.twice(x);
-        self.show(x);
+        let x_2 = self.twice(x);
+        self.show(x_2);
     }
 }
 

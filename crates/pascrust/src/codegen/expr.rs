@@ -480,16 +480,26 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    /// A name for a temporary that holds an argument: the parameter's name,
-    /// unless that would shadow one of the caller's variables.
-    fn temp_name(&self, param: &str) -> String {
+    /// A name for a temporary, based on `base` (a parameter's or field's
+    /// name): `base` itself, unless that would shadow one of the caller's
+    /// variables (then `base_arg`) or another temporary already made for the
+    /// same statement (then `base_2`, `base_3`, ...).
+    pub(super) fn temp_name(&self, base: &str) -> String {
         let info = &self.a.procs[self.proc];
         let visible = info.locals.iter().chain(&info.params).chain(info.captures.iter().map(|c| &c.sym));
-        if visible.into_iter().any(|sym| self.a.var_name(self.proc, *sym) == param) {
-            format!("{param}_arg")
+        let base = if visible.into_iter().any(|sym| self.a.var_name(self.proc, *sym) == base) {
+            format!("{base}_arg")
         } else {
-            param.to_string()
+            base.to_string()
+        };
+        let taken = |name: &str| self.pending.iter().any(|line| line.starts_with(&format!("let {name} = ")));
+        let mut name = base.clone();
+        let mut n = 1;
+        while taken(&name) {
+            n += 1;
+            name = format!("{base}_{n}");
         }
+        name
     }
 
     /// The Rust literal for a constant of type `ty`.

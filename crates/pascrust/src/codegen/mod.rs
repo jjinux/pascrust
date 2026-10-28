@@ -874,7 +874,7 @@ impl<'a> Codegen<'a> {
         // to it, which the borrow checker rejects. Computing the value into
         // a temporary first ends that borrow before the assignment.
         if contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target))) {
-            let temp = temp_name(value);
+            let temp = self.temp_name(&value_temp_base(value));
             let value_code = self.coerce(value, &target_ty).0;
             let place = self.place(target);
             return format!("let {temp} = {value_code};\n{}{place} = {temp};", "    ".repeat(self.indent));
@@ -885,7 +885,7 @@ impl<'a> Codegen<'a> {
             && *self.a.type_of(value.id) == target_ty
             && *self.a.type_of(lhs.id) == target_ty
             && !matches!(target_ty, Type::Str { .. })
-            && self.expr(lhs).0 == place
+            && self.same_as_place(lhs, &place)
         {
             let rust_op = match op {
                 BinaryOp::Add => "+=",
@@ -907,6 +907,16 @@ impl<'a> Codegen<'a> {
             }
         }
         format!("{place} = {value_code};")
+    }
+
+    /// Is `e` the place `place` (so `place := e + n` can be `place += n`)?
+    /// Generating `e` just to compare may make temporaries for its calls;
+    /// they're thrown away, as the code that would use them is.
+    fn same_as_place(&mut self, e: &Expr, place: &str) -> bool {
+        let pending = self.pending.len();
+        let same = self.expr(e).0 == place;
+        self.pending.truncate(pending);
+        same
     }
 
     /// The Rust place expression for writing variable `sym` in the current
@@ -1004,7 +1014,7 @@ fn root_name(e: &Expr) -> String {
 
 /// A name for a hoisted temporary: the last field name (`next` for
 /// `p^.next`), or `value`.
-fn temp_name(e: &Expr) -> String {
+fn value_temp_base(e: &Expr) -> String {
     match &e.kind {
         ExprKind::Field(_, field) => crate::sema::names::snake_case(&field.name),
         _ => "value".to_string(),
