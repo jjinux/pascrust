@@ -137,7 +137,19 @@ chosen so each step is testable with the previous ones.
 - [x] Consistent identifier casing in the examples.
 - [x] Consistent spacing in the examples: `pascrust fmt` (`crates/pascrust/src/fmt/`), a re-indenter that reuses the lexer; the examples are kept formatted by `tests/fmt_tests.rs`. Prototyped in Python, then ported.
 - [x] DOS and UNIX line endings both work: source, standard input and text files (`tests/run/crlf.pas`, stored with CRLF; see `.gitattributes`), and `fmt`.
-- [ ] Code review by Fable (a fresh pair of eyes): fix the straightforward findings, list the rest here.
+- [x] Code review by Fable (two reviewers: transpiler; runtime and `fmt`). Fixed: `Continue` in `repeat` skipped the `until` test; hoisted temporaries could collide or shadow variables; scoped `for` loops with literal bounds became `i32`; `-b` on `Byte`/`Word`; big subranges; `Ord`/`Abs` in constants; `Write` of an enum; `Boolean(n)`; `^Name` resolved too early; `shr` was arithmetic; `Read` into `string[n]`; directives silently ignored (now warnings, includes an error); pointer comparisons cloned; `get_mut` on every `^` in a path; `if` temporaries in a block; Crt left the terminal raw after a normal end or runtime error; `Val` crashed on non-ASCII; reals rounded ties to even and `Inf` crashed; Graph-only programs built with warnings; `fmt` and numeric labels; `Eof` at an unterminated last line; doc drift. Still open from the review:
+  - [ ] `var p: ^T;` with a one-letter type name lexes as the control character `^T`. Fix: lex `^`+letter as `Caret Ident` and fold to a char literal in the parser, in expression position only.
+  - [ ] Two disjoint fields of one record as two `var` arguments (`Init(p.x, p.y)`) are rejected, though architecture.md §15 says they work: track field paths in the aliasing check.
+  - [ ] A local that clashes with a captured global renames the global everywhere (`global_count`); scope the rename to the procedure with the clash.
+  - [ ] Hoisting a deref argument evaluates it before earlier arguments with side effects (`Show(Bump, head^.value)`).
+  - [ ] `x shl n` with `n` at least the type's width doesn't compile (constant) or panics (variable); TP gives 0.
+  - [ ] `p^.x := p^.x + 1` hoists a temporary instead of becoming `p.get_mut().x += 1`.
+  - [ ] `Random(n)`: TP 7 may use only the high word of the seed, `(HiWord(seed) * n) shr 16`; ours uses all 32 bits, so some draws differ. Verify against TP before changing.
+  - [ ] `{$I-}` and a real `IOResult`, `SeekEof`/`SeekEoln`, `LastMode` (were listed as done; they aren't).
+  - [ ] `Val` corner cases: `Val('40000', i, code)` for an `Integer` is an error for us, wraps (code 0) in TP/FPC.
+  - [ ] Graph: should `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners in the real BGI? `FExpand` ignores `ChDir`.
+  - [ ] `i16::MIN div -1` panics (runtime error 255); TP wraps.
+  - Not changed: `Round(2.5)` is 3. The reviewer suggested ties-to-even to match Free Pascal, but Turbo Pascal's documentation says halves round away from zero. `Eof` on a text file being written stays runtime error 104, as in Free Pascal (the reviewer thought TP returns True).
 
 ## Phase 5: Dos and Graph, then the graphics examples
 
