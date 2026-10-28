@@ -90,6 +90,16 @@ impl<T> Ptr<T> {
             None => crate::rte(204, "Invalid pointer operation: using a disposed record"),
         })
     }
+
+    /// Run `f` with the record borrowed mutably once, for a call that
+    /// passes two of its fields by `var`: `SetTwo(q^.x, q^.y)` is
+    /// `q.with_mut(|point| set_two(&mut point.x, &mut point.y))`. Calling
+    /// `get_mut()` twice would borrow the `RefCell` twice; one `&mut T` can
+    /// be split into its fields, because Rust sees they are disjoint.
+    pub fn with_mut<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+        // `&mut *guard` turns the `RefMut` guard into a plain `&mut T`.
+        f(&mut *self.get_mut())
+    }
 }
 
 /// The message for a `RefCell` conflict. In Pascal, two pointers to the same

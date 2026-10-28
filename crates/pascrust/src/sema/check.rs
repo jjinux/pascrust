@@ -1406,6 +1406,23 @@ impl Checker {
     }
 
     /// The variable at the root of a place expression, e.g. `a` in `a[i].x`.
+    /// The record fields from a place's root variable down to it, as
+    /// [`VarArg::fields`] wants them, and whether the path is complete (no
+    /// array index on the way).
+    fn place_fields(e: &Expr) -> (Vec<String>, bool) {
+        match &e.kind {
+            ExprKind::Field(inner, field) => {
+                let (mut fields, complete) = Self::place_fields(inner);
+                if complete {
+                    fields.push(field.key());
+                }
+                (fields, complete)
+            }
+            ExprKind::Index(inner, _) => (Self::place_fields(inner).0, false),
+            _ => (Vec::new(), true),
+        }
+    }
+
     fn place_root(&self, e: &Expr) -> Option<SymId> {
         match &e.kind {
             ExprKind::Name(_) => self.a.refs.get(&e.id).copied(),
@@ -1537,6 +1554,8 @@ impl Checker {
             param: self.a.procs[pid].self_param.as_ref().unwrap().1,
             root,
             whole: matches!(receiver.kind, ExprKind::Name(_)),
+            fields: Self::place_fields(receiver).0,
+            indexed: !Self::place_fields(receiver).1,
             span: receiver.span,
         });
         self.user_call_with(e, pid, args, receiver_arg)
@@ -1567,13 +1586,41 @@ impl Checker {
                     );
                 }
                 if let Some(root) = self.place_root(arg) {
-                    var_args.push(VarArg { param, root, whole: matches!(arg.kind, ExprKind::Name(_)), span: arg.span });
+                    var_args.push(VarArg {
+                        param,
+                        root,
+                        whole: matches!(arg.kind, ExprKind::Name(_)),
+                        fields: Self::place_fields(arg).0,
+                        indexed: !Self::place_fields(arg).1,
+                        span: arg.span,
+                    });
                 }
             } else {
                 let arg_ty = self.expr(arg);
                 if !ty.accepts(&arg_ty) {
                     self.error(arg.span, format!("expected a {ty} argument, found {arg_ty}"));
                 }
+            }
+        }
+        // Two `var` arguments in the same heap record, `q^.x` and `q^.y`,
+        // are fine as long as they are different fields.
+        let heap: Vec<_> = params
+            .iter()
+            .zip(args)
+            .filter(|(param, _)| self.a.var(**param).role == VarRole::Param(ParamMode::Var))
+            .filter_map(|(_, arg)| Some((super::heap_field(arg)?, arg.span)))
+            .collect();
+        for (i, ((pointer, fields), span)) in heap.iter().enumerate() {
+            let overlaps =
+                heap[..i].iter().any(|((earlier, f), _)| earlier == pointer && super::fields_overlap(f, fields));
+            if overlaps {
+                let name = self.a.procs[p].name.clone();
+                self.error(
+                    *span,
+                    format!(
+                        "the record `{pointer}^` is passed by `var` more than once in this call to `{name}`; Rust doesn't allow two mutable references to the same variable"
+                    ),
+                );
             }
         }
         if !var_args.is_empty() {

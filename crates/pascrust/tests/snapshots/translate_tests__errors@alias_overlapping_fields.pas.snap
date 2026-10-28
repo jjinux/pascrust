@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/alias_overlapping_fields.pas
+---
+alias_overlapping_fields.pas:27:16: error: the record `q^` is passed by `var` more than once in this call to `SetTwo`; Rust doesn't allow two mutable references to the same variable
+  SetTwo(q^.x, q^.x);
+               ^^^^
+
+alias_overlapping_fields.pas:25:12: error: `p` is passed by `var` more than once in this call to `Whole`; Rust doesn't allow two mutable references to the same variable
+  Whole(p, p.x);
+           ^^^
+
+alias_overlapping_fields.pas:26:18: error: `p` is passed by `var` more than once in this call to `SetTwo`; Rust doesn't allow two mutable references to the same variable (Rust can't tell that two elements of one array are different)
+  SetTwo(p.v[1], p.v[2]);
+                 ^^^^^^

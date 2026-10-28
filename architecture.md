@@ -419,7 +419,15 @@ of the common cases:
   `init(&mut self.center, &mut self.radius)` because the borrows are disjoint.
 - Reborrowing a `var` parameter to pass it on: `rec_insert(root, item, ok)`
   (Rust reborrows `&mut` implicitly).
-- Heap fields: `&mut p.get_mut().before` (see the hazard note in §12).
+- Heap fields: `&mut p.get_mut().before` (see the hazard note in §12). Two
+  fields of the same heap record, `SetTwo(q^.x, q^.y)`, would be two
+  `get_mut()` borrows of one `RefCell`, so the call borrows the record once:
+  `q.with_mut(|point| set_two(&mut point.x, &mut point.y))`.
+
+Sema compares field paths, so only arguments that really overlap are
+rejected: `p.x` and `p.y` are fine, `p` and `p.x` are not. A path stops at an
+array index, because Rust borrows the whole array to index it: `a[1]` and
+`a[2]` count as the same place.
 
 Where Rust rejects a call and Pascal accepts it, the cause is always
 *aliasing*: the same storage reachable through two parameters at once. The

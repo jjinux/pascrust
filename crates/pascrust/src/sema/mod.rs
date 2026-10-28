@@ -304,7 +304,59 @@ pub struct VarArg {
     pub root: SymId,
     /// True if the argument is the whole variable, not a part of it.
     pub whole: bool,
+    /// The record fields from the root to the argument, lowercased:
+    /// `["c", "x"]` for `s.c.x`. It stops at the first array index, because
+    /// Rust borrows the whole array to index it, so `a[1]` and `a[2]` (and
+    /// `r.v[1]` and `r.v[2]`) count as the same place, `[]` and `["v"]`.
+    pub fields: Vec<String>,
+    /// True if the path has an array index after `fields`.
+    pub indexed: bool,
     pub span: Span,
+}
+
+/// A place that is a field of a heap record, like `q^.x` or `list^.head^.c.x`:
+/// the pointer expression as a key (`q`, `list^.head`) and the fields after
+/// its last `^`. `None` for any other place, or if the pointer expression has
+/// an array index (we can't tell statically whether two indexes are equal).
+///
+/// Two `var` arguments into the same heap record must share one borrow of
+/// it (one `get_mut()`), so sema checks they don't overlap and codegen
+/// borrows the record once for the call.
+pub fn heap_field(e: &crate::ast::Expr) -> Option<(String, Vec<String>)> {
+    use crate::ast::ExprKind;
+    fn key(e: &crate::ast::Expr) -> Option<String> {
+        match &e.kind {
+            ExprKind::Name(id) => Some(id.key()),
+            ExprKind::Field(base, field) => Some(format!("{}.{}", key(base)?, field.key())),
+            ExprKind::Deref(base) => Some(format!("{}^", key(base)?)),
+            _ => None,
+        }
+    }
+    match &e.kind {
+        ExprKind::Deref(base) => Some((key(base)?, Vec::new())),
+        ExprKind::Field(base, field) => {
+            let (pointer, mut fields) = heap_field(base)?;
+            fields.push(field.key());
+            Some((pointer, fields))
+        }
+        _ => None,
+    }
+}
+
+/// True if one field path starts with the other: `["c"]` and `["c", "x"]`
+/// share storage, `["x"]` and `["y"]` don't.
+pub fn fields_overlap(a: &[String], b: &[String]) -> bool {
+    // `zip` stops at the shorter path, so this checks for a prefix.
+    a.iter().zip(b).all(|(a, b)| a == b)
+}
+
+impl VarArg {
+    /// True if the two arguments could share storage: same root, and one's
+    /// field path starts with the other's. `p.x` and `p.y` are disjoint,
+    /// and Rust allows `&mut p.x` and `&mut p.y` at the same time.
+    pub fn overlaps(&self, other: &VarArg) -> bool {
+        self.root == other.root && fields_overlap(&self.fields, &other.fields)
+    }
 }
 
 /// A call that passes some arguments by `var`, remembered so that aliasing

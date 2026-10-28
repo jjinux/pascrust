@@ -239,14 +239,21 @@ pub(super) fn check_aliasing(a: &Analysis, sites: &[CallSite]) -> Vec<Diagnostic
     let mut errors = Vec::new();
     for site in sites {
         let callee = &a.procs[site.callee];
-        let mut seen = HashSet::new();
-        for &VarArg { root, span, .. } in &site.var_args {
+        for (i, arg) in site.var_args.iter().enumerate() {
+            let VarArg { root, span, .. } = *arg;
             let name = &a.sym(root).name;
-            if !seen.insert(root) {
+            if let Some(earlier) = site.var_args[..i].iter().find(|earlier| earlier.overlaps(arg)) {
+                // `a[1]` and `a[2]` may well be different elements, but Rust
+                // can't tell, so say why they count as the same.
+                let why = if earlier.indexed && arg.indexed && earlier.fields == arg.fields {
+                    " (Rust can't tell that two elements of one array are different)"
+                } else {
+                    ""
+                };
                 errors.push(Diagnostic::new(
                     span,
                     format!(
-                        "`{name}` is passed by `var` more than once in this call to `{}`; Rust doesn't allow two mutable references to the same variable",
+                        "`{name}` is passed by `var` more than once in this call to `{}`; Rust doesn't allow two mutable references to the same variable{why}",
                         callee.name
                     ),
                 ));

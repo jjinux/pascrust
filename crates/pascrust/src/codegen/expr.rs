@@ -395,8 +395,8 @@ impl<'a> Codegen<'a> {
     }
 
     pub(super) fn user_call(&mut self, p: usize, args: &[Expr]) -> String {
-        let args = self.call_args(p, args, None);
-        format!("{}({args})", self.a.procs[p].rust_name)
+        let (args, records) = self.call_args(p, args, None);
+        wrap_with_mut(format!("{}({args})", self.a.procs[p].rust_name), records)
     }
 
     /// `receiver.method(args)`. The receiver is the object before the dot
@@ -422,8 +422,8 @@ impl<'a> Codegen<'a> {
             ExprKind::Field(receiver, _) => Receiver::Named(root_key(receiver)),
             _ => Receiver::ImplicitSelf,
         };
-        let args = self.call_args(pid, args, Some(borrowed));
-        format!("{receiver}.{}({args})", self.a.procs[pid].rust_name)
+        let (args, records) = self.call_args(pid, args, Some(borrowed));
+        wrap_with_mut(format!("{receiver}.{}({args})", self.a.procs[pid].rust_name), records)
     }
 
     /// The method we're in (or nested inside), whose `Self` a bare method
@@ -437,8 +437,11 @@ impl<'a> Codegen<'a> {
     }
 
     /// The argument list for a call: captured outer variables first, then
-    /// the Pascal arguments.
-    fn call_args(&mut self, p: usize, args: &[Expr], receiver: Option<Receiver>) -> String {
+    /// the Pascal arguments. Also returns the heap records that two or more
+    /// `var` arguments are fields of, as `(pointer, name)` pairs: the call
+    /// must be wrapped in `pointer.with_mut(|name| ...)` (see
+    /// [`wrap_with_mut`]).
+    fn call_args(&mut self, p: usize, args: &[Expr], receiver: Option<Receiver>) -> (String, Vec<(String, String)>) {
         let info = &self.a.procs[p];
         let mut parts = Vec::new();
         // Captured variables first, in the callee's order.
@@ -462,10 +465,38 @@ impl<'a> Codegen<'a> {
             .filter(|(p, _)| self.a.var(**p).role == crate::sema::VarRole::Param(ParamMode::Var))
             .map(|(_, arg)| root_key(arg))
             .collect();
-        for (param, arg) in params.iter().zip(args) {
+        // Heap records shared by more than one `var` argument (`q^.x, q^.y`).
+        let is_var = |p: &usize| self.a.var(*p).role == crate::sema::VarRole::Param(ParamMode::Var);
+        let heap: Vec<Option<String>> = params
+            .iter()
+            .zip(args)
+            .map(|(p, arg)| if is_var(p) { crate::sema::heap_field(arg).map(|(pointer, _)| pointer) } else { None })
+            .collect();
+        let shared = |key: &Option<String>| key.is_some() && heap.iter().filter(|k| *k == key).count() > 1;
+        let mut records: Vec<(String, String, String)> = Vec::new(); // (key, pointer, name)
+        for ((param, arg), key) in params.iter().zip(args).zip(&heap) {
             let var = self.a.var(*param);
             let ty = var.ty.clone();
-            if var.role == crate::sema::VarRole::Param(ParamMode::Var) {
+            if var.role == crate::sema::VarRole::Param(ParamMode::Var) && shared(key) {
+                // `&mut q.get_mut().x` becomes `&mut point.x`, where `point`
+                // is the record borrowed once by `with_mut`.
+                let place = self.place(arg);
+                let (pointer, fields) = place.rsplit_once(".get_mut()").expect("a heap field");
+                let key = key.clone().unwrap();
+                let name = match records.iter().find(|(k, ..)| *k == key) {
+                    Some((_, _, name)) => name.clone(),
+                    None => {
+                        let mut base = self.record_name(arg);
+                        if !records.is_empty() {
+                            base = format!("{base}_{}", records.len() + 1);
+                        }
+                        let name = self.temp_name(&base);
+                        records.push((key, pointer.to_string(), name.clone()));
+                        name
+                    }
+                };
+                parts.push(format!("&mut {name}{fields}"));
+            } else if var.role == crate::sema::VarRole::Param(ParamMode::Var) {
                 parts.push(self.place_mut(arg));
             } else {
                 let code = self.coerce(arg, &ty).0;
@@ -492,7 +523,21 @@ impl<'a> Codegen<'a> {
                 }
             }
         }
-        parts.join(", ")
+        (parts.join(", "), records.into_iter().map(|(_, pointer, name)| (pointer, name)).collect())
+    }
+
+    /// A name for the heap record that `arg` (`q^.x`) is a field of, after
+    /// its type: `point` for a `Point`.
+    fn record_name(&self, arg: &Expr) -> String {
+        let mut e = arg;
+        while let ExprKind::Field(base, _) = &e.kind {
+            e = base;
+        }
+        match self.a.type_of(e.id) {
+            Type::Record(r) => crate::sema::names::snake_case(&r.rust_name),
+            Type::Object(o) => crate::sema::names::snake_case(&o.rust_name),
+            _ => "rec".to_string(),
+        }
     }
 
     /// Does `e` contain a call (which might be a method call)? A method
@@ -547,6 +592,12 @@ impl<'a> Codegen<'a> {
             ConstVal::Str(bytes) => str_literal(bytes),
         }
     }
+}
+
+/// Wrap a call in `pointer.with_mut(|name| call)` for each heap record that
+/// several of its `var` arguments are fields of.
+fn wrap_with_mut(call: String, records: Vec<(String, String)>) -> String {
+    records.into_iter().rev().fold(call, |call, (pointer, name)| format!("{pointer}.with_mut(|{name}| {call})"))
 }
 
 /// The lowercase name of the variable a place starts from (`a` for
