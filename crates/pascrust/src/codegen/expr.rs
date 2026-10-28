@@ -224,6 +224,27 @@ impl<'a> Codegen<'a> {
             (Shl | Shr, _, _) => self.expr(rhs),
             _ => self.coerce(rhs, &operand_ty),
         };
+        // Turbo Pascal's `shr` is a logical shift: it fills with zeros, so
+        // `-300 shr 4` is 4077. Rust's `>>` on a signed integer copies the
+        // sign bit instead (-19), so shift the same bits as unsigned.
+        if op == Shr
+            && let Type::Int(kind @ (IntKind::ShortInt | IntKind::Integer | IntKind::LongInt)) = operand_ty.concrete()
+        {
+            let unsigned = match kind {
+                IntKind::ShortInt => "u8",
+                IntKind::Integer => "u16",
+                _ => "u32",
+            };
+            // A literal needs its signed type spelled out (`-300_i16`), or
+            // Rust would take it to be the unsigned type.
+            let left = if matches!(lt, Type::IntLit(_)) {
+                format!("{}_{}", left.0, kind.rust())
+            } else {
+                paren(left, prec::AS)
+            };
+            let code = format!("(({left} as {unsigned}) >> {}) as {}", paren(right, p + 1), kind.rust());
+            return (code, prec::AS);
+        }
         // `x as i16 < y` would parse `<` as the start of generic arguments,
         // so a cast on the left of `<` or `<<` always gets parentheses.
         let left_min = if left.1 == prec::AS && matches!(op, Lt | Shl) { prec::UNARY } else { p };
