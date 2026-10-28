@@ -209,6 +209,37 @@ fn match_case(path: &std::path::Path) -> std::path::PathBuf {
     out
 }
 
+/// Pascal `GetDir(drive, s)`: the current directory as a DOS path, like
+/// `C:\GAMES`. Drive 0 is the current drive (always C:, as in `FExpand`),
+/// 1 is A:, 2 is B:, ... A drive other than C: reports its root, since
+/// pascrust keeps only one current directory.
+pub fn get_dir(drive: impl Into<i32>) -> PString {
+    let drive = match drive.into() {
+        0 | 3 => 'C',
+        n @ 1..=26 => (b'A' + n as u8 - 1) as char,
+        _ => 'C',
+    };
+    if drive != 'C' {
+        return PString::from(format!("{drive}:\\").as_str());
+    }
+    let base = dos_path("C:\\");
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let rest = cwd.strip_prefix(&base).map(|p| p.to_path_buf()).unwrap_or(cwd);
+    let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_uppercase()).collect();
+    PString::from(format!("C:\\{}", parts.join("\\")).as_str())
+}
+
+/// Pascal `MemAvail` (faked): the free heap. A typical DOS figure, so
+/// "is there room?" checks pass; the real limit is the machine's memory.
+pub fn mem_avail() -> i32 {
+    512_000
+}
+
+/// Pascal `MaxAvail` (faked): the largest free block. See `mem_avail`.
+pub fn max_avail() -> i32 {
+    512_000
+}
+
 /// Pascal `ChDir(path)`.
 pub fn ch_dir(path: impl Into<PString>) {
     let path = path.into().to_string();

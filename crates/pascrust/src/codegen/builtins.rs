@@ -188,6 +188,20 @@ impl<'a> Codegen<'a> {
             },
             SizeOf | High | Low => unreachable!("sema folds these into constants"),
             FillChar => self.fill_char(call_id, args),
+            Mark | Release => {
+                format!(
+                    "// {b:?}({}) does nothing: records are freed when nothing points to them.",
+                    self.pascal_arg(&args[0])
+                )
+            }
+            SetTextBuf => {
+                format!("// SetTextBuf({}, ...) does nothing: files are buffered already.", self.pascal_arg(&args[0]))
+            }
+            GetDir => {
+                let Type::Str { cap } = self.a.type_of(args[1].id).clone() else { unreachable!("sema checked GetDir") };
+                let trunc = if cap < 255 { format!(".truncated({cap})") } else { String::new() };
+                format!("{} = get_dir({}){trunc};", self.place(&args[1]), self.expr(&args[0]).0)
+            }
             Move => {
                 // Sema allows only a whole variable to one of the same type.
                 let ty = self.a.type_of(args[1].id).clone();
@@ -481,5 +495,12 @@ impl Codegen<'_> {
     /// Is `e` the standard file `Input` or `Output`?
     fn std_text(&self, e: &Expr) -> bool {
         self.a.refs.get(&e.id).is_some_and(|&sym| matches!(self.a.sym(sym).kind, SymKind::StdText { .. }))
+    }
+}
+
+impl Codegen<'_> {
+    /// An argument as written in the Pascal source, for a comment.
+    fn pascal_arg(&self, e: &Expr) -> String {
+        String::from_utf8_lossy(self.map.slice(e.span)).into_owned()
     }
 }

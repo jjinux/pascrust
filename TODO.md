@@ -197,9 +197,9 @@ System, the small routines
 - [x] `SizeOf` with TP's sizes (`Integer` 2, `LongInt` 4, `Real` 6, `Char` and `Boolean` 1, `string[n]` n+1, records unpadded, arrays), so `FillChar(a, SizeOf(a), 0)` and record-size arithmetic work.
 - [x] `High`/`Low` (of arrays, strings, ordinal types and variables), `Swap`, `Assigned`, `RunError(n)`. `SizeOf`, `High` and `Low` are folded into constants, as in TP, so they work in `const` declarations and array bounds. (`Double`, `Single` and `Extended` are all `Real` here, so `SizeOf` gives them 6; `High` of a subrange-typed *variable* gives its host type's bound.)
 - [x] `FillChar` and `Move` for the common cases: filling a whole array, record or string with one byte value (zeroing is by far the most common), and copying between variables of the same type. Other uses (partial byte ranges, mismatched types) are a clear error.
-- [ ] `GetDir(drive, s)`: the current directory as a DOS path, through the drive mapping.
+- [x] `GetDir(drive, s)`: the current directory as a DOS path, through the drive mapping.
 - [x] System variables: `ExitCode` (read/write; `Halt` without an argument uses it), `RandSeed` (read/write, so `RandSeed := 42` gives a repeatable sequence), `FileMode` (0 opens typed files read-only), and `Input`/`Output` as `Text` variables (`Writeln(Output, ...)`). Done as runtime variables (`SymKind::RuntimeVar`: a getter and a setter, `set_rand_seed(42)`), which Crt's `TextAttr` and `LastMode` can reuse; `Input`/`Output` are always the console (reopening them is an error).
-- [ ] Fake: `MemAvail`/`MaxAvail` return a typical DOS figure (about 500 KB), so "is there enough memory?" checks pass; `Mark`/`Release` do nothing (records are freed when nothing points to them); `SetTextBuf` does nothing (our files are buffered anyway); `Test8087` is 3 (an 80387 is present).
+- [x] Fake: `MemAvail`/`MaxAvail` return a typical DOS figure (about 500 KB), so "is there enough memory?" checks pass; `Mark`/`Release` do nothing (records are freed when nothing points to them); `SetTextBuf` does nothing (our files are buffered anyway); `Test8087` is 3 (an 80387 is present).
 
 Crt, the variables
 - [ ] `TextAttr` as an assignable variable (now a read-only function), `LastMode` (the mode from `TextMode`), `AssignCrt(f)` (a `Text` file that writes through Crt, honouring the window and colours).

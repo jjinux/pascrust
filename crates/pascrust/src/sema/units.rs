@@ -45,6 +45,7 @@ pub enum Ret {
     Byte,
     Word,
     Integer,
+    LongInt,
     Str,
 }
 
@@ -56,6 +57,7 @@ impl Ret {
             Ret::Byte => Type::Int(IntKind::Byte),
             Ret::Word => Type::Int(IntKind::Word),
             Ret::Integer => Type::Int(IntKind::Integer),
+            Ret::LongInt => Type::Int(IntKind::LongInt),
             Ret::Str => Type::Str { cap: 255 },
         }
     }
@@ -88,6 +90,9 @@ pub static SYSTEM: &[UnitRoutine] = &[
     routine!("rmdir" => "rm_dir"(Str)),
     routine!("paramcount" => "param_count"() -> Integer),
     routine!("paramstr" => "param_str"(Int) -> Str),
+    // Faked: there's no 640 KB heap to run out of.
+    routine!("memavail" => "mem_avail"() -> LongInt),
+    routine!("maxavail" => "max_avail"() -> LongInt),
 ];
 
 pub static CRT: &[UnitRoutine] = &[

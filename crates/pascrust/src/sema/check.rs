@@ -263,6 +263,9 @@ impl Checker {
             ("false", ConstVal::Bool(false), Type::Bool, "false"),
             ("maxint", ConstVal::Int(32767), Type::Int(IntKind::Integer), "i16::MAX"),
             ("maxlongint", ConstVal::Int(i32::MAX as i64), Type::Int(IntKind::LongInt), "i32::MAX"),
+            // Faked: TP's variable for the floating-point coprocessor; 3 is an
+            // 80387, which every modern machine more than matches.
+            ("test8087", ConstVal::Int(3), Type::IntLit(3), "3"),
         ];
         for (name, value, ty, rust) in consts {
             let sym = self.add_symbol(name, rust.to_string(), SymKind::Const { value, ty });
@@ -2472,6 +2475,38 @@ impl Checker {
                         Type::Error
                     }
                 }
+            }
+            // Faked: records are freed when nothing points to them, so
+            // there's no heap to mark and release.
+            Mark | Release => {
+                if arity(&mut self.errors, span, args.len(), 1..=1, &name) {
+                    let ty = self.place(&args[0], false);
+                    if !matches!(ty, Type::Pointer(_) | Type::Error) {
+                        self.error(args[0].span, format!("`{name}` needs a pointer variable, found {ty}"));
+                    }
+                }
+                Type::Void
+            }
+            // Faked: our files are buffered already.
+            SetTextBuf => {
+                if arity(&mut self.errors, span, args.len(), 2..=3, &name) {
+                    self.file_arg(&args[0], &name, true);
+                    self.place(&args[1], false);
+                    if let Some(size) = args.get(2) {
+                        self.int_arg(size);
+                    }
+                }
+                Type::Void
+            }
+            GetDir => {
+                if arity(&mut self.errors, span, args.len(), 2..=2, &name) {
+                    self.int_arg(&args[0]);
+                    let ty = self.place(&args[1], true);
+                    if !matches!(ty, Type::Str { .. } | Type::Error) {
+                        self.error(args[1].span, format!("`GetDir` needs a string variable, found {ty}"));
+                    }
+                }
+                Type::Void
             }
             // TP copies raw bytes; we handle the safe, common cases.
             FillChar | Move => {

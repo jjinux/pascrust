@@ -39,7 +39,7 @@ builtins! {
     Delete => "delete", Insert => "insert", UpCase => "upcase", Str => "str",
     Val => "val",
     // Pointers
-    New => "new", Dispose => "dispose", Assigned => "assigned",
+    New => "new", Dispose => "dispose", Assigned => "assigned", Mark => "mark", Release => "release",
     // Sets
     Include => "include", Exclude => "exclude",
     // Files
@@ -47,7 +47,7 @@ builtins! {
     Close => "close", Erase => "erase", Rename => "rename", Flush => "flush",
     Truncate => "truncate", Seek => "seek", FilePos => "filepos", FileSize => "filesize",
     Eof => "eof", Eoln => "eoln", SeekEof => "seekeof", SeekEoln => "seekeoln",
-    IOResult => "ioresult", TypeOf => "typeof",
+    IOResult => "ioresult", TypeOf => "typeof", GetDir => "getdir", SetTextBuf => "settextbuf",
 }
 
 impl Builtin {
@@ -92,6 +92,10 @@ impl Builtin {
                 | RunError
                 | FillChar
                 | Move
+                | Mark
+                | Release
+                | GetDir
+                | SetTextBuf
                 | Exit
                 | Break
                 | Continue

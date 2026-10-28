@@ -972,7 +972,10 @@ impl<'a> Codegen<'a> {
                 let code = self.call(callee, args);
                 // A function called as a statement: discard its result.
                 let is_function = matches!(self.a.type_of(e.id), t if *t != Type::Void);
-                if is_function && !code.ends_with(';') && !code.ends_with('}') {
+                // A Pascal call that becomes nothing but a comment.
+                if code.starts_with("//") {
+                    self.line(code);
+                } else if is_function && !code.ends_with(';') && !code.ends_with('}') {
                     self.line(format!("let _ = {code};"));
                 } else if code.ends_with(';') || code.ends_with('}') {
                     self.line(code);

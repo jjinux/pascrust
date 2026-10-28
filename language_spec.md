@@ -109,6 +109,10 @@ Built-ins (System unit)
   `RandSeed`, `FileMode` (how `Reset` opens typed files), and `Input` and
   `Output` as file arguments (`Writeln(Output, x)`); they're always the
   console, so `Assign`/`Reset`/`Rewrite` on them is an error
+- `GetDir` (drive C: is where the program started, as for `FExpand`)
+- Faked, so old programs run: `MemAvail`/`MaxAvail` (512,000 bytes),
+  `Mark`/`Release` (records are freed when nothing points to them, so they
+  do nothing), `SetTextBuf` (files are buffered already), `Test8087` (3)
 - `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`,
   `Val`
 - `High`, `Low`, `SizeOf` (of types with a defined Rust size)
