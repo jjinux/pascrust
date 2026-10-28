@@ -104,7 +104,9 @@ pub fn val<T: ValTarget>(s: impl Into<PString>, x: &mut T, code: &mut i16) {
 /// Translate a DOS path like `A:\\GAMES\\SCORES.DAT` for this machine:
 /// backslashes become slashes, and a drive letter is looked up in the
 /// environment variable `PASCRUST_DRIVE_A` (for drive A:, and so on). An
-/// unmapped drive means the current directory.
+/// unmapped drive is the directory the program started in. DOS file names
+/// are case-insensitive, so each part of the path matches an existing file
+/// or directory whatever its case.
 pub fn dos_path(path: &str) -> std::path::PathBuf {
     let mut rest = path;
     let mut base = None;
@@ -113,15 +115,47 @@ pub fn dos_path(path: &str) -> std::path::PathBuf {
     {
         rest = &path[2..];
         let var = format!("PASCRUST_DRIVE_{}", drive.to_ascii_uppercase() as char);
-        base = Some(std::env::var(var).unwrap_or_else(|_| ".".to_string()));
+        // `join` with an absolute path gives that path, so a relative
+        // mapping is relative to where the program started.
+        base = Some(start_dir().join(std::env::var(var).unwrap_or_default()));
     }
     let rest = rest.replace('\\', "/");
-    match base {
+    let path = match base {
         // `A:\X` is absolute on drive A; `A:X` is relative to it. Either way
         // it lives under the drive's directory.
-        Some(base) => std::path::Path::new(&base).join(rest.trim_start_matches('/')),
+        Some(base) => base.join(rest.trim_start_matches('/')),
         None => std::path::PathBuf::from(rest),
+    };
+    match_case(&path)
+}
+
+/// The current directory when the program started (the first time this is
+/// called, which is before any `ChDir`: see `run`).
+pub(crate) fn start_dir() -> &'static std::path::Path {
+    // `OnceLock` holds a value that's computed once, the first time it's
+    // needed, and then shared for the rest of the program.
+    static START: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    START.get_or_init(|| std::env::current_dir().unwrap_or_else(|_| ".".into()))
+}
+
+/// Spell each part of `path` the way the file or directory on disk is
+/// spelled, if one matches ignoring case. (On a case-sensitive file system,
+/// as on Linux, `TICTAC` would otherwise not find `tictac`.)
+fn match_case(path: &std::path::Path) -> std::path::PathBuf {
+    let mut out = std::path::PathBuf::new();
+    for part in path.components() {
+        let name = part.as_os_str().to_string_lossy();
+        let dir = if out.as_os_str().is_empty() { std::path::Path::new(".") } else { &out };
+        // `Iterator::find` stops at the first entry whose name matches.
+        let found = match part {
+            std::path::Component::Normal(_) => std::fs::read_dir(dir).ok().and_then(|entries| {
+                entries.flatten().map(|e| e.file_name()).find(|n| n.to_string_lossy().eq_ignore_ascii_case(&name))
+            }),
+            _ => None, // `/`, `.` and `..` stay as they are
+        };
+        out.push(found.as_deref().unwrap_or(part.as_os_str()));
     }
+    out
 }
 
 /// Pascal `ChDir(path)`.
@@ -180,7 +214,17 @@ mod tests {
     #[test]
     fn dos_paths() {
         assert_eq!(dos_path("data\\mark.dat"), std::path::PathBuf::from("data/mark.dat"));
-        assert_eq!(dos_path("a:\\tictac"), std::path::PathBuf::from("./tictac"));
+        // Drive A: isn't mapped (no PASCRUST_DRIVE_A): it's where we started.
+        assert_eq!(dos_path("q:\\tictac"), start_dir().join("tictac"));
+    }
+
+    #[test]
+    fn dos_paths_ignore_case() {
+        let dir = std::env::temp_dir().join(format!("pascrust_case_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("TicTac")).unwrap();
+        let found = dos_path(&format!("{}\\TICTAC\\new.dat", dir.display()));
+        assert_eq!(found, dir.join("TicTac").join("new.dat"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
