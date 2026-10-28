@@ -223,3 +223,32 @@ Never (DOS/x86 machinery with no sensible Rust translation)
 - `far`, `near`, `export`, Windows (`TPW`) units
 - ISO-only: conformant arrays, `pack`/`unpack`, `get`/`put` with file buffer
   variables `f^`, `program(input, output)` header parameters (ignored)
+
+## References
+
+Where we checked how Turbo Pascal actually behaves. When the documentation
+and Free Pascal disagree, TP wins; `tests/gen_expected.sh` uses `fpc -Mtp`
+for expected output only where FPC matches TP (it doesn't for `shr` or
+16-bit `for` loops, whose expected output is written by hand).
+
+- Borland's [*Turbo Pascal Version 7.0 Language Guide*](https://turbopascal.org/wp-content/uploads/Turbo_Pascal_Version_7.0_Language_Guide_1992.pdf)
+  (1992): the de-facto spec, including the runtime error codes. For example,
+  `Round` rounds halves away from zero. The TP 5.0 and 6.0 User's Guides are
+  on [bitsavers](https://archive.decromancer.ca/bitsavers.org/pdf/borland/turbo_pascal/);
+  more in `notes/p2c.md`.
+- [daelsepara/turbo-pascal-assembly](https://github.com/daelsepara/turbo-pascal-assembly):
+  annotated disassembly of TP's System unit. `docs/library/RANDOM-ENGINE.md`,
+  `RANDOM-INT.md`, `RANDOM-REAL.md`, `RANDOM-REAL-FPU.md` and `RANDOMIZE.md`
+  show exactly how `Random`, `Random(n)` and `Randomize` work, which our
+  runtime follows (`crates/pascrust_runtime/src/system.rs`).
+- [J R Stockton, "Borland Pascal/Delphi Random"](https://people.cs.nycu.edu.tw/~tsaiwn/sisc/runtime_error_200_div_by_0/www.merlyn.demon.co.uk/pas-rand.htm):
+  the `RandSeed` update (`134775813 * seed + 1`), test values, and how
+  `Random` differs between TP, BP 7 (`{$N+}`) and Delphi.
+- [Delphi's Random Number Generator](https://groups.google.com/g/borland.public.delphi.language.delphi.general/c/TedBrYcVMYQ)
+  (borland.public.delphi newsgroup): the same algorithm, unchanged since
+  Turbo Pascal.
+- Free Pascal's scanner (`compiler/scanner.pas`): where `^` is a pointer
+  symbol and where `^M` is a character, which our lexer copies (see
+  `caret_is_control_char` in `crates/pascrust/src/lexer.rs`).
+- `fpc -Mtp` itself, for `{$I-}`/`IOResult`, `Eof` on a file being written
+  (runtime error 104), `Real` formatting and most run tests.

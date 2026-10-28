@@ -1,8 +1,9 @@
 Pascrust
 ========
 
-Pascrust transpiles Turbo Pascal programs into Rust. It writes a small Cargo
-project for each program, so you can build and run your old Pascal code
+Pascrust is a Turbo Pascal to Rust transpiler, so that you can more easily
+run your old Turbo Pascal programs on modern computers. It writes a small
+Cargo project for each program, so you can build and run your old Pascal code
 natively, and read the Rust it turned into.
 
 ## Inspiration

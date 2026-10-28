@@ -98,7 +98,9 @@ form) are out of scope. `language_spec.md` has the tiers.
 Rationale: every example starts with `uses Crt` and relies on Borland strings,
 units, objects and typed files. ISO Pascal has none of those. The TP 7.0
 Language Guide is the de-facto spec and is freely available (links in
-`notes/p2c.md`).
+`notes/p2c.md`). The sources we checked TP's behaviour against (a disassembly
+of the System unit, Free Pascal's scanner, ...) are listed under References
+in `language_spec.md`.
 
 ## 4. Lexer and parser: handwritten recursive descent
 
