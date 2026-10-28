@@ -92,7 +92,17 @@ fn run_tests() {
             .unwrap();
         child.stdin.take().unwrap().write_all(&input).unwrap();
         let output = child.wait_with_output().unwrap();
-        let expected = std::fs::read(path.with_extension("out")).unwrap_or_default();
+        // Every test must say what it should print, and print something:
+        // otherwise a program that silently does nothing (or can't write
+        // at all) would pass.
+        let Ok(expected) = std::fs::read(path.with_extension("out")) else {
+            failures.push(format!("{}: has no .out file with the output it should print", path.display()));
+            continue;
+        };
+        if expected.is_empty() {
+            failures.push(format!("{}: its .out file is empty; a test must print something to check", path.display()));
+            continue;
+        }
         if output.stdout != expected {
             failures.push(format!(
                 "{}: output differs\n--- expected\n{}\n--- actual\n{}\n--- stderr\n{}",

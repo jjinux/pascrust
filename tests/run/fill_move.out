@@ -1,1 +1,11 @@
+ok: zero a byte array
+ok: fill a byte array
+ok: fill part of a byte array
+ok: fill a char array
+ok: fill a boolean array
+ok: zero a 2D array
+ok: zero a record
+ok: zero a string
+ok: fill part of a string
+ok: move a record
 10 of 10 checks passed

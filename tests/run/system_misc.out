@@ -1,1 +1,9 @@
+ok: GetDir at the start
+ok: GetDir after ChDir
+ok: GetDir into a string[4]
+ok: GetDir of drive A:
+ok: MemAvail
+ok: MaxAvail
+ok: Test8087
+ok: Release frees nothing
 8 of 8 checks passed

@@ -19,7 +19,9 @@ var
 procedure Check(ok: Boolean; what: string);
 begin
   checks := checks + 1;
-  if not ok then
+  if ok then
+    WriteLn('ok: ', what)
+  else
   begin
     failures := failures + 1;
     WriteLn('FAILED: ', what);

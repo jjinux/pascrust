@@ -26,7 +26,9 @@ struct Point {
 /// because the globals are local variables of `pascal_main`.
 fn check(checks: &mut i16, failures: &mut i16, ok: bool, what: PString) {
     *checks += 1;
-    if !ok {
+    if ok {
+        pwriteln!("ok: ", what);
+    } else {
         *failures += 1;
         pwriteln!("FAILED: ", what);
     }
