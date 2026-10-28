@@ -24,6 +24,9 @@ pub struct LineReader {
     pos: usize,
     /// True once a line has been fetched and not yet finished by `Readln`.
     have_line: bool,
+    /// True if the current line is the last one and has no line break after
+    /// it: then the end of the line is also the end of the file.
+    unterminated: bool,
     eof: bool,
 }
 
@@ -35,7 +38,7 @@ thread_local! {
 
 impl LineReader {
     pub(crate) fn new(source: Source) -> LineReader {
-        LineReader { source, line: Vec::new(), pos: 0, have_line: false, eof: false }
+        LineReader { source, line: Vec::new(), pos: 0, have_line: false, unterminated: false, eof: false }
     }
 
     /// Make sure there is a line to read from. Returns false at end of input.
@@ -60,6 +63,7 @@ impl LineReader {
                     return match crate::crt::read_line_raw() {
                         Some(line) => {
                             self.line = line;
+                            self.unterminated = false;
                             self.have_line = true;
                             true
                         }
@@ -80,7 +84,8 @@ impl LineReader {
             }
             Ok(_) => {
                 // Strip the line ending (`\n` or DOS `\r\n`).
-                if self.line.last() == Some(&b'\n') {
+                self.unterminated = self.line.last() != Some(&b'\n');
+                if !self.unterminated {
                     self.line.pop();
                 }
                 if self.line.last() == Some(&b'\r') {
@@ -126,8 +131,12 @@ impl LineReader {
 
     /// The next character, `#13` at the end of a line, or `None` at the end
     /// of the input.
+    ///
+    /// (On DOS, TP returned `#13` and then `#10` for a line break, as they
+    /// were both in the file; Free Pascal on Unix returns just `#10`. We
+    /// return just `#13`, which is what TP's own `Eoln`-style loops expect.)
     fn next_char(&mut self) -> Option<u8> {
-        if !self.fill() {
+        if self.eof() {
             return None;
         }
         if self.at_eoln() {
@@ -146,7 +155,7 @@ impl LineReader {
     }
 
     pub(crate) fn eof(&mut self) -> bool {
-        !self.fill()
+        !self.fill() || (self.unterminated && self.at_eoln())
     }
 
     pub(crate) fn eoln(&mut self) -> bool {

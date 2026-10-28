@@ -1,5 +1,5 @@
-//! Input and output: Pascal's `Write`/`Writeln` (and later `Read`/`Readln`
-//! and files).
+//! Input and output: Pascal's `Write`/`Writeln`, `Read`/`Readln`, and text
+//! and typed files.
 
 mod files;
 mod read;
