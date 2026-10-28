@@ -1,7 +1,7 @@
 //! Calls to Turbo Pascal's built-in procedures and functions.
 
-use super::{Codegen, LoopLabels};
 use super::expr::{convert, paren, prec};
+use super::{Codegen, LoopLabels};
 use crate::ast::*;
 use crate::sema::{Builtin, IntKind, Type};
 

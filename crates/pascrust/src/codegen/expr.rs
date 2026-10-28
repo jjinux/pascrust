@@ -597,7 +597,12 @@ pub(super) fn convert(code: Code, from: &Type, to: &Type) -> Code {
 /// programmers prefer because it can never silently truncate; narrowing
 /// ones use `as`, which truncates exactly like Turbo Pascal does.
 pub(super) fn cast(code: Code, from: &Type, to: &Type) -> Code {
-    if from == to {
+    // `Char` and `Byte` are both `u8` in Rust: nothing to convert.
+    if from == to
+        || (matches!(from, Type::Char | Type::Int(_))
+            && matches!(to, Type::Char | Type::Int(_))
+            && from.rust() == to.rust())
+    {
         return code;
     }
     let lossless = match (from, to) {
@@ -611,6 +616,10 @@ pub(super) fn cast(code: Code, from: &Type, to: &Type) -> Code {
         _ => false,
     };
     let rust = to.rust();
+    // `Boolean(n)` is true for any nonzero value; Rust has no `as bool`.
+    if *to == Type::Bool {
+        return (format!("{} != 0", paren(code, prec::CMP + 1)), prec::CMP);
+    }
     if let Type::Enum(_) = to {
         return (format!("{rust}::from_ord({})", code.0), prec::POSTFIX);
     }

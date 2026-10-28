@@ -708,7 +708,10 @@ impl<'a> Codegen<'a> {
                     ExprKind::Call { callee, .. } => callee,
                     _ => e,
                 };
-                self.a.refs.get(&callee.id).is_some_and(|sym| matches!(self.a.sym(*sym).kind, SymKind::Builtin(found) if found == b))
+                self.a
+                    .refs
+                    .get(&callee.id)
+                    .is_some_and(|sym| matches!(self.a.sym(*sym).kind, SymKind::Builtin(found) if found == b))
             }
             // `std::slice::from_ref` views one statement as a one-element
             // slice, without copying it.
