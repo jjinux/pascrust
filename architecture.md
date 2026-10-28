@@ -531,9 +531,12 @@ The examples use `object` types heavily, always with static methods (no
 - Objects declared as variables and never "created" (`var Board: BoardType;
   Board.Create;`) are `let mut board = BoardType::default();` followed by
   `board.create();`, which is exactly what TP does.
-- Virtual methods and constructors/destructors (tier 3): a trait per object
-  type holding the virtual methods, `Box<dyn Trait>` for polymorphic pointers.
-  Not needed for the examples. `private` sections are a no-op.
+- Virtual methods and constructors/destructors (tier 3): a trait per
+  hierarchy holding the virtual methods and the methods that call them, so
+  `Self` dispatch works without `dyn`; `&mut dyn Trait` for `var`
+  parameters and `Ptr<dyn Trait>` for polymorphic pointers. The plan and
+  its cost are in `notes/virtual_methods.md`. Not needed for the examples.
+  `private` sections are a no-op.
 
 Rejected: a `Deref` to `base` trick to make inherited fields look flat. It
 hides what is going on, and intermediate Rust programmers are warned off
