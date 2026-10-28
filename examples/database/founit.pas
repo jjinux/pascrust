@@ -118,7 +118,8 @@ IMPLEMENTATION
       Procedure NFileDelItem(Position:integer ; var masterfile:MasterFileType ;
          MasterFileAddress:string);
          {will create a temp file parallel to masterfile.  Will copy all items
-          except item at position.  Then will copy temp back into MasterF'}
+          except item at position.  Then will copy temp back into MasterF'.
+          Position is a 0-based record number, as given by FilePos.}
          var tempFileAddress : Filestring;
              tempFile : MasterFiletype;
              a : integer;
@@ -126,13 +127,17 @@ IMPLEMENTATION
             GetTempName(MasterFileAddress,tempFileAddress);
             assign(Tempfile,TempFileAddress);
             rewrite(tempfile);
-            for a:= 1 to (position-1) do        {copy from Mast'F to temp}
-               Fcopy(MasterFile,Tempfile);      {ignore item to be deleted}
-            for a:= (position+1) to filesize(MasterFile) do
+            seek(MasterFile,0);                 {copy from Mast'F to temp}
+            for a:= 0 to (position-1) do
+               Fcopy(MasterFile,Tempfile);
+            seek(MasterFile,position+1);        {skip item to be deleted}
+            for a:= (position+1) to filesize(MasterFile)-1 do
                Fcopy(MasterFile,Tempfile);
             rewrite(masterfile);                {copy from temp to Mast'F}
+            seek(tempFile,0);
             for a:= 1 to filesize(tempFile) do
                Fcopy(TempFile,MasterFile);
+            close(tempFile);
             erase(tempFile);                    {now get rid of TempFile}
          end; {NFileDelItem}
       begin {.DeletePeople}
@@ -142,6 +147,7 @@ IMPLEMENTATION
             begin                               {if item is in tree}
             Tree.Delete(Keyitem,successful);
             NFileDelItem(keyitem.Location,masterfile,MasterFileAddress);
+            Tree.ShiftLocations(keyitem.Location); {later records moved up}
             end; {if}
          {else leave, filesys will give appropriate warning}
       end; {.DeletePeople}

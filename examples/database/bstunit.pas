@@ -26,6 +26,7 @@ INTERFACE
           Procedure Search(var item:PeopleKey ; var found:boolean);
           Procedure Traverse; {for testing purposes only}
           Procedure FirstItem(var item:PeopleKey);
+          Procedure ShiftLocations(removed:integer);
        end; {object}
 
 IMPLEMENTATION
@@ -93,7 +94,11 @@ IMPLEMENTATION
                         TempPtr:= Root^.After;
                         while TempPtr^.Before<>nil do
                            TempPtr:=TempPtr^.Before;
-                        Root^:= TempPtr^;
+                        {Copy only the successor's data.  Copying the whole
+                         record (Root^ := TempPtr^) would also copy its
+                         Before/After links and cut the tree apart.}
+                        Root^.ID:= TempPtr^.ID;
+                        Root^.Location:= TempPtr^.Location;
                         recDelete(Root^.After,TempPtr^,successful);
                      end;{else}
          end{recDelete};
@@ -166,6 +171,23 @@ IMPLEMENTATION
          else
             RecFirstItem(item,root);
       end{FirstItem};
+
+   Procedure BST.ShiftLocations(removed:integer);
+      {After the record at file position Removed is deleted from the master
+       file, every later record is one position earlier.}
+      Procedure RecShift(root:PeopleKeyPointer);
+         begin
+            if root<>nil then
+               begin
+                  if root^.Location>removed then
+                     dec(root^.Location);
+                  RecShift(root^.before);
+                  RecShift(root^.after);
+               end; {if}
+         end; {RecShift}
+      begin {ShiftLocations}
+         RecShift(root);
+      end; {ShiftLocations}
 
 begin
    {setup}
