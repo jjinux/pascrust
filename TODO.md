@@ -124,8 +124,19 @@ chosen so each step is testable with the previous ones.
 - [x] Scripted-input run tests: in plain mode `ReadKey` reads the test's `.in` file; compare stdout (`tests/run/crt_plain.pas`).
 - [x] Get working, one at a time, fixing transpiler bugs as found: `gmscode.pas`, `paper.pas`, `magic_square.pas`, `life.pas`, `blkjack.pas`, `menu.pas` (needs `Dos.Exec`, which may fail gracefully), `airport/` (four units). All transpile and build warning-free; `magic_square`, `paper`, `airport4` and `database/filesys` verified with scripted sessions.
   - [ ] Turn those scripted sessions into run tests (`examples/` acceptance tests in CI).
-  - [ ] `examples/database/founit.pas` empties the master file on delete: `Fcopy` stops at `eof` because nothing seeks back to the start. Looks like a bug in the original program; confirm, and maybe note it in the example.
+  - [x] `examples/database/founit.pas` empties the master file on delete: `Fcopy` stops at `eof` because nothing seeks back to the start. Confirmed as a bug in the original program and fixed there (plus `BST.ShiftLocations`, since later records move up a position).
+  - [x] `bstunit.pas`: deleting a node with two children copied the successor's links (`Root^ := TempPtr^`). Fixed in the example.
 - [ ] CI builds every example; runs the non-interactive ones.
+
+## Requests from the user, 2026-10-27
+
+- [x] Fix the two bugs found in the user's examples (`bstunit`, `founit`). Fixing them exposed a transpiler bug: call arguments that read through a pointer kept the record borrowed during the call; now they're copied into a `let` first (`tests/run/ptr_args.pas`).
+- [x] README: usage instructions.
+- [x] README: an "Inspiration" section.
+- [ ] BGI graphics (Phase 5 below).
+- [x] Consistent identifier casing in the examples.
+- [x] Consistent spacing in the examples: `pascrust fmt` (`crates/pascrust/src/fmt/`), a re-indenter that reuses the lexer; the examples are kept formatted by `tests/fmt_tests.rs`. Prototyped in Python, then ported.
+- [x] DOS and UNIX line endings both work: source, standard input and text files (`tests/run/crlf.pas`, stored with CRLF; see `.gitattributes`), and `fmt`.
 
 ## Phase 5: Dos and Graph, then the graphics examples
 

@@ -33,7 +33,15 @@ cargo run -p pascrust -- emit examples/paper.pas
 
 # Transpile and build, without running. `-o` picks the project directory.
 cargo run -p pascrust -- build examples/magic_square.pas -o /tmp/magic
+
+# Tidy up indentation, spacing and identifier casing. Pass a program and its
+# units together so names are spelled the same in all of them.
+cargo run -p pascrust -- fmt examples/database/*.pas
 ```
+
+Old sources with DOS (`\r\n`) line endings are fine everywhere: the
+transpiler, `Readln` on standard input and text files, and `fmt` (which
+writes UNIX line endings).
 
 Or install the tool once with `cargo install --path crates/pascrust` and use
 `pascrust run foo.pas`.
