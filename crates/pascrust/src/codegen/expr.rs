@@ -66,9 +66,9 @@ impl<'a> Codegen<'a> {
         let symbol = self.a.sym(sym);
         match &symbol.kind {
             SymKind::Var(_) => match self.a.access(self.proc, sym) {
-                Access::Direct => (symbol.rust_name.clone(), prec::ATOM),
+                Access::Direct => (self.a.var_name(self.proc, sym).to_string(), prec::ATOM),
                 // A reference must be dereferenced to get at the value.
-                Access::Reference => (format!("*{}", symbol.rust_name), prec::UNARY),
+                Access::Reference => (format!("*{}", self.a.var_name(self.proc, sym)), prec::UNARY),
             },
             SymKind::Const { .. } => (symbol.rust_name.clone(), prec::ATOM),
             SymKind::Proc(_) | SymKind::Builtin(_) => (self.call(e, &[]), prec::POSTFIX),
@@ -114,7 +114,7 @@ impl<'a> Codegen<'a> {
             && let SymKind::Var(_) = self.a.sym(sym).kind
             && *self.a.type_of(e.id) == *ty
         {
-            return self.a.sym(sym).rust_name.clone();
+            return self.a.var_name(self.proc, sym).to_string();
         }
         // Literals get a type suffix: `5_i16.abs()`, `(-2.5_f64).round()`.
         let literal = match (self.a.type_of(e.id), ty, &e.kind) {
@@ -221,7 +221,7 @@ impl<'a> Codegen<'a> {
     fn selector_base(&mut self, base: &Expr) -> String {
         match &base.kind {
             ExprKind::Name(_) if matches!(self.a.sym(self.a.refs[&base.id]).kind, SymKind::Var(_)) => {
-                self.a.sym(self.a.refs[&base.id]).rust_name.clone()
+                self.a.var_name(self.proc, self.a.refs[&base.id]).to_string()
             }
             ExprKind::Field(..) | ExprKind::Index(..) => self.selector(base),
             _ => paren(self.expr(base), prec::POSTFIX),
@@ -234,7 +234,7 @@ impl<'a> Codegen<'a> {
         match &e.kind {
             ExprKind::Name(_) => {
                 let sym = self.a.refs[&e.id];
-                let name = self.a.sym(sym).rust_name.clone();
+                let name = self.a.var_name(self.proc, sym).to_string();
                 match self.a.access(self.proc, sym) {
                     Access::Direct => format!("&mut {name}"),
                     Access::Reference => name,
@@ -265,7 +265,7 @@ impl<'a> Codegen<'a> {
         let mut parts = Vec::new();
         // Captured variables first, in the callee's order.
         for cap in &info.captures {
-            let name = self.a.sym(cap.sym).rust_name.clone();
+            let name = self.a.var_name(self.proc, cap.sym).to_string();
             let access = self.a.access(self.proc, cap.sym);
             parts.push(match (cap.mode, access) {
                 (crate::sema::CaptureMode::RefMut, Access::Direct) => format!("&mut {name}"),

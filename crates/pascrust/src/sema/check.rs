@@ -1045,7 +1045,7 @@ impl Checker {
             self.error(e.span, format!("`{name}` takes {} argument(s) but {} were given", params.len(), args.len()));
             return self.a.procs[p].ret.clone().unwrap_or(Type::Void);
         }
-        let mut var_roots = Vec::new();
+        let mut var_args = Vec::new();
         for (&param, arg) in params.iter().zip(args) {
             let Var { ty, role, .. } = self.a.var(param).clone();
             if role == VarRole::Param(ParamMode::Var) {
@@ -1057,7 +1057,7 @@ impl Checker {
                     );
                 }
                 if let Some(root) = self.place_root(arg) {
-                    var_roots.push((root, arg.span));
+                    var_args.push(VarArg { param, root, whole: matches!(arg.kind, ExprKind::Name(_)), span: arg.span });
                 }
             } else {
                 let arg_ty = self.expr(arg);
@@ -1066,8 +1066,8 @@ impl Checker {
                 }
             }
         }
-        if !var_roots.is_empty() {
-            self.call_sites.push(CallSite { caller: cur, callee: p, var_roots });
+        if !var_args.is_empty() {
+            self.call_sites.push(CallSite { caller: cur, callee: p, var_args });
         }
         self.a.procs[p].ret.clone().unwrap_or(Type::Void)
     }

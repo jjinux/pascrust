@@ -149,6 +149,42 @@ fn is_ancestor(a: &Analysis, ancestor: ProcId, p: ProcId) -> bool {
     false
 }
 
+/// Find procedures that receive an outer variable twice: once as a
+/// captured variable and once through a `var` parameter, because every call
+/// passes that very variable by `var`. (`life.pas` does this: `Pause` takes
+/// the global `generations` as a `var` parameter, and also calls a procedure
+/// that reads the global directly.) Rust forbids holding `&mut generations`
+/// alongside a second reference to it. But since the two are always the same
+/// variable, the procedure can drop the capture and use the parameter for
+/// both. That's exactly Pascal's meaning, with no aliasing left for Rust to
+/// object to.
+pub(super) fn unify_aliases(a: &mut Analysis, sites: &[CallSite]) {
+    for p in 0..a.procs.len() {
+        let calls: Vec<&CallSite> = sites.iter().filter(|s| s.callee == p).collect();
+        if calls.is_empty() {
+            continue;
+        }
+        for cap in a.procs[p].captures.clone() {
+            let var_params = a.procs[p].params.iter().copied().filter(|&param| {
+                a.var(param).role == VarRole::Param(crate::ast::ParamMode::Var) && a.var(param).ty == a.var(cap.sym).ty
+            });
+            // A parameter that every call binds to the captured variable
+            // itself (or, for recursive calls, to the parameter again).
+            let alias = var_params.into_iter().find(|&param| {
+                calls.iter().all(|site| {
+                    site.var_args
+                        .iter()
+                        .any(|arg| arg.param == param && arg.whole && (arg.root == cap.sym || arg.root == param))
+                })
+            });
+            if let Some(param) = alias {
+                a.capture_aliases.insert((p, cap.sym), param);
+                a.procs[p].captures.retain(|c| c.sym != cap.sym);
+            }
+        }
+    }
+}
+
 /// Reject calls where Rust would see two mutable references to the same
 /// variable. Pascal allows this "aliasing" (and its behaviour is subtle even
 /// there); Rust's borrow checker forbids it outright.
@@ -157,7 +193,7 @@ pub(super) fn check_aliasing(a: &Analysis, sites: &[CallSite]) -> Vec<Diagnostic
     for site in sites {
         let callee = &a.procs[site.callee];
         let mut seen = HashSet::new();
-        for &(root, span) in &site.var_roots {
+        for &VarArg { root, span, .. } in &site.var_args {
             let name = &a.sym(root).name;
             if !seen.insert(root) {
                 errors.push(Diagnostic::new(

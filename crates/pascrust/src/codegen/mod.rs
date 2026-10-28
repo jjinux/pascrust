@@ -221,6 +221,16 @@ impl<'a> Codegen<'a> {
             }
         }
 
+        let mut aliases: Vec<_> = self.a.capture_aliases.iter().filter(|((p, _), _)| *p == pid).collect();
+        aliases.sort();
+        for ((_, outer), param) in aliases {
+            self.line("///");
+            let (outer, param) = (&self.a.sym(*outer).name, &self.a.sym(*param).name);
+            self.line(format!("/// Every call passes `{outer}` itself as `{param}`, so where the Pascal code"));
+            self.line(format!("/// uses `{outer}` directly, this function uses `{param}`: they are the same"));
+            self.line("/// variable, and Rust doesn't allow two references to one variable.");
+        }
+
         let mut params = Vec::new();
         for cap in &info.captures {
             let sym = self.a.sym(cap.sym);
@@ -494,9 +504,9 @@ impl<'a> Codegen<'a> {
     /// function: `x` for a variable it owns, `*x` for one it holds by
     /// reference.
     fn var_place(&self, sym: SymId) -> String {
-        let name = &self.a.sym(sym).rust_name;
+        let name = self.a.var_name(self.proc, sym);
         match self.a.access(self.proc, sym) {
-            Access::Direct => name.clone(),
+            Access::Direct => name.to_string(),
             Access::Reference => format!("*{name}"),
         }
     }

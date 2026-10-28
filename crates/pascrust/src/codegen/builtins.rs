@@ -208,7 +208,7 @@ impl<'a> Codegen<'a> {
     /// Method calls auto-dereference, so references don't need a `*`.
     fn place_receiver(&mut self, e: &Expr) -> String {
         match &e.kind {
-            ExprKind::Name(_) => self.a.sym(self.a.refs[&e.id]).rust_name.clone(),
+            ExprKind::Name(_) => self.a.var_name(self.proc, self.a.refs[&e.id]).to_string(),
             _ => self.place(e),
         }
     }

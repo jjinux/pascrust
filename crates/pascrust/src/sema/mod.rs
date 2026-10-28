@@ -158,6 +158,10 @@ pub struct Analysis {
     /// Enum, record and named array types, in declaration order, for codegen
     /// to emit as Rust items.
     pub type_defs: Vec<(Type, Span)>,
+    /// `(procedure, outer variable) → var parameter`: inside that procedure,
+    /// the outer variable is reached through the parameter, because every
+    /// call passes exactly that variable for it. See `lift::unify_aliases`.
+    pub capture_aliases: HashMap<(ProcId, SymId), SymId>,
     /// The value of every `case` label, computed at compile time.
     pub case_labels: HashMap<NodeId, ConstVal>,
     /// Variables that need no `let` declaration because they're only used as
@@ -192,8 +196,19 @@ impl Analysis {
         self.types.get(&id).unwrap_or(&Type::Error)
     }
 
+    /// The Rust name for variable `sym` inside procedure `proc`. Usually the
+    /// variable's own name, unless the procedure reaches it through an
+    /// aliasing `var` parameter (see [`Analysis::capture_aliases`]).
+    pub fn var_name(&self, proc: ProcId, sym: SymId) -> &str {
+        let sym = self.capture_aliases.get(&(proc, sym)).copied().unwrap_or(sym);
+        &self.symbols[sym].rust_name
+    }
+
     /// How variable `sym` is reached from inside procedure `proc`.
     pub fn access(&self, proc: ProcId, sym: SymId) -> Access {
+        if self.capture_aliases.contains_key(&(proc, sym)) {
+            return Access::Reference;
+        }
         let var = self.var(sym);
         if var.owner == proc {
             return match var.role {
@@ -215,8 +230,21 @@ pub fn analyze(program: &Program) -> Result<Analysis, Vec<Diagnostic>> {
     checker.program(program);
     let (mut analysis, mut errors, call_sites) = checker.finish();
     lift::lift(&mut analysis);
+    lift::unify_aliases(&mut analysis, &call_sites);
     errors.extend(lift::check_aliasing(&analysis, &call_sites));
     if errors.is_empty() { Ok(analysis) } else { Err(errors) }
+}
+
+/// One `var` argument of a call.
+#[derive(Debug, Clone)]
+pub struct VarArg {
+    /// The callee's parameter.
+    pub param: SymId,
+    /// The variable at the root of the argument (`a` for `a[i].x`).
+    pub root: SymId,
+    /// True if the argument is the whole variable, not a part of it.
+    pub whole: bool,
+    pub span: Span,
 }
 
 /// A call that passes some arguments by `var`, remembered so that aliasing
@@ -226,6 +254,5 @@ pub fn analyze(program: &Program) -> Result<Analysis, Vec<Diagnostic>> {
 pub struct CallSite {
     pub caller: ProcId,
     pub callee: ProcId,
-    /// The root variable of each `var` argument (`a` for `a[i].x`).
-    pub var_roots: Vec<(SymId, Span)>,
+    pub var_args: Vec<VarArg>,
 }
