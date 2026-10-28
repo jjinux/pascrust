@@ -220,7 +220,11 @@ trait can't do case 3 without a `?Sized` `Ptr` and downcasts.
 
 ## Cost and order
 
-About 4 days:
+About 4 days for a person working by hand. For Claude Code it's more like
+an afternoon: a few hours of session time, judging by how long `with`,
+`{$I-}` and two-fields-as-`var`-arguments took (well under an hour each),
+since this is several features of that size. The split, in the person-days
+the review used:
 
 - Sema, 1.5 days: hierarchy roots, the "calls a virtual" fixed point, the
   lifted-parameter union, pointer compatibility, extended `New`/`Dispose`,

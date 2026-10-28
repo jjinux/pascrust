@@ -182,7 +182,7 @@ chosen so each step is testable with the previous ones.
 
 - [ ] Sets (`PSet<T>`, literals, `in`, operators).
 - [ ] Variant records (flattened).
-- [ ] Virtual methods, constructors, destructors. Plan in `notes/virtual_methods.md`: a trait per hierarchy for dispatch (through `Self` and `var` parameters) and an enum per hierarchy that every pointer into it points to, joined by implementing the trait for the enum. About 4 days.
+- [ ] Virtual methods, constructors, destructors. Plan in `notes/virtual_methods.md`: a trait per hierarchy for dispatch (through `Self` and `var` parameters) and an enum per hierarchy that every pointer into it points to, joined by implementing the trait for the enum. About 4 person-days; a few hours for Claude Code.
 - [ ] Procedural types and procedure parameters.
 - [ ] Structured `goto` (forward jumps out of loops → labeled `break`).
 - [ ] TP-exact binary file layout including 6-byte `Real`, so `examples/database/mark.dat` can be read.
