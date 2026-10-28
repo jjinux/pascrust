@@ -155,7 +155,7 @@ implementation
       begin
          SetColor(Color);
          ArmLength := 0.8*Radius;
-         theta := (TempSec/60)*(2*pi)+pi/2; {CountClockWise starting at 12:00}
+         theta := pi/2-(TempSec/60)*(2*pi); {clockwise, starting at 12:00}
          Line(XtoPix(Center.X), YtoPix(Center.Y),
             YtoPix(ArmLength*cos(theta)) + XtoPix(Center.X),
             YtoPix(Center.Y-ArmLength*sin(theta)));
@@ -170,7 +170,7 @@ implementation
          SetColor(Color);
          ArmLength := 0.8*Radius;
          ArrowLength := 0.1*ArmLength;
-         theta := (TempMin/60)*(2*pi)+pi/2; {CountClockWise starting at 12:00}
+         theta := pi/2-(TempMin/60)*(2*pi); {clockwise, starting at 12:00}
          EndPoint.X := YtoPix(ArmLength*cos(theta)) + XtoPix(Center.X);
          EndPoint.Y := YtoPix(Center.Y-ArmLength*sin(theta));
          Line(XtoPix(Center.X), YtoPix(Center.Y), EndPoint.X, EndPoint.Y);
@@ -190,7 +190,7 @@ implementation
          SetColor(Color);
          ArmLength := 0.6*Radius;
          ArrowLength := 0.17*ArmLength;
-         theta := (TempHour/12)*(2*pi)+pi/2+
+         theta := pi/2-(TempHour/12)*(2*pi)-
             (TempMin/60 * pi/6);            {Not on number exactly}
          EndPoint.X := YtoPix(ArmLength*cos(theta)) + XtoPix(Center.X);
          EndPoint.Y := YtoPix(Center.Y-ArmLength*sin(theta));
