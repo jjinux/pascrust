@@ -11,10 +11,12 @@ authors.workspace = true
 # the features that a program's `uses` clauses need.
 crt = ["dep:crossterm"]
 dos = ["dep:chrono"]
-graph = []
+graph = ["dep:minifb"]
 
 [dependencies]
 # Terminal control (cursor, colours, raw keyboard input) for the `Crt` unit.
 crossterm = { version = "0.28", optional = true }
 # Local date and time for the `Dos` unit's `GetDate` and `GetTime`.
 chrono = { version = "0.4", optional = true, default-features = false, features = ["clock"] }
+# A window with a pixel buffer, for the `Graph` unit.
+minifb = { version = "0.29", optional = true }

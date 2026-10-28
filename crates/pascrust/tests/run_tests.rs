@@ -87,6 +87,7 @@ fn run_tests() {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env("PASCRUST_FAST", "1")
+            .env("PASCRUST_GRAPH", "headless")
             .spawn()
             .unwrap();
         child.stdin.take().unwrap().write_all(&input).unwrap();

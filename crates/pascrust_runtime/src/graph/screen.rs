@@ -1,0 +1,447 @@
+//! The graphics screen: a framebuffer of colour numbers plus the BGI's
+//! drawing state (current colour, line and fill styles, text settings,
+//! viewport, current position), and the drawing primitives.
+//!
+//! Coordinates passed to the drawing methods are relative to the viewport,
+//! as in the BGI. Pixels outside the screen (or outside a clipping viewport)
+//! are silently dropped.
+
+use super::font::FONT;
+
+pub const WIDTH: usize = 640;
+pub const HEIGHT: usize = 480;
+
+/// The EGA's default palette: for each of the 16 colour numbers, a 6-bit
+/// `rgbRGB` colour (lowercase bits are 1/3 intensity, uppercase 2/3). Colour
+/// 6 is 20, not 6, which turns dark yellow into brown.
+pub const DEFAULT_PALETTE: [u8; 16] = [0, 1, 2, 3, 4, 5, 20, 7, 56, 57, 58, 59, 60, 61, 62, 63];
+
+/// A 6-bit EGA colour as `0xRRGGBB`.
+pub fn ega_rgb(ega: u8) -> u32 {
+    // Each channel has a 2/3 bit and a 1/3 bit: 0x00, 0x55, 0xAA or 0xFF.
+    let channel = |high: u8, low: u8| -> u32 {
+        (if ega & (1 << high) != 0 { 0xAA } else { 0 }) + (if ega & (1 << low) != 0 { 0x55 } else { 0 })
+    };
+    (channel(2, 5) << 16) | (channel(1, 4) << 8) | channel(0, 3)
+}
+
+/// Line patterns for `SetLineStyle`: one bit per pixel along the line.
+const LINE_PATTERNS: [u16; 4] = [
+    0xFFFF, // SolidLn
+    0xCCCC, // DottedLn
+    0xFC78, // CenterLn
+    0xF8F8, // DashedLn
+];
+
+/// Fill patterns for `SetFillStyle`, 8x8, bit 7 is the leftmost pixel.
+/// Where a pattern has a 0 bit, the BGI paints the background colour.
+const FILL_PATTERNS: [[u8; 8]; 12] = [
+    [0x00; 8],                                        // EmptyFill
+    [0xFF; 8],                                        // SolidFill
+    [0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00], // LineFill
+    [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80], // LtSlashFill
+    [0xE0, 0xC1, 0x83, 0x07, 0x0E, 0x1C, 0x38, 0x70], // SlashFill
+    [0xF0, 0x78, 0x3C, 0x1E, 0x0F, 0x87, 0xC3, 0xE1], // BkSlashFill
+    [0xA5, 0xD2, 0x69, 0xB4, 0x5A, 0x2D, 0x96, 0x4B], // LtBkSlashFill
+    [0xFF, 0x88, 0x88, 0x88, 0xFF, 0x88, 0x88, 0x88], // HatchFill
+    [0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81], // XHatchFill
+    [0xCC, 0x33, 0xCC, 0x33, 0xCC, 0x33, 0xCC, 0x33], // InterleaveFill
+    [0x80, 0x00, 0x08, 0x00, 0x80, 0x00, 0x08, 0x00], // WideDotFill
+    [0x88, 0x00, 0x22, 0x00, 0x88, 0x00, 0x22, 0x00], // CloseDotFill
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteMode {
+    Copy,
+    Xor,
+}
+
+pub struct Screen {
+    /// One colour number (0..15) per pixel, row by row.
+    pub pixels: Vec<u8>,
+    /// The EGA colour each colour number is displayed as.
+    pub palette: [u8; 16],
+    pub color: u8,
+    pub bk_color: u8,
+    /// One bit per pixel along a line; thickness is 1 or 3.
+    pub line_pattern: u16,
+    pub thickness: i32,
+    pub fill_pattern: [u8; 8],
+    pub fill_color: u8,
+    /// `SetTextJustify`: horizontal 0 left, 1 centre, 2 right; vertical
+    /// 0 bottom, 1 centre, 2 top.
+    pub justify: (u8, u8),
+    /// `SetTextStyle`: true for vertical text, and the magnification.
+    pub vertical: bool,
+    pub text_scale: i32,
+    /// The viewport (absolute screen coordinates) and whether it clips.
+    pub view: (i32, i32, i32, i32),
+    pub clip: bool,
+    /// The current position, relative to the viewport.
+    pub cp: (i32, i32),
+    pub write_mode: WriteMode,
+}
+
+impl Screen {
+    pub fn new() -> Screen {
+        Screen {
+            pixels: vec![0; WIDTH * HEIGHT],
+            palette: DEFAULT_PALETTE,
+            color: 15,
+            bk_color: 0,
+            line_pattern: LINE_PATTERNS[0],
+            thickness: 1,
+            fill_pattern: FILL_PATTERNS[1],
+            fill_color: 15,
+            justify: (0, 2),
+            vertical: false,
+            text_scale: 1,
+            view: (0, 0, WIDTH as i32 - 1, HEIGHT as i32 - 1),
+            clip: true,
+            cp: (0, 0),
+            write_mode: WriteMode::Copy,
+        }
+    }
+
+    /// The screen as `0xRRGGBB` pixels, for a window or an image file.
+    pub fn render(&self, out: &mut [u32]) {
+        let rgb: Vec<u32> = self.palette.iter().map(|&e| ega_rgb(e)).collect();
+        for (dst, &src) in out.iter_mut().zip(&self.pixels) {
+            *dst = rgb[usize::from(src & 15)];
+        }
+    }
+
+    // Pixels.
+
+    /// The index of viewport-relative `(x, y)` in `pixels`, if it's visible.
+    fn index(&self, x: i32, y: i32) -> Option<usize> {
+        let (left, top, right, bottom) = self.view;
+        let (ax, ay) = (x + left, y + top);
+        if self.clip && (ax < left || ax > right || ay < top || ay > bottom) {
+            return None;
+        }
+        if ax < 0 || ay < 0 || ax >= WIDTH as i32 || ay >= HEIGHT as i32 {
+            return None;
+        }
+        Some(ay as usize * WIDTH + ax as usize)
+    }
+
+    pub fn put_pixel(&mut self, x: i32, y: i32, color: u8) {
+        if let Some(i) = self.index(x, y) {
+            self.pixels[i] = color & 15;
+        }
+    }
+
+    /// A pixel of a line or outline: honours `SetWriteMode`.
+    fn plot(&mut self, x: i32, y: i32) {
+        if let Some(i) = self.index(x, y) {
+            self.pixels[i] = match self.write_mode {
+                WriteMode::Copy => self.color,
+                WriteMode::Xor => self.pixels[i] ^ self.color,
+            };
+        }
+    }
+
+    pub fn get_pixel(&self, x: i32, y: i32) -> u8 {
+        // GetPixel isn't clipped to the viewport, only to the screen.
+        let (ax, ay) = (x + self.view.0, y + self.view.1);
+        if ax < 0 || ay < 0 || ax >= WIDTH as i32 || ay >= HEIGHT as i32 {
+            0
+        } else {
+            self.pixels[ay as usize * WIDTH + ax as usize]
+        }
+    }
+
+    /// A pixel of a filled area: the fill colour where the pattern has a 1,
+    /// the background (colour 0) where it has a 0.
+    fn fill_pixel(&mut self, x: i32, y: i32) {
+        // The pattern is anchored to the screen, not the viewport.
+        let (ax, ay) = (x + self.view.0, y + self.view.1);
+        let bit = self.fill_pattern[ay.rem_euclid(8) as usize] & (0x80 >> ax.rem_euclid(8));
+        let color = if bit != 0 { self.fill_color } else { 0 };
+        self.put_pixel(x, y, color);
+    }
+
+    fn fill_span(&mut self, x1: i32, x2: i32, y: i32) {
+        for x in x1.min(x2)..=x1.max(x2) {
+            self.fill_pixel(x, y);
+        }
+    }
+
+    // Lines.
+
+    /// Bresenham's line algorithm: step along the longer axis one pixel at a
+    /// time, and along the shorter one whenever the accumulated error says
+    /// the true line has moved half a pixel. `pattern` is the line style.
+    fn bresenham(&mut self, (x1, y1): (i32, i32), (x2, y2): (i32, i32), pattern: u16) {
+        let (dx, dy) = ((x2 - x1).abs(), -(y2 - y1).abs());
+        let (sx, sy) = ((x2 - x1).signum(), (y2 - y1).signum());
+        let (mut x, mut y, mut err) = (x1, y1, dx + dy);
+        let mut bit = 0;
+        loop {
+            if pattern & (0x8000 >> (bit % 16)) != 0 {
+                self.plot(x, y);
+            }
+            bit += 1;
+            if x == x2 && y == y2 {
+                return;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                x += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y += sy;
+            }
+        }
+    }
+
+    /// A line in the current style. A thick line is three lines side by
+    /// side, offset across the line's main direction, as the BGI does it.
+    pub fn line(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) {
+        let pattern = self.line_pattern;
+        if self.thickness < 3 {
+            self.bresenham((x1, y1), (x2, y2), pattern);
+            return;
+        }
+        let mostly_horizontal = (x2 - x1).abs() >= (y2 - y1).abs();
+        for d in -1..=1 {
+            let (ox, oy) = if mostly_horizontal { (0, d) } else { (d, 0) };
+            self.bresenham((x1 + ox, y1 + oy), (x2 + ox, y2 + oy), pattern);
+        }
+    }
+
+    pub fn rectangle(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) {
+        self.line(x1, y1, x2, y1);
+        self.line(x2, y1, x2, y2);
+        self.line(x2, y2, x1, y2);
+        self.line(x1, y2, x1, y1);
+    }
+
+    pub fn bar(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) {
+        for y in y1.min(y2)..=y1.max(y2) {
+            self.fill_span(x1, x2, y);
+        }
+    }
+
+    // Curves.
+
+    /// Points on an elliptical arc, `start`..`end` degrees counterclockwise
+    /// from 3 o'clock (screen y grows downwards, hence `cy - ...`).
+    fn arc_points(cx: i32, cy: i32, start: i32, end: i32, xr: i32, yr: i32) -> Vec<(i32, i32)> {
+        let mut end = end;
+        while end < start {
+            end += 360;
+        }
+        // Enough steps that consecutive points are about a pixel apart.
+        let span = f64::from(end - start).to_radians();
+        let steps = ((f64::from(xr.max(yr).max(1)) * span).ceil() as i32).max(1);
+        (0..=steps)
+            .map(|i| {
+                let a = f64::from(start).to_radians() + span * f64::from(i) / f64::from(steps);
+                (cx + (f64::from(xr) * a.cos()).round() as i32, cy - (f64::from(yr) * a.sin()).round() as i32)
+            })
+            .collect()
+    }
+
+    /// An elliptical arc in the current colour. Arcs are always solid; a
+    /// thick one is three arcs of neighbouring radii.
+    pub fn ellipse(&mut self, cx: i32, cy: i32, start: i32, end: i32, xr: i32, yr: i32) {
+        let radii: &[i32] = if self.thickness >= 3 { &[-1, 0, 1] } else { &[0] };
+        for &d in radii {
+            let points = Screen::arc_points(cx, cy, start, end, xr + d, yr + d);
+            // Join the points with short lines so the curve has no gaps.
+            for pair in points.windows(2) {
+                self.bresenham(pair[0], pair[1], 0xFFFF);
+            }
+        }
+    }
+
+    /// The inside of an ellipse, one horizontal span per row.
+    pub fn fill_ellipse_inside(&mut self, cx: i32, cy: i32, xr: i32, yr: i32) {
+        for dy in -yr..=yr {
+            let t = 1.0 - (f64::from(dy) / f64::from(yr.max(1))).powi(2);
+            let half = (f64::from(xr) * t.max(0.0).sqrt()).round() as i32;
+            self.fill_span(cx - half, cx + half, cy + dy);
+        }
+    }
+
+    /// A filled wedge of an ellipse (`PieSlice`, `Sector`), outlined.
+    pub fn sector(&mut self, cx: i32, cy: i32, start: i32, end: i32, xr: i32, yr: i32) {
+        let (start_f, mut end_f) = (f64::from(start.rem_euclid(360)), f64::from(end.rem_euclid(360)));
+        if end_f <= start_f {
+            end_f += 360.0;
+        }
+        for dy in -yr..=yr {
+            for dx in -xr..=xr {
+                let inside =
+                    (f64::from(dx) / f64::from(xr.max(1))).powi(2) + (f64::from(dy) / f64::from(yr.max(1))).powi(2);
+                if inside > 1.0 {
+                    continue;
+                }
+                let mut angle = f64::from(-dy).atan2(f64::from(dx)).to_degrees().rem_euclid(360.0);
+                if angle < start_f {
+                    angle += 360.0;
+                }
+                if angle <= end_f {
+                    self.fill_pixel(cx + dx, cy + dy);
+                }
+            }
+        }
+        self.ellipse(cx, cy, start, end, xr, yr);
+        let points = Screen::arc_points(cx, cy, start, end, xr, yr);
+        if let (Some(&first), Some(&last)) = (points.first(), points.last()) {
+            self.line(cx, cy, first.0, first.1);
+            self.line(cx, cy, last.0, last.1);
+        }
+    }
+
+    /// Fill the area around `(x, y)` up to pixels of colour `border`.
+    pub fn flood_fill(&mut self, x: i32, y: i32, border: u8) {
+        let mut seen = vec![false; WIDTH * HEIGHT];
+        let mut stack = vec![(x, y)];
+        while let Some((x, y)) = stack.pop() {
+            let Some(i) = self.index(x, y) else { continue };
+            if seen[i] || self.pixels[i] == border {
+                continue;
+            }
+            seen[i] = true;
+            self.fill_pixel(x, y);
+            stack.extend([(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]);
+        }
+    }
+
+    // Text.
+
+    /// The width and height of `text` in pixels, before rotation.
+    pub fn text_size(&self, text: &[u8]) -> (i32, i32) {
+        (8 * self.text_scale * text.len() as i32, 8 * self.text_scale)
+    }
+
+    /// Draw `text` with its reference point at `(x, y)`, justified as set by
+    /// `SetTextJustify`.
+    pub fn out_text_xy(&mut self, x: i32, y: i32, text: &[u8]) {
+        let (w, h) = self.text_size(text);
+        let s = self.text_scale;
+        let shift = |justify: u8, size: i32| match justify {
+            1 => size / 2,
+            2 => size,
+            _ => 0,
+        };
+        if !self.vertical {
+            // Horizontal: 0 = left; vertical: 0 = bottom, 2 = top.
+            let left = x - shift(self.justify.0, w);
+            let top = y - h + shift(self.justify.1, h);
+            for (n, &c) in text.iter().enumerate() {
+                self.glyph(c, |gx, gy| (left + n as i32 * 8 * s + gx, top + gy));
+            }
+        } else {
+            // Vertical text reads upwards: rotated 90 degrees anticlockwise.
+            let bottom = y + shift(self.justify.0, w);
+            let left = x - h + shift(self.justify.1, h);
+            for (n, &c) in text.iter().enumerate() {
+                self.glyph(c, |gx, gy| (left + gy, bottom - n as i32 * 8 * s - gx));
+            }
+        }
+    }
+
+    /// Draw one character; `place` maps a pixel of the (scaled) glyph to the
+    /// screen.
+    fn glyph(&mut self, c: u8, place: impl Fn(i32, i32) -> (i32, i32)) {
+        let rows = FONT.get(usize::from(c)).copied().unwrap_or([0; 8]);
+        let s = self.text_scale;
+        for (row, bits) in rows.iter().enumerate() {
+            for col in 0..8 {
+                if bits & (1 << col) == 0 {
+                    continue;
+                }
+                for sy in 0..s {
+                    for sx in 0..s {
+                        let (x, y) = place(col * s + sx, row as i32 * s + sy);
+                        let color = self.color;
+                        self.put_pixel(x, y, color);
+                    }
+                }
+            }
+        }
+    }
+
+    // State.
+
+    pub fn set_line_style(&mut self, style: i32, pattern: u16, thickness: i32) {
+        self.line_pattern = match style {
+            4 => pattern,
+            s => LINE_PATTERNS.get(s as usize).copied().unwrap_or(0xFFFF),
+        };
+        self.thickness = thickness;
+    }
+
+    pub fn set_fill_style(&mut self, pattern: i32, color: u8) {
+        if let Some(p) = FILL_PATTERNS.get(pattern as usize) {
+            self.fill_pattern = *p;
+        }
+        self.fill_color = color & 15;
+    }
+
+    pub fn clear_view_port(&mut self) {
+        let (left, top, right, bottom) = self.view;
+        for y in top.max(0)..=bottom.min(HEIGHT as i32 - 1) {
+            for x in left.max(0)..=right.min(WIDTH as i32 - 1) {
+                self.pixels[y as usize * WIDTH + x as usize] = 0;
+            }
+        }
+        self.cp = (0, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn palette_colours() {
+        assert_eq!(ega_rgb(DEFAULT_PALETTE[0]), 0x000000);
+        assert_eq!(ega_rgb(DEFAULT_PALETTE[1]), 0x0000AA);
+        assert_eq!(ega_rgb(DEFAULT_PALETTE[6]), 0xAA5500); // brown
+        assert_eq!(ega_rgb(DEFAULT_PALETTE[14]), 0xFFFF55);
+        assert_eq!(ega_rgb(DEFAULT_PALETTE[15]), 0xFFFFFF);
+    }
+
+    #[test]
+    fn lines_reach_both_ends() {
+        let mut s = Screen::new();
+        s.color = 4;
+        s.line(10, 10, 20, 15);
+        assert_eq!(s.get_pixel(10, 10), 4);
+        assert_eq!(s.get_pixel(20, 15), 4);
+        assert_eq!(s.get_pixel(15, 20), 0);
+    }
+
+    #[test]
+    fn circle_and_fill() {
+        let mut s = Screen::new();
+        s.color = 2;
+        s.ellipse(100, 100, 0, 360, 20, 20);
+        assert_eq!(s.get_pixel(120, 100), 2);
+        assert_eq!(s.get_pixel(100, 80), 2);
+        assert_eq!(s.get_pixel(100, 100), 0);
+        s.set_fill_style(1, 3);
+        s.flood_fill(100, 100, 2);
+        assert_eq!(s.get_pixel(100, 100), 3);
+        assert_eq!(s.get_pixel(130, 100), 0);
+    }
+
+    #[test]
+    fn text_justification() {
+        let mut s = Screen::new();
+        s.justify = (1, 1); // centred both ways
+        s.out_text_xy(100, 100, b"I");
+        // `I` is drawn in the 8x8 cell from (96, 96) to (103, 103).
+        let lit: Vec<(i32, i32)> =
+            (90..110).flat_map(|y| (90..110).map(move |x| (x, y))).filter(|&(x, y)| s.get_pixel(x, y) != 0).collect();
+        assert!(lit.iter().all(|&(x, y)| (96..104).contains(&x) && (96..104).contains(&y)), "{lit:?}");
+        assert!(!lit.is_empty());
+    }
+}

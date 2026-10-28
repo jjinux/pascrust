@@ -346,7 +346,9 @@ impl<'a> Codegen<'a> {
                         Param::Int => self.expr(arg).0,
                         Param::Real => self.coerce(arg, &Type::Real).0,
                         Param::Str => self.string_arg(arg),
-                        Param::VarWord => self.place_mut(arg),
+                        Param::Bool => self.expr(arg).0,
+                        Param::FillPattern => self.coerce(arg, &crate::sema::units::fill_pattern_type()).0,
+                        Param::VarWord | Param::VarInteger | Param::VarFillPattern => self.place_mut(arg),
                     })
                     .collect();
                 format!("{}({})", r.rust, parts.join(", "))
@@ -362,7 +364,7 @@ impl<'a> Codegen<'a> {
     }
 
     pub(super) fn user_call(&mut self, p: usize, args: &[Expr]) -> String {
-        let args = self.call_args(p, args);
+        let args = self.call_args(p, args, None);
         format!("{}({args})", self.a.procs[p].rust_name)
     }
 
@@ -381,7 +383,15 @@ impl<'a> Codegen<'a> {
             receiver.push('.');
             receiver.push_str(step);
         }
-        let args = self.call_args(pid, args);
+        // The receiver is borrowed (`&mut self`) for the whole call, so an
+        // argument that uses the same object, `obj.Show(obj.Name)`, must be
+        // computed first. With an implicit `Self`, any call in an argument
+        // might be another method of the same object.
+        let borrowed = match &callee.kind {
+            ExprKind::Field(receiver, _) => Receiver::Named(root_key(receiver)),
+            _ => Receiver::ImplicitSelf,
+        };
+        let args = self.call_args(pid, args, Some(borrowed));
         format!("{receiver}.{}({args})", self.a.procs[pid].rust_name)
     }
 
@@ -397,7 +407,7 @@ impl<'a> Codegen<'a> {
 
     /// The argument list for a call: captured outer variables first, then
     /// the Pascal arguments.
-    fn call_args(&mut self, p: usize, args: &[Expr]) -> String {
+    fn call_args(&mut self, p: usize, args: &[Expr], receiver: Option<Receiver>) -> String {
         let info = &self.a.procs[p];
         let mut parts = Vec::new();
         // Captured variables first, in the callee's order.
@@ -437,7 +447,12 @@ impl<'a> Codegen<'a> {
                 // `get()` returns would live until the end of the statement,
                 // keeping the record borrowed while `f` runs, so `f` couldn't
                 // modify or dispose it.
-                if borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root)) || derefs(arg) {
+                let uses_receiver = match &receiver {
+                    Some(Receiver::Named(root)) => !root.is_empty() && mentions(arg, root),
+                    Some(Receiver::ImplicitSelf) => self.calls(arg),
+                    None => false,
+                };
+                if borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root)) || derefs(arg) || uses_receiver {
                     let temp = self.temp_name(&self.a.sym(*param).rust_name.clone());
                     self.pending.push(format!("let {temp} = {code};"));
                     parts.push(temp);
@@ -447,6 +462,22 @@ impl<'a> Codegen<'a> {
             }
         }
         parts.join(", ")
+    }
+
+    /// Does `e` contain a call (which might be a method call)? A method
+    /// without parameters can be called without parentheses, as a bare name.
+    fn calls(&self, e: &Expr) -> bool {
+        if self.a.method_calls.contains_key(&e.id) {
+            return true;
+        }
+        match &e.kind {
+            ExprKind::Call { .. } => true,
+            ExprKind::Field(base, _) | ExprKind::Deref(base) => self.calls(base),
+            ExprKind::Index(base, indexes) => self.calls(base) || indexes.iter().any(|i| self.calls(i)),
+            ExprKind::Unary { operand, .. } => self.calls(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.calls(lhs) || self.calls(rhs),
+            _ => false,
+        }
     }
 
     /// A name for a temporary that holds an argument: the parameter's name,
@@ -499,6 +530,14 @@ fn mentions(e: &Expr, key: &str) -> bool {
         ExprKind::Format { value, .. } => mentions(value, key),
         _ => false,
     }
+}
+
+/// The object a method is called on, for [`Codegen::call_args`].
+enum Receiver {
+    /// `obj.Method(...)`: the variable the receiver starts from.
+    Named(String),
+    /// `Method(...)` inside another method of the same object.
+    ImplicitSelf,
 }
 
 /// Does `e` read through a pointer (`p^`)?

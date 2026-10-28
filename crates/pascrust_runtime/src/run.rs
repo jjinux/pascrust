@@ -35,6 +35,8 @@ pub fn rte(code: i32, message: impl Into<String>) -> ! {
 /// Pascal programs sometimes have statements after a `Halt`, and with `!`
 /// Rust would warn that they're unreachable.
 pub fn halt(code: i32) {
+    #[cfg(feature = "graph")]
+    crate::graph::save_if_requested();
     crate::io::shutdown();
     std::process::exit(code)
 }
@@ -56,15 +58,25 @@ pub fn run(program: fn()) {
         }
     }));
 
+    // Remember where we started: unmapped DOS drives (`A:\`) mean this
+    // directory, even after the program uses `ChDir`.
+    crate::system::start_dir();
+
     let worker = std::thread::Builder::new()
         .name("pascal".to_string())
         .stack_size(256 * 1024 * 1024)
         .spawn(program)
         .expect("failed to start the Pascal program thread");
 
+    // A `Graph` program's window has to be run from this, the main, thread.
+    #[cfg(feature = "graph")]
+    crate::graph::window::main_loop(&worker);
+
     // `join` returns `Err(payload)` if the thread panicked; this is how we
     // "catch" the panic without needing `catch_unwind` ourselves.
     let result = worker.join();
+    #[cfg(feature = "graph")]
+    crate::graph::save_if_requested();
     crate::io::shutdown();
     if let Err(payload) = result {
         let err = to_runtime_error(payload);

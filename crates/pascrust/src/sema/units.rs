@@ -1,4 +1,4 @@
-//! The standard Turbo Pascal units: `Crt`, `Dos` and the parts of `System`
+//! The standard Turbo Pascal units: `Crt`, `Dos`, `Graph` and the parts of `System`
 //! that behave like ordinary procedures.
 //!
 //! Unlike `Writeln` and friends (see `builtins.rs`), these routines have
@@ -17,8 +17,25 @@ pub enum Param {
     Real,
     /// Anything string-like (`impl Into<PString>` in the runtime).
     Str,
+    Bool,
     /// A `var` parameter of type `Word`.
     VarWord,
+    /// A `var` parameter of type `Integer`.
+    VarInteger,
+    /// `Graph`'s `FillPatternType`, by value and as a `var` parameter.
+    FillPattern,
+    VarFillPattern,
+}
+
+/// `Graph`'s `FillPatternType = array[1..8] of Byte`: an 8x8 bit pattern.
+pub fn fill_pattern_type() -> Type {
+    Type::Array(std::rc::Rc::new(super::types::ArrayType {
+        index: Type::Int(IntKind::Integer),
+        lo: 1,
+        hi: 8,
+        elem: Type::Int(IntKind::Byte),
+        alias: Some("FillPatternType".to_string()),
+    }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,7 +131,8 @@ pub static DOS: &[UnitRoutine] = &[
 /// A constant a unit exports: Pascal name, Rust name, value.
 pub type UnitConst = (&'static str, &'static str, i64);
 
-pub static CRT_CONSTS: &[UnitConst] = &[
+/// The 16 colours, shared by `Crt` and `Graph`.
+pub static COLORS: &[UnitConst] = &[
     ("black", "BLACK", 0),
     ("blue", "BLUE", 1),
     ("green", "GREEN", 2),
@@ -131,6 +149,9 @@ pub static CRT_CONSTS: &[UnitConst] = &[
     ("lightmagenta", "LIGHT_MAGENTA", 13),
     ("yellow", "YELLOW", 14),
     ("white", "WHITE", 15),
+];
+
+pub static CRT_CONSTS: &[UnitConst] = &[
     ("blink", "BLINK", 128),
     ("bw40", "BW40", 0),
     ("co40", "CO40", 1),
@@ -138,6 +159,125 @@ pub static CRT_CONSTS: &[UnitConst] = &[
     ("co80", "CO80", 3),
     ("mono", "MONO", 7),
 ];
+
+pub static GRAPH: &[UnitRoutine] = &[
+    routine!("initgraph" => "init_graph"(VarInteger, VarInteger, Str)),
+    routine!("detectgraph" => "detect_graph"(VarInteger, VarInteger)),
+    routine!("closegraph" => "close_graph"()),
+    routine!("restorecrtmode" => "restore_crt_mode"()),
+    routine!("setgraphmode" => "set_graph_mode"(Int)),
+    routine!("getgraphmode" => "get_graph_mode"() -> Integer),
+    routine!("graphresult" => "graph_result"() -> Integer),
+    routine!("grapherrormsg" => "graph_error_msg"(Int) -> Str),
+    routine!("getmaxx" => "get_max_x"() -> Integer),
+    routine!("getmaxy" => "get_max_y"() -> Integer),
+    routine!("getmaxcolor" => "get_max_color"() -> Word),
+    routine!("getaspectratio" => "get_aspect_ratio"(VarWord, VarWord)),
+    routine!("setcolor" => "set_color"(Int)),
+    routine!("getcolor" => "get_color"() -> Word),
+    routine!("setbkcolor" => "set_bk_color"(Int)),
+    routine!("getbkcolor" => "get_bk_color"() -> Word),
+    routine!("setpalette" => "set_palette"(Int, Int)),
+    routine!("putpixel" => "put_pixel"(Int, Int, Int)),
+    routine!("getpixel" => "get_pixel"(Int, Int) -> Word),
+    routine!("line" => "line"(Int, Int, Int, Int)),
+    routine!("lineto" => "line_to"(Int, Int)),
+    routine!("linerel" => "line_rel"(Int, Int)),
+    routine!("moveto" => "move_to"(Int, Int)),
+    routine!("moverel" => "move_rel"(Int, Int)),
+    routine!("getx" => "get_x"() -> Integer),
+    routine!("gety" => "get_y"() -> Integer),
+    routine!("setlinestyle" => "set_line_style"(Int, Int, Int)),
+    routine!("setwritemode" => "set_write_mode"(Int)),
+    routine!("rectangle" => "rectangle"(Int, Int, Int, Int)),
+    routine!("setfillstyle" => "set_fill_style"(Int, Int)),
+    routine!("setfillpattern" => "set_fill_pattern"(FillPattern, Int)),
+    routine!("getfillpattern" => "get_fill_pattern"(VarFillPattern)),
+    routine!("bar" => "bar"(Int, Int, Int, Int)),
+    routine!("bar3d" => "bar3d"(Int, Int, Int, Int, Int, Bool)),
+    routine!("circle" => "circle"(Int, Int, Int)),
+    routine!("arc" => "arc"(Int, Int, Int, Int, Int)),
+    routine!("ellipse" => "ellipse"(Int, Int, Int, Int, Int, Int)),
+    routine!("fillellipse" => "fill_ellipse"(Int, Int, Int, Int)),
+    routine!("pieslice" => "pie_slice"(Int, Int, Int, Int, Int)),
+    routine!("sector" => "sector"(Int, Int, Int, Int, Int, Int)),
+    routine!("floodfill" => "flood_fill"(Int, Int, Int)),
+    routine!("cleardevice" => "clear_device"()),
+    routine!("setviewport" => "set_view_port"(Int, Int, Int, Int, Bool)),
+    routine!("clearviewport" => "clear_view_port"()),
+    routine!("settextjustify" => "set_text_justify"(Int, Int)),
+    routine!("settextstyle" => "set_text_style"(Int, Int, Int)),
+    routine!("outtext" => "out_text"(Str)),
+    routine!("outtextxy" => "out_text_xy"(Int, Int, Str)),
+    routine!("textwidth" => "text_width"(Str) -> Word),
+    routine!("textheight" => "text_height"(Str) -> Word),
+];
+
+pub static GRAPH_CONSTS: &[UnitConst] = &[
+    ("detect", "DETECT", 0),
+    ("cga", "CGA", 1),
+    ("mcga", "MCGA", 2),
+    ("ega", "EGA", 3),
+    ("ega64", "EGA64", 4),
+    ("egamono", "EGA_MONO", 5),
+    ("ibm8514", "IBM8514", 6),
+    ("hercmono", "HERC_MONO", 7),
+    ("att400", "ATT400", 8),
+    ("vga", "VGA", 9),
+    ("pc3270", "PC3270", 10),
+    ("vgalo", "VGA_LO", 0),
+    ("vgamed", "VGA_MED", 1),
+    ("vgahi", "VGA_HI", 2),
+    ("grok", "GR_OK", 0),
+    ("solidln", "SOLID_LN", 0),
+    ("dottedln", "DOTTED_LN", 1),
+    ("centerln", "CENTER_LN", 2),
+    ("dashedln", "DASHED_LN", 3),
+    ("userbitln", "USER_BIT_LN", 4),
+    ("normwidth", "NORM_WIDTH", 1),
+    ("thickwidth", "THICK_WIDTH", 3),
+    ("emptyfill", "EMPTY_FILL", 0),
+    ("solidfill", "SOLID_FILL", 1),
+    ("linefill", "LINE_FILL", 2),
+    ("ltslashfill", "LT_SLASH_FILL", 3),
+    ("slashfill", "SLASH_FILL", 4),
+    ("bkslashfill", "BK_SLASH_FILL", 5),
+    ("ltbkslashfill", "LT_BK_SLASH_FILL", 6),
+    ("hatchfill", "HATCH_FILL", 7),
+    ("xhatchfill", "X_HATCH_FILL", 8),
+    ("interleavefill", "INTERLEAVE_FILL", 9),
+    ("widedotfill", "WIDE_DOT_FILL", 10),
+    ("closedotfill", "CLOSE_DOT_FILL", 11),
+    ("userfill", "USER_FILL", 12),
+    ("lefttext", "LEFT_TEXT", 0),
+    ("centertext", "CENTER_TEXT", 1),
+    ("righttext", "RIGHT_TEXT", 2),
+    ("bottomtext", "BOTTOM_TEXT", 0),
+    ("toptext", "TOP_TEXT", 2),
+    ("defaultfont", "DEFAULT_FONT", 0),
+    ("triplexfont", "TRIPLEX_FONT", 1),
+    ("smallfont", "SMALL_FONT", 2),
+    ("sansseriffont", "SANS_SERIF_FONT", 3),
+    ("gothicfont", "GOTHIC_FONT", 4),
+    ("horizdir", "HORIZ_DIR", 0),
+    ("vertdir", "VERT_DIR", 1),
+    ("copyput", "COPY_PUT", 0),
+    ("xorput", "XOR_PUT", 1),
+    ("maxcolors", "MAX_COLORS", 15),
+];
+
+/// Boolean constants a unit exports: Pascal name, Rust name, value.
+pub fn unit_bools(name: &str) -> &'static [(&'static str, &'static str, bool)] {
+    match name {
+        "graph" => &[
+            ("clipon", "CLIP_ON", true),
+            ("clipoff", "CLIP_OFF", false),
+            ("topon", "TOP_ON", true),
+            ("topoff", "TOP_OFF", false),
+        ],
+        _ => &[],
+    }
+}
 
 /// Types a unit exports. The `Dos` unit's path strings are `string[n]`
 /// types sized for DOS's path limits.
@@ -149,15 +289,22 @@ pub fn unit_types(name: &str) -> Vec<(&'static str, Type)> {
             ("namestr", Type::Str { cap: 8 }),
             ("extstr", Type::Str { cap: 4 }),
         ],
+        "graph" => vec![("fillpatterntype", fill_pattern_type())],
         _ => Vec::new(),
     }
 }
 
-/// The routines and constants of a unit, by lowercase name.
-pub fn unit(name: &str) -> Option<(&'static [UnitRoutine], &'static [UnitConst])> {
+// A static may refer to other statics (a `const` may not), so the groups
+// of constants each unit exports are statics too.
+static CRT_GROUPS: &[&[UnitConst]] = &[COLORS, CRT_CONSTS];
+static GRAPH_GROUPS: &[&[UnitConst]] = &[COLORS, GRAPH_CONSTS];
+
+/// The routines and constants (in groups) of a unit, by lowercase name.
+pub fn unit(name: &str) -> Option<(&'static [UnitRoutine], &'static [&'static [UnitConst]])> {
     match name {
-        "crt" => Some((CRT, CRT_CONSTS)),
+        "crt" => Some((CRT, CRT_GROUPS)),
         "dos" => Some((DOS, &[])),
+        "graph" => Some((GRAPH, GRAPH_GROUPS)),
         // `Printer` only declares the `Lst` text file; nothing to add yet.
         "printer" => Some((&[], &[])),
         _ => None,

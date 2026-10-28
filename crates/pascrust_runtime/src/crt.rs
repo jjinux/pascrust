@@ -20,23 +20,10 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::style::{Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor};
 use crossterm::{QueueableCommand, cursor, terminal};
 
-// Colour constants, in the CGA order Turbo Pascal used.
-pub const BLACK: u8 = 0;
-pub const BLUE: u8 = 1;
-pub const GREEN: u8 = 2;
-pub const CYAN: u8 = 3;
-pub const RED: u8 = 4;
-pub const MAGENTA: u8 = 5;
-pub const BROWN: u8 = 6;
-pub const LIGHT_GRAY: u8 = 7;
-pub const DARK_GRAY: u8 = 8;
-pub const LIGHT_BLUE: u8 = 9;
-pub const LIGHT_GREEN: u8 = 10;
-pub const LIGHT_CYAN: u8 = 11;
-pub const LIGHT_RED: u8 = 12;
-pub const LIGHT_MAGENTA: u8 = 13;
-pub const YELLOW: u8 = 14;
-pub const WHITE: u8 = 15;
+use crate::colors::LIGHT_GRAY;
+
+// The colour constants (`BLACK`..`WHITE`) are in `colors.rs`, shared with
+// `Graph`.
 pub const BLINK: u8 = 128;
 // Text modes for `TextMode`.
 pub const BW40: u8 = 0;
@@ -313,6 +300,11 @@ pub fn no_sound() {}
 /// `KeyPressed`: is a key waiting? In plain mode (scripted input) there's
 /// always a key "waiting", the next character of input.
 pub fn key_pressed() -> bool {
+    // In graphics mode, keys come from the graphics window.
+    #[cfg(feature = "graph")]
+    if crate::graph::window::is_open() {
+        return crate::graph::window::key_pressed();
+    }
     if CRT.with_borrow(|crt| crt.pending_scan_code.is_some()) {
         return true;
     }
@@ -344,6 +336,10 @@ thread_local! {
 /// Keys with no character (arrows, function keys) come back as `#0`
 /// followed, on the next call, by the key's PC scan code.
 pub fn read_key() -> u8 {
+    #[cfg(feature = "graph")]
+    if crate::graph::window::is_open() {
+        return crate::graph::window::read_key();
+    }
     if let Some(code) = CRT.with_borrow_mut(|crt| crt.pending_scan_code.take()) {
         return code;
     }

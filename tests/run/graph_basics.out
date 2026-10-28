@@ -1,0 +1,14 @@
+driver 9, mode 2, result 0
+screen 639 x 479, colours 0..15
+line: 4 4 0
+thick: 4 4 0
+dotted: 44004400
+bar: 1 1 0
+circle: 2 2 0
+flood: 14 0
+pattern: 255 255
+viewport: 15 0
+text: 40 x 8
+position: 15, 5
+background: 1, pixel 0
+done

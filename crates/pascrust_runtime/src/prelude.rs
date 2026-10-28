@@ -12,12 +12,16 @@ pub use crate::ptr::Ptr;
 pub use crate::run::{halt, rte};
 pub use crate::string::{PString, pos, pstr};
 pub use crate::system::{ch_dir, mk_dir, param_count, param_str, pas_str, random, random_real, randomize, rm_dir, val};
-// The `Crt` and `Dos` units, when the program uses them. `#[cfg(feature)]`
-// compiles a line only when that Cargo feature is turned on.
+// The `Crt`, `Dos` and `Graph` units, when the program uses them.
+// `#[cfg(feature)]` compiles a line only when that Cargo feature is on.
+#[cfg(any(feature = "crt", feature = "graph"))]
+pub use crate::colors::*;
 #[cfg(feature = "crt")]
 pub use crate::crt::*;
 #[cfg(feature = "dos")]
 pub use crate::dos::*;
+#[cfg(feature = "graph")]
+pub use crate::graph::*;
 // `#[macro_export]` macros live at the crate root; re-exporting them here
 // lets the generated code's single glob import pick them up as well.
 pub use crate::{file_record, fread, freadln, fwrite, fwriteln, pread, preadln, pwrite, pwriteln};

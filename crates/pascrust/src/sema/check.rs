@@ -201,11 +201,14 @@ impl Checker {
         name
     }
 
+    /// Pick a name not in `set` by appending a number: `node_2` for
+    /// snake_case names, `Node2` for CamelCase (type) names.
     fn unique_in(set: &mut HashSet<String>, base: String) -> String {
+        let camel = base.starts_with(|c: char| c.is_ascii_uppercase());
         let mut name = base.clone();
         let mut n = 2;
         while set.contains(&name) {
-            name = format!("{base}_{n}");
+            name = if camel { format!("{base}{n}") } else { format!("{base}_{n}") };
             n += 1;
         }
         set.insert(name.clone());
@@ -257,7 +260,11 @@ impl Checker {
     }
 
     /// Make a standard unit's routines and constants visible.
-    fn declare_unit_routines(&mut self, routines: &'static [super::units::UnitRoutine], consts: &[(&str, &str, i64)]) {
+    fn declare_unit_routines(
+        &mut self,
+        routines: &'static [super::units::UnitRoutine],
+        consts: &[super::units::UnitConst],
+    ) {
         for routine in routines {
             let sym = self.add_symbol(routine.name, routine.rust.to_string(), SymKind::UnitRoutine(routine));
             self.scopes[0].insert(routine.name.to_string(), sym);
@@ -285,8 +292,16 @@ impl Checker {
     /// hide an earlier one's, which is Turbo Pascal's rule).
     fn use_units(&mut self, uses: &[Ident]) {
         for unit in uses {
-            if let Some((routines, consts)) = super::units::unit(&unit.key()) {
-                self.declare_unit_routines(routines, consts);
+            if let Some((routines, groups)) = super::units::unit(&unit.key()) {
+                self.declare_unit_routines(routines, &[]);
+                for consts in groups {
+                    self.declare_unit_routines(&[], consts);
+                }
+                for &(name, rust, value) in super::units::unit_bools(&unit.key()) {
+                    let kind = SymKind::Const { value: ConstVal::Bool(value), ty: Type::Bool };
+                    let sym = self.add_symbol(name, rust.to_string(), kind);
+                    self.scopes[0].insert(name.to_string(), sym);
+                }
                 for (name, ty) in super::units::unit_types(&unit.key()) {
                     let sym = self.add_symbol(name, ty.rust(), SymKind::TypeName(ty));
                     self.scopes[0].insert(name.to_string(), sym);
@@ -1450,10 +1465,28 @@ impl Checker {
                         self.error(arg.span, format!("expected a number, found {ty}"));
                     }
                 }
+                Param::Bool => {
+                    let ty = self.expr(arg);
+                    if ty != Type::Bool && ty != Type::Error {
+                        self.error(arg.span, format!("expected a Boolean, found {ty}"));
+                    }
+                }
                 Param::VarWord => {
                     let ty = self.place(arg, true);
                     if ty != Type::Int(IntKind::Word) && ty != Type::Error {
                         self.error(arg.span, format!("expected a Word variable, found {ty}"));
+                    }
+                }
+                Param::FillPattern | Param::VarFillPattern => {
+                    let ty = if *param == Param::FillPattern { self.expr(arg) } else { self.place(arg, true) };
+                    if ty != super::units::fill_pattern_type() && ty != Type::Error {
+                        self.error(arg.span, format!("expected a FillPatternType, found {ty}"));
+                    }
+                }
+                Param::VarInteger => {
+                    let ty = self.place(arg, true);
+                    if ty != Type::Int(IntKind::Integer) && ty != Type::Error {
+                        self.error(arg.span, format!("expected an Integer variable, found {ty}"));
                     }
                 }
             }
