@@ -48,22 +48,9 @@ Or install the tool once with `cargo install --path crates/pascrust` and use
 
 Units named in a `uses` clause are looked up (case-insensitively) as
 `<unit>.pas` next to the program, so a multi-file program runs from its main
-file:
-
-```sh
-cargo run -p pascrust -- run examples/airport/airport4.pas
-cargo run -p pascrust -- run examples/database/filesys.pas
-```
-
-The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
+file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 `Graph` programs open a 640x480 window, and keys typed into it go to
-`ReadKey`. The tic-tac-toe game expects to live in `A:\TICTAC`, so map drive
-A: to the examples directory:
-
-```sh
-cargo run -p pascrust -- run examples/clock/tester.pas
-PASCRUST_DRIVE_A=examples cargo run -p pascrust -- run examples/tictac/tictac.pas
-```
+`ReadKey`.
 
 ### Environment variables
 
@@ -83,6 +70,37 @@ virtual methods yet), text and typed files, and the `Crt`, `Dos` and `Graph`
 units. See `language_spec.md` for the details and `TODO.md` for what's next.
 Runtime errors print Turbo Pascal's message and exit code
 (e.g. `Runtime error 201: Range check error ...`).
+
+## Examples
+
+`examples/` holds the Turbo Pascal programs this project was built to run,
+written in 1996-97.
+Run them from the repository root:
+
+```sh
+# Text-mode programs (Crt)
+cargo run -p pascrust -- run examples/blkjack.pas        # Blackjack
+cargo run -p pascrust -- run examples/paper.pas          # Paper, scissors, rock
+cargo run -p pascrust -- run examples/life.pas           # The Game of Life
+cargo run -p pascrust -- run examples/magic_square.pas   # Solves a 4x4 magic square puzzle
+cargo run -p pascrust -- run examples/gmscode.pas        # Encodes what you type as you type it
+cargo run -p pascrust -- run examples/menu.pas           # A DOS menu (its choices ran other .exe files)
+
+# Multi-file programs: run the main file, and its units come along
+cargo run -p pascrust -- run examples/airport/airport4.pas   # An airport runway simulation
+
+# A record filing system. Drive C: is mapped to its directory, so when it
+# asks which file to open, type `mark` to load the sample data (mark.dat, mark.key).
+PASCRUST_DRIVE_C=examples/database cargo run -p pascrust -- run examples/database/filesys.pas
+
+# Graphics (Graph): these open a window
+cargo run -p pascrust -- run examples/clock/tester.pas   # A clock whose hands run backwards
+# Tic-tac-toe expects to live in A:\TICTAC, so map drive A: to examples/.
+PASCRUST_DRIVE_A=examples cargo run -p pascrust -- run examples/tictac/tictac.pas
+```
+
+The environment variable goes before `cargo`, so it applies to the whole
+command (and to the program it runs).
 
 ## Developing
 
