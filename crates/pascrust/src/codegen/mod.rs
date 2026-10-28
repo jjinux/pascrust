@@ -666,7 +666,21 @@ impl<'a> Codegen<'a> {
         self.blank();
         self.line(format!("impl {name} {{"));
         self.indent += 1;
-        for (target, span) in &members {
+        // Accessors for the root and for each object a pointer type points
+        // to: those are the parts code can reach through a pointer.
+        let pointed_to: Vec<Rc<ObjectType>> = self
+            .a
+            .type_defs
+            .iter()
+            .filter_map(|(ty, _)| match ty {
+                Type::Pointer(p) => match p.target() {
+                    Type::Object(o) => Some(o),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        for (target, span) in members.iter().filter(|(o, _)| o == root || pointed_to.contains(o)) {
             let target_path = self.type_path(target, *span);
             // The variants that contain a `target`: it and its descendants.
             let arms: Vec<(String, Vec<String>)> = members

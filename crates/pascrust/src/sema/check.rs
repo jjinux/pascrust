@@ -1444,6 +1444,17 @@ impl Checker {
                 Type::Error
             }
             ExprKind::Field(base, field) => {
+                // `inherited Tricks` or `TDog.Tricks`, a function method of
+                // an ancestor, called without parentheses.
+                if let ExprKind::Name(id) = &base.kind {
+                    let ancestor_type = matches!(
+                        self.resolve(&id.key()),
+                        Some(Resolved::Sym(sym)) if matches!(self.a.symbols[sym].kind, SymKind::TypeName(Type::Object(_)))
+                    );
+                    if id.key() == "inherited" || ancestor_type {
+                        return self.call(e, e, &[]);
+                    }
+                }
                 let base_ty = self.expr(base);
                 // `obj.FullQ` with no parentheses is a method call too.
                 if let Type::Object(object) = &base_ty
