@@ -14,6 +14,7 @@
 
 use std::cell::RefCell;
 use std::io::{IsTerminal, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -56,6 +57,14 @@ struct CrtState {
     pending_scan_code: Option<u8>,
 }
 
+// `thread_local!` gives each thread its own `CrtState`, and only the Pascal
+// program's worker thread ever uses it. That's fine for the text attribute
+// and the window, but not for "is the terminal in raw mode?": the program
+// can end on the *main* thread (after `run` joins the worker, or when the
+// graphics window is closed), and there a thread-local would read `Off` and
+// leave the user's terminal raw. So that one flag is a process-wide atomic.
+static RAW_MODE: AtomicBool = AtomicBool::new(false);
+
 thread_local! {
     static CRT: RefCell<CrtState> = const {
         RefCell::new(CrtState {
@@ -77,25 +86,27 @@ fn mode() -> Mode {
         || !std::io::stdout().is_terminal()
         || !std::io::stdin().is_terminal();
     let mode = if plain || terminal::enable_raw_mode().is_err() { Mode::Plain } else { Mode::Terminal };
+    RAW_MODE.store(mode == Mode::Terminal, Ordering::SeqCst);
     CRT.with_borrow_mut(|crt| crt.mode = mode);
     mode
 }
 
 /// True while `Crt` owns the terminal in raw mode.
 pub(crate) fn raw_mode_active() -> bool {
-    CRT.with_borrow(|crt| crt.mode == Mode::Terminal)
+    RAW_MODE.load(Ordering::SeqCst)
 }
 
 /// Put the terminal back the way we found it. Called when the program ends,
-/// halts, or stops with a runtime error.
+/// halts, or stops with a runtime error, on whichever thread that happens.
 pub(crate) fn restore() {
-    if raw_mode_active() {
+    // `swap` reads the old value and stores the new one in one step, so
+    // the terminal is restored only once even if two threads get here.
+    if RAW_MODE.swap(false, Ordering::SeqCst) {
         let mut out = std::io::stdout();
         let _ = out.queue(SetAttribute(Attribute::Reset));
         let _ = out.queue(cursor::Show);
         let _ = out.flush();
         let _ = terminal::disable_raw_mode();
-        CRT.with_borrow_mut(|crt| crt.mode = Mode::Off);
     }
 }
 

@@ -534,14 +534,18 @@ error with `{$I+}`, division by zero, `RunError`, `RefCell` double borrow) is a
 
 ```rust
 fn main() {
-    // run() installs a panic hook that restores the terminal (raw mode,
-    // colours) and the graphics window, prints "Runtime error 201 at ..."
-    // in TP style, and exits with the error code.
+    // run() runs the program on a worker thread; when it ends or panics,
+    // run() restores the terminal (raw mode, colours), saves the graphics
+    // screen if asked to, prints "Runtime error 201 ..." in TP style, and
+    // exits with the error code.
     pascrust_runtime::run(|| pascal_main());
 }
 ```
 
-`run` uses `std::panic::catch_unwind` so cleanup always happens. `Halt(n)`
+`run` joins the worker thread, which returns the panic payload, so cleanup
+always happens. (The cleanup runs on the main thread, which is why the "is
+the terminal raw?" flag is a process-wide atomic rather than part of Crt's
+`thread_local!` state.) `Halt(n)`
 flushes output and calls `process::exit(n)`.
 
 Rationale: `Result` would put `?` on every array index, pointer dereference
@@ -719,7 +723,9 @@ or serial-port bridge; (c) transpile it, which is this project. Recorded in
 
 Turbo Pascal has no threads (DOS is single-tasking), so none of the examples
 and no TP program needs them. Decision: skip threads entirely. The runtime is
-single-threaded by design: terminal and Dos state are `thread_local!`, and
+single-threaded by design: terminal and Dos state are `thread_local!`
+(except the flag saying the terminal is in raw mode, an `AtomicBool`, so
+the main thread can restore the terminal when the program ends), and
 `Ptr<T>` is `Rc`, not `Arc`. The only thread the runtime creates is the
 big-stack worker in `run()`, and the Pascal program lives entirely on it.
 The one exception is the graphics window, which the main thread services
