@@ -24,6 +24,7 @@ pub use check::{int_common, numeric_common};
 mod lift;
 pub mod names;
 pub mod types;
+pub mod units;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -51,10 +52,15 @@ pub struct Symbol {
 #[derive(Debug, Clone)]
 pub enum SymKind {
     Var(Var),
-    Const { value: ConstVal, ty: Type },
+    Const {
+        value: ConstVal,
+        ty: Type,
+    },
     TypeName(Type),
     Proc(ProcId),
     Builtin(Builtin),
+    /// A routine from `Crt`, `Dos` or `System` with a fixed signature.
+    UnitRoutine(&'static units::UnitRoutine),
 }
 
 #[derive(Debug, Clone)]

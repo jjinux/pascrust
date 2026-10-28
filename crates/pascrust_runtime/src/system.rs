@@ -101,6 +101,67 @@ pub fn val<T: ValTarget>(s: impl Into<PString>, x: &mut T, code: &mut i16) {
     }
 }
 
+/// Translate a DOS path like `A:\\GAMES\\SCORES.DAT` for this machine:
+/// backslashes become slashes, and a drive letter is looked up in the
+/// environment variable `PASCRUST_DRIVE_A` (for drive A:, and so on). An
+/// unmapped drive means the current directory.
+pub fn dos_path(path: &str) -> std::path::PathBuf {
+    let mut rest = path;
+    let mut base = None;
+    if let [drive, b':', ..] = path.as_bytes()
+        && drive.is_ascii_alphabetic()
+    {
+        rest = &path[2..];
+        let var = format!("PASCRUST_DRIVE_{}", drive.to_ascii_uppercase() as char);
+        base = Some(std::env::var(var).unwrap_or_else(|_| ".".to_string()));
+    }
+    let rest = rest.replace('\\', "/");
+    match base {
+        // `A:\X` is absolute on drive A; `A:X` is relative to it. Either way
+        // it lives under the drive's directory.
+        Some(base) => std::path::Path::new(&base).join(rest.trim_start_matches('/')),
+        None => std::path::PathBuf::from(rest),
+    }
+}
+
+/// Pascal `ChDir(path)`.
+pub fn ch_dir(path: impl Into<PString>) {
+    let path = path.into().to_string();
+    if std::env::set_current_dir(dos_path(&path)).is_err() {
+        crate::rte(3, format!("Path not found: {path}"));
+    }
+}
+
+/// Pascal `MkDir(path)`.
+pub fn mk_dir(path: impl Into<PString>) {
+    let path = path.into().to_string();
+    if std::fs::create_dir(dos_path(&path)).is_err() {
+        crate::rte(5, format!("File access denied: {path}"));
+    }
+}
+
+/// Pascal `RmDir(path)`.
+pub fn rm_dir(path: impl Into<PString>) {
+    let path = path.into().to_string();
+    if std::fs::remove_dir(dos_path(&path)).is_err() {
+        crate::rte(5, format!("File access denied: {path}"));
+    }
+}
+
+/// Pascal `ParamCount`: the number of command-line arguments.
+pub fn param_count() -> i16 {
+    std::env::args().count().saturating_sub(1) as i16
+}
+
+/// Pascal `ParamStr(i)`: argument `i`; `ParamStr(0)` is the program's path.
+pub fn param_str(i: impl Into<i32>) -> PString {
+    let i = i.into();
+    if i < 0 {
+        return PString::new();
+    }
+    std::env::args().nth(i as usize).map_or_else(PString::new, |arg| PString::from(arg.as_str()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +175,12 @@ mod tests {
         assert_eq!(code, 3);
         val("$1F", &mut x, &mut code);
         assert_eq!((x, code), (31, 0));
+    }
+
+    #[test]
+    fn dos_paths() {
+        assert_eq!(dos_path("data\\mark.dat"), std::path::PathBuf::from("data/mark.dat"));
+        assert_eq!(dos_path("a:\\tictac"), std::path::PathBuf::from("./tictac"));
     }
 
     #[test]

@@ -84,7 +84,6 @@ fn show(c: Choice) {
         Choice::Rock => {
             pwrite!("rock");
         }
-        _ => {}
     }
 }
 

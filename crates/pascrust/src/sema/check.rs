@@ -187,15 +187,29 @@ impl Checker {
             let sym = self.add_symbol(name, name.to_string(), SymKind::Builtin(builtin));
             self.scopes[0].insert(name.to_string(), sym);
         }
+        self.declare_unit_routines(super::units::SYSTEM, &[]);
+    }
+
+    /// Make a standard unit's routines and constants visible.
+    fn declare_unit_routines(&mut self, routines: &'static [super::units::UnitRoutine], consts: &[(&str, &str, i64)]) {
+        for routine in routines {
+            let sym = self.add_symbol(routine.name, routine.rust.to_string(), SymKind::UnitRoutine(routine));
+            self.scopes[0].insert(routine.name.to_string(), sym);
+        }
+        for &(name, rust, value) in consts {
+            let ty = Type::Int(IntKind::Byte);
+            let sym = self.add_symbol(name, rust.to_string(), SymKind::Const { value: ConstVal::Int(value), ty });
+            self.scopes[0].insert(name.to_string(), sym);
+        }
     }
 
     // ----- Programs and declarations ---------------------------------------
 
     pub fn program(&mut self, program: &Program) {
         for unit in &program.uses {
-            let known = ["crt", "dos", "graph", "printer"];
-            if !known.contains(&unit.key().as_str()) {
-                self.error(unit.span, format!("unit `{}` is not supported yet", unit.name));
+            match super::units::unit(&unit.key()) {
+                Some((routines, consts)) => self.declare_unit_routines(routines, consts),
+                None => self.error(unit.span, format!("unit `{}` is not supported yet", unit.name)),
             }
         }
         self.scopes.push(HashMap::new());
@@ -825,7 +839,7 @@ impl Checker {
                     }
                     SymKind::Const { ty, .. } => ty,
                     // A bare function name is a call with no arguments.
-                    SymKind::Proc(_) | SymKind::Builtin(_) => self.call(e, e, &[]),
+                    SymKind::Proc(_) | SymKind::Builtin(_) | SymKind::UnitRoutine(_) => self.call(e, e, &[]),
                     SymKind::TypeName(_) => {
                         self.error(ident.span, format!("`{}` is a type, not a value", ident.name));
                         Type::Error
@@ -1014,6 +1028,7 @@ impl Checker {
         match self.a.symbols[sym].kind.clone() {
             SymKind::Proc(p) => self.user_call(e, p, args),
             SymKind::Builtin(b) => self.builtin_call(e, b, args),
+            SymKind::UnitRoutine(r) => self.unit_call(e, r, args),
             SymKind::TypeName(target) => {
                 // `Integer(c)` and friends: a Turbo Pascal value typecast.
                 if args.len() != 1 {
@@ -1034,6 +1049,35 @@ impl Checker {
                 self.expr(callee)
             }
         }
+    }
+
+    fn unit_call(&mut self, e: &Expr, r: &'static super::units::UnitRoutine, args: &[Expr]) -> Type {
+        use super::units::Param;
+        if r.params.len() != args.len() {
+            self.error(
+                e.span,
+                format!("`{}` takes {} argument(s) but {} were given", r.name, r.params.len(), args.len()),
+            );
+        }
+        for (param, arg) in r.params.iter().zip(args) {
+            match param {
+                Param::Int => self.int_arg(arg),
+                Param::Str => self.string_arg(arg),
+                Param::Real => {
+                    let ty = self.expr(arg);
+                    if !ty.is_numeric() && ty != Type::Error {
+                        self.error(arg.span, format!("expected a number, found {ty}"));
+                    }
+                }
+                Param::VarWord => {
+                    let ty = self.place(arg, true);
+                    if ty != Type::Int(IntKind::Word) && ty != Type::Error {
+                        self.error(arg.span, format!("expected a Word variable, found {ty}"));
+                    }
+                }
+            }
+        }
+        r.ret.map_or(Type::Void, |ret| ret.ty())
     }
 
     fn user_call(&mut self, e: &Expr, p: ProcId, args: &[Expr]) -> Type {

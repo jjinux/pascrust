@@ -373,41 +373,81 @@ impl<'a> Codegen<'a> {
                 self.line("}");
             }
             StmtKind::For { var, start, end, down, body } => self.for_loop(s, var, start, end, *down, body),
-            StmtKind::Case { scrutinee, arms, else_body } => {
-                let scrutinee_code = self.expr(scrutinee).0;
-                self.line(format!("match {scrutinee_code} {{"));
-                self.indent += 1;
-                for arm in arms {
-                    let labels: Vec<String> = arm
-                        .labels
-                        .iter()
-                        .map(|label| match label {
-                            CaseLabel::Value(e) => self.case_label(e),
-                            CaseLabel::Range(lo, hi) => {
-                                format!("{}..={}", self.case_label(lo), self.case_label(hi))
-                            }
-                        })
-                        .collect();
-                    self.line(format!("{} => {{", labels.join(" | ")));
-                    self.block_body(&arm.body);
-                    self.line("}");
-                }
-                match else_body {
-                    Some(body) => {
-                        self.line("_ => {");
-                        self.indent += 1;
-                        self.stmts(body);
-                        self.indent -= 1;
-                        self.line("}");
+            StmtKind::Case { scrutinee, arms, else_body } => self.case(scrutinee, arms, else_body.as_deref()),
+            StmtKind::With { .. } => unreachable!("sema rejects `with`"),
+        }
+    }
+
+    /// `case` becomes `match`.
+    fn case(&mut self, scrutinee: &Expr, arms: &[CaseArm], else_body: Option<&[Stmt]>) {
+        let scrutinee_ty = self.a.type_of(scrutinee.id).concrete();
+        let scrutinee_code = self.expr(scrutinee).0;
+        self.line(format!("match {scrutinee_code} {{"));
+        self.indent += 1;
+        // Turbo Pascal doesn't object to a label appearing twice; the first
+        // arm wins. Rust warns about the unreachable second one, so drop it.
+        let mut seen = std::collections::HashSet::new();
+        for arm in arms {
+            let mut labels = Vec::new();
+            let mut dropped = Vec::new();
+            for label in &arm.labels {
+                match label {
+                    CaseLabel::Value(e) => {
+                        let code = self.case_label(e);
+                        if seen.insert(self.label_ord(e)) {
+                            labels.push(code);
+                        } else {
+                            dropped.push(code);
+                        }
                     }
-                    // Pascal's `case` does nothing when no label matches;
-                    // Rust's `match` must cover every value, so say so.
-                    None => self.line("_ => {}"),
+                    CaseLabel::Range(lo, hi) => {
+                        seen.extend(self.label_ord(lo)..=self.label_ord(hi));
+                        labels.push(format!("{}..={}", self.case_label(lo), self.case_label(hi)));
+                    }
                 }
+            }
+            if !dropped.is_empty() {
+                self.line(format!("// {} also appeared in an earlier arm, which wins.", dropped.join(", ")));
+            }
+            if labels.is_empty() {
+                continue;
+            }
+            self.line(format!("{} => {{", labels.join(" | ")));
+            self.block_body(&arm.body);
+            self.line("}");
+        }
+        let domain = match &scrutinee_ty {
+            Type::Enum(e) => Some(e.variants.len()),
+            Type::Bool => Some(2),
+            Type::Char | Type::Int(crate::sema::IntKind::Byte) => Some(256),
+            _ => None,
+        };
+        let exhaustive = domain == Some(seen.len());
+        match else_body {
+            Some(body) if !exhaustive => {
+                self.line("_ => {");
+                self.indent += 1;
+                self.stmts(body);
                 self.indent -= 1;
                 self.line("}");
             }
-            StmtKind::With { .. } => unreachable!("sema rejects `with`"),
+            // Pascal's `case` does nothing when no label matches; Rust's
+            // `match` must cover every value, so say so explicitly. (Unless
+            // the labels already cover every value, as they can for an enum.)
+            None if !exhaustive => self.line("_ => {}"),
+            _ => {}
+        }
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    /// A case label's ordinal value, for spotting duplicates.
+    fn label_ord(&self, e: &Expr) -> i64 {
+        match &self.a.case_labels[&e.id] {
+            crate::sema::ConstVal::Int(n) => *n,
+            crate::sema::ConstVal::Str(s) => s.first().copied().unwrap_or(0) as i64,
+            crate::sema::ConstVal::Bool(b) => *b as i64,
+            crate::sema::ConstVal::Real(_) => 0,
         }
     }
 

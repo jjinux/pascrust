@@ -35,7 +35,7 @@ pub fn rte(code: i32, message: impl Into<String>) -> ! {
 /// Pascal programs sometimes have statements after a `Halt`, and with `!`
 /// Rust would warn that they're unreachable.
 pub fn halt(code: i32) {
-    crate::io::flush_stdout();
+    crate::io::shutdown();
     std::process::exit(code)
 }
 
@@ -65,7 +65,7 @@ pub fn run(program: fn()) {
     // `join` returns `Err(payload)` if the thread panicked; this is how we
     // "catch" the panic without needing `catch_unwind` ourselves.
     let result = worker.join();
-    crate::io::flush_stdout();
+    crate::io::shutdown();
     if let Err(payload) = result {
         let err = to_runtime_error(payload);
         eprintln!("Runtime error {}: {}", err.code, err.message);

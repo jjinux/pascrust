@@ -8,6 +8,11 @@
 //! everything a program normally needs is in scope.
 
 pub mod array;
+pub mod cp437;
+#[cfg(feature = "crt")]
+pub mod crt;
+#[cfg(feature = "dos")]
+pub mod dos;
 pub mod io;
 pub mod ordinal;
 pub mod prelude;

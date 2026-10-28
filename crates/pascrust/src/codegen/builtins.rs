@@ -197,7 +197,7 @@ impl<'a> Codegen<'a> {
 
     /// A string-ish argument for a runtime function that accepts anything
     /// convertible to a `PString` (`&str`, `u8`, `PString`).
-    fn string_arg(&mut self, e: &Expr) -> String {
+    pub(super) fn string_arg(&mut self, e: &Expr) -> String {
         if let ExprKind::Str(bytes) = &e.kind {
             return super::expr::str_literal(bytes);
         }

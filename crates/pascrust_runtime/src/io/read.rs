@@ -40,6 +40,21 @@ impl Input {
         crate::io::flush_stdout();
         self.line.clear();
         self.pos = 0;
+        // In raw mode the terminal doesn't echo or edit lines; Crt does it.
+        #[cfg(feature = "crt")]
+        if crate::io::raw_terminal() {
+            return match crate::crt::read_line_raw() {
+                Some(line) => {
+                    self.line = line;
+                    self.have_line = true;
+                    true
+                }
+                None => {
+                    self.eof = true;
+                    false
+                }
+            };
+        }
         match std::io::stdin().lock().read_until(b'\n', &mut self.line) {
             Ok(0) | Err(_) => {
                 self.eof = true;
@@ -161,6 +176,33 @@ pub fn readln_end() {
         input.fill();
         input.have_line = false;
     });
+}
+
+/// `ReadKey` when there's no terminal to read keys from: take the next
+/// character of standard input, with the end of a line reading as Enter
+/// (`#13`). At the end of the input, stop the program, since a scripted
+/// program waiting for a key would otherwise wait forever.
+#[cfg(feature = "crt")]
+pub(crate) fn read_key_plain() -> u8 {
+    let key = INPUT.with_borrow_mut(|input| {
+        if !input.fill() {
+            return None;
+        }
+        if input.at_eoln() {
+            input.have_line = false;
+            return Some(13);
+        }
+        input.pos += 1;
+        Some(input.line[input.pos - 1])
+    });
+    match key {
+        Some(key) => key,
+        None => {
+            eprintln!("[pascrust] ReadKey: no more input, stopping the program");
+            crate::halt(0);
+            unreachable!()
+        }
+    }
 }
 
 /// Pascal `Eof` for standard input.

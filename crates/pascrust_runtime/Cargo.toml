@@ -9,6 +9,12 @@ authors.workspace = true
 [features]
 # Each feature corresponds to a Turbo Pascal unit. Codegen turns on exactly
 # the features that a program's `uses` clauses need.
-crt = []
-dos = []
+crt = ["dep:crossterm"]
+dos = ["dep:chrono"]
 graph = []
+
+[dependencies]
+# Terminal control (cursor, colours, raw keyboard input) for the `Crt` unit.
+crossterm = { version = "0.28", optional = true }
+# Local date and time for the `Dos` unit's `GetDate` and `GetTime`.
+chrono = { version = "0.4", optional = true, default-features = false, features = ["clock"] }

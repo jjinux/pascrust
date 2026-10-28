@@ -71,7 +71,7 @@ impl<'a> Codegen<'a> {
                 Access::Reference => (format!("*{}", self.a.var_name(self.proc, sym)), prec::UNARY),
             },
             SymKind::Const { .. } => (symbol.rust_name.clone(), prec::ATOM),
-            SymKind::Proc(_) | SymKind::Builtin(_) => (self.call(e, &[]), prec::POSTFIX),
+            SymKind::Proc(_) | SymKind::Builtin(_) | SymKind::UnitRoutine(_) => (self.call(e, &[]), prec::POSTFIX),
             SymKind::TypeName(_) => unreachable!("sema rejects types used as values"),
         }
     }
@@ -205,9 +205,20 @@ impl<'a> Codegen<'a> {
                 format!("{}.{}", self.selector_base(base), field.rust_name)
             }
             ExprKind::Index(base, indexes) => {
+                let mut ty = self.a.type_of(base.id).clone();
                 let mut code = self.selector_base(base);
                 for index in indexes {
-                    code.push_str(&format!("[{}]", self.expr(index).0));
+                    let index_code = match &ty {
+                        // A character literal index must become a byte
+                        // literal: `counts['a']` → `counts[b'a']`.
+                        Type::Array(a) if a.index == Type::Char => self.coerce(index, &Type::Char).0,
+                        _ => self.expr(index).0,
+                    };
+                    code.push_str(&format!("[{index_code}]"));
+                    ty = match &ty {
+                        Type::Array(a) => a.elem.clone(),
+                        _ => Type::Char,
+                    };
                 }
                 code
             }
@@ -250,6 +261,22 @@ impl<'a> Codegen<'a> {
         match &self.a.sym(sym).kind {
             SymKind::Proc(p) => self.user_call(*p, args),
             SymKind::Builtin(b) => self.builtin(*b, args),
+            SymKind::UnitRoutine(r) => {
+                use crate::sema::units::Param;
+                let r: &crate::sema::units::UnitRoutine = r;
+                let parts: Vec<String> = r
+                    .params
+                    .iter()
+                    .zip(args)
+                    .map(|(param, arg)| match param {
+                        Param::Int => self.expr(arg).0,
+                        Param::Real => self.coerce(arg, &Type::Real).0,
+                        Param::Str => self.string_arg(arg),
+                        Param::VarWord => self.place_mut(arg),
+                    })
+                    .collect();
+                format!("{}({})", r.rust, parts.join(", "))
+            }
             SymKind::TypeName(ty) => {
                 let ty = ty.clone();
                 let from = self.a.type_of(args[0].id).clone();
