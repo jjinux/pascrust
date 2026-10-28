@@ -1,0 +1,12 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/with_changes_index.pas
+---
+with_changes_index.pas:13:8: error: the `with` body changes `i`, which chooses this record; pascrust writes the record out at every use, so it would pick a different one
+  with a[i] do
+       ^^^^
+
+with_changes_index.pas:19:8: error: `with` needs a record or object, found Integer
+  with r do
+       ^

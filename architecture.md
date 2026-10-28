@@ -580,11 +580,22 @@ window meanwhile (§19).
   implementation-only ones are private. `uses A, B` → `use crate::a::*;
   use crate::b::*;`; sema resolves conflicts by Pascal's rule (the later unit
   wins) and emits qualified paths when needed.
-- **`with r do`** → sema rewrites each field reference inside the block to the
-  full path (`r.x`, or `p.get_mut().arr[i].x`). No temporary reference is
-  held, so no borrow outlives a statement. If the `with` expression has side
-  effects or an index that the block modifies, the transpiler warns. (p2c
-  instead takes a temp pointer; the borrow checker makes that worse for us.)
+- **`with r do`** → sema rewrites the body, writing each field (or method)
+  the record supplies out in full (`r.x`, `pts[i].y`), and checks and emits
+  the rewritten statement (`Analysis::with_bodies`). No reference to the
+  record is held, so no borrow outlives a statement. TP finds the record
+  once, before the body runs; rewriting finds it at every use, which only
+  differs if the body changes what chooses it:
+  - Through a pointer, `with p^ do`, the pointer is copied first
+    (`node = p.clone();`, which copies the `Rc` handle) when the body
+    mentions `p` or the pointer is a longer path (`head^.next^`). So
+    `with p^ do begin ...; p := next end` keeps meaning the first record.
+  - An array index the body changes (`with a[i] do ... i := 2`) is an
+    error. (A procedure the body calls that changes `i` as a global isn't
+    caught.)
+
+  (p2c takes a temporary pointer to the record; with Rust's borrow checker
+  that reference would block every other use of the variable in the body.)
 - **`for i := a to b`** → `for i in a..=b` (bounds evaluated once, empty if
   `b < a`, exactly TP); `downto` → `(a..=b).rev()`; enum loops go through
   `Ordinal`. **`repeat ... until c`** → `loop { ...; if c { break } }`.

@@ -107,7 +107,7 @@ chosen so each step is testable with the previous ones.
 - [x] Objects: `struct` + `impl`, `&self`/`&mut self` selection, implicit `Self` field access, nested procedures inside methods (`this: &mut T` lifting), inheritance by composition (`base` field, path rewriting, upcasting to `&mut child.base`), `private` ignored. Tests from `bstunit.pas` and `clock/menu.pas` patterns.
 - [x] Pointers: `Ptr<T>` runtime type (`nil`, `new_`, `dispose` with use-after-dispose detection, `get`/`get_mut`, `ptr_eq`), temporaries hoisted for `p := p^.next` and for call arguments containing derefs, `var` args of heap fields as `&mut p.get_mut().field`. Tests: linked list push/pop, BST insert/delete (the `bstunit.pas` algorithm verbatim), `Root^ := TempPtr^`.
 - [x] `RefCell` double-borrow panics mapped to a clear "pointer aliasing" runtime error message with the Pascal procedure name.
-- [ ] `with` statements by path rewriting; warning when the `with` expression has side effects. (No example uses `with`; methods get the same effect through `Self` resolution.)
+- [x] `with` statements by path rewriting (sema rewrites the body; `with p^` copies the pointer when the body could change it; changing an index that chooses the record is an error).
 - [x] `{$I-}` and a real `IOResult`: I/O calls in a `{$I-}` region are wrapped in `io_unchecked`, which keeps the error code for `IOResult`.
 - [x] Hoist pointer dereferences out of call arguments too, so `f(p^.x)` never holds a `RefCell` guard across the call.
 - [ ] Methods that don't modify `Self` could take `&self` instead of `&mut self`.

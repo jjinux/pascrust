@@ -136,7 +136,9 @@ Files
 
 More language
 
-- `with` statements (single and multiple record expressions)
+- `with` statements (single and multiple record expressions, records and
+  objects, through pointers). A body may not change an array index that
+  chooses the record (`with a[i] do ... i := 2` is an error)
 - Typed constants (`const Days: array[0..6] of String[9] = (...)`;
   `const x: integer = 5`), which are initialized variables in TP
 - Anonymous record types in `var` declarations (`EndPoint: record x, y:

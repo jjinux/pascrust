@@ -658,7 +658,15 @@ impl<'a> Codegen<'a> {
                 self.loops.pop();
             }
             StmtKind::Case { scrutinee, arms, else_body } => self.case(scrutinee, arms, else_body.as_deref()),
-            StmtKind::With { .. } => unreachable!("sema rejects `with`"),
+            StmtKind::With { .. } => {
+                // `self.a` is a plain shared reference, so copying it out lets
+                // us borrow the rewritten body while `self` is borrowed mutably.
+                let a = self.a;
+                if self.first_time("with") {
+                    self.line("// Pascal `with`: Rust has no equivalent, so each field is written out in full.");
+                }
+                self.stmt(&a.with_bodies[&s.span.start]);
+            }
         }
     }
 
@@ -735,6 +743,7 @@ impl<'a> Codegen<'a> {
                 arms.iter().any(|arm| self.uses(std::slice::from_ref(&arm.body), b))
                     || else_body.as_deref().is_some_and(|body| self.uses(body, b))
             }
+            StmtKind::With { .. } => self.uses(std::slice::from_ref(&self.a.with_bodies[&s.span.start]), b),
             // A `Break` or `Continue` inside a nested loop belongs to that loop.
             _ => false,
         })

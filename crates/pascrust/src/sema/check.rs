@@ -67,6 +67,16 @@ pub(super) struct Checker {
     declaring_type: bool,
     /// Bounds of type names declared as subranges (`Index = 1..10`).
     subrange_types: HashMap<SymId, (Type, i64, i64)>,
+    /// The records of the `with` statements we're inside, innermost last,
+    /// with their types: a name that is one of their fields means that field.
+    with_records: Vec<(Expr, Type)>,
+    /// For each `with` we're inside: the variables that choose its record
+    /// (`i` in `with a[i] do`) and the record's span. The body must not
+    /// change them, since the record is written out again at every use.
+    with_selectors: Vec<(HashSet<SymId>, Span)>,
+    /// Ids for expressions sema makes up (the pointer copies of `with`),
+    /// counting down from the top so they never meet the parser's.
+    next_synthetic_id: NodeId,
     errors: Vec<Diagnostic>,
     call_sites: Vec<CallSite>,
 }
@@ -90,6 +100,9 @@ impl Checker {
             pending_pointers: Vec::new(),
             method_scopes: Vec::new(),
             subrange_types: HashMap::new(),
+            with_records: Vec::new(),
+            with_selectors: Vec::new(),
+            next_synthetic_id: NodeId::MAX,
             errors: Vec::new(),
             call_sites: Vec::new(),
         };
@@ -1072,10 +1085,188 @@ impl Checker {
                     self.stmts(body);
                 }
             }
-            StmtKind::With { records, .. } => {
-                self.error(records[0].span, "`with` is not supported yet");
-            }
+            StmtKind::With { records, body } => self.with_statement(s, records, body),
         }
+    }
+
+    /// `with r1, r2 do body`. We rewrite the body so that every name that is
+    /// a field (or method) of a `with` record says so, `x` → `r1.x`, then
+    /// check the rewritten statement as usual; codegen emits it too.
+    ///
+    /// Turbo Pascal works out which record `with p^ do` means once, before
+    /// the body runs. Writing `p^.x` at every use would look again, so if
+    /// the body might change `p` (it mentions `p`), or the pointer is a
+    /// longer path like `p^.next`, we copy the pointer into a new variable
+    /// first: `node := p; ... node^.x ...`. (Copying a `Ptr` only copies
+    /// the handle; both point to the same record.)
+    fn with_statement(&mut self, s: &Stmt, records: &[Expr], body: &Stmt) {
+        let mut prelude = Vec::new();
+        let mut selectors = HashSet::new();
+        let depth = self.with_records.len();
+        for record in records {
+            // A later record may itself use the fields of an earlier one:
+            // `with list, head^ do`.
+            let mut record = self.rewrite_expr(record);
+            if let Some(pointer) = last_deref_base(&record)
+                && (!matches!(pointer.kind, ExprKind::Name(_)) || mentions_name(body, pointer))
+            {
+                let pointer = pointer.clone();
+                let name = self.with_pointer_copy(&pointer, s.span);
+                self.next_synthetic_id -= 1;
+                let copy = Expr { id: self.next_synthetic_id, kind: ExprKind::Name(name), span: pointer.span };
+                prelude
+                    .push(Stmt { kind: StmtKind::Assign { target: copy.clone(), value: pointer }, span: record.span });
+                record = replace_last_deref_base(&record, copy);
+            }
+            let ty = self.place(&record, false);
+            if !matches!(ty, Type::Record(_) | Type::Object(_) | Type::Error) {
+                self.error(record.span, format!("`with` needs a record or object, found {ty}"));
+            }
+            self.index_variables(&record, &mut selectors);
+            self.with_records.push((record, ty));
+        }
+        let mut stmts = prelude;
+        stmts.push(self.rewrite_stmt(body));
+        let rewritten = if stmts.len() == 1 {
+            stmts.pop().unwrap()
+        } else {
+            Stmt { kind: StmtKind::Compound(stmts), span: s.span }
+        };
+        self.with_selectors.push((selectors, records[0].span));
+        self.stmt(&rewritten);
+        self.with_selectors.pop();
+        self.with_records.truncate(depth);
+        self.a.with_bodies.insert(s.span.start, rewritten);
+    }
+
+    /// A new local variable that holds the pointer a `with` record is
+    /// reached through, named after the record's type (`node`). Its name
+    /// isn't a Pascal identifier, so no Pascal code can refer to it.
+    fn with_pointer_copy(&mut self, pointer: &Expr, span: Span) -> Ident {
+        let ty = self.place_type(pointer).unwrap_or(Type::Error);
+        let base = match &ty {
+            Type::Pointer(p) => match p.target() {
+                Type::Record(r) => snake_case(&r.rust_name),
+                Type::Object(o) => snake_case(&o.rust_name),
+                _ => "record".to_string(),
+            },
+            _ => "record".to_string(),
+        };
+        let owner = self.cur();
+        let rust_name = self.unique_var_name(owner, base);
+        let key = format!("with#{}", self.a.symbols.len());
+        let sym = self.add_symbol(&key, rust_name, SymKind::Var(Var { ty, owner, role: VarRole::Local }));
+        self.a.procs[owner].locals.push(sym);
+        self.scopes.last_mut().unwrap().insert(key.clone(), sym);
+        Ident { name: key, span }
+    }
+
+    /// The variables used in the array indexes of a place (`i` in
+    /// `a[i].x`), which has already been checked.
+    fn index_variables(&self, e: &Expr, out: &mut HashSet<SymId>) {
+        match &e.kind {
+            ExprKind::Field(base, _) | ExprKind::Deref(base) => self.index_variables(base, out),
+            ExprKind::Index(base, indexes) => {
+                self.index_variables(base, out);
+                for index in indexes {
+                    self.names_in(index, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn names_in(&self, e: &Expr, out: &mut HashSet<SymId>) {
+        if let Some(&sym) = self.a.refs.get(&e.id) {
+            out.insert(sym);
+        }
+        each_child(e, |child| self.names_in(child, out));
+    }
+
+    /// The `with` record that supplies the member `key`, innermost first.
+    fn with_member(&self, key: &str) -> Option<&Expr> {
+        self.with_records.iter().rev().find_map(|(record, ty)| {
+            let found = match ty {
+                Type::Record(r) => r.field(key).is_some(),
+                Type::Object(o) => o.field_path(key).is_some() || self.find_method(o, key).is_some(),
+                _ => false,
+            };
+            found.then_some(record)
+        })
+    }
+
+    /// A copy of `e` with each name that a `with` record supplies written
+    /// out: `x` → `r.x`. The new `Field` node takes over the name's id.
+    fn rewrite_expr(&self, e: &Expr) -> Expr {
+        let boxed = |e: &Expr| Box::new(self.rewrite_expr(e));
+        let kind = match &e.kind {
+            ExprKind::Name(ident) => match self.with_member(&ident.key()) {
+                Some(record) => ExprKind::Field(Box::new(record.clone()), ident.clone()),
+                None => e.kind.clone(),
+            },
+            ExprKind::Int(_) | ExprKind::Real(_) | ExprKind::Str(_) | ExprKind::Nil => e.kind.clone(),
+            ExprKind::Field(base, field) => ExprKind::Field(boxed(base), field.clone()),
+            ExprKind::Index(base, indexes) => {
+                ExprKind::Index(boxed(base), indexes.iter().map(|i| self.rewrite_expr(i)).collect())
+            }
+            ExprKind::Deref(base) => ExprKind::Deref(boxed(base)),
+            ExprKind::Call { callee, args } => {
+                ExprKind::Call { callee: boxed(callee), args: args.iter().map(|a| self.rewrite_expr(a)).collect() }
+            }
+            ExprKind::Unary { op, operand } => ExprKind::Unary { op: *op, operand: boxed(operand) },
+            ExprKind::Binary { op, lhs, rhs } => ExprKind::Binary { op: *op, lhs: boxed(lhs), rhs: boxed(rhs) },
+            ExprKind::Set(elems) => ExprKind::Set(
+                elems
+                    .iter()
+                    .map(|elem| match elem {
+                        SetElem::Single(e) => SetElem::Single(self.rewrite_expr(e)),
+                        SetElem::Range(lo, hi) => SetElem::Range(self.rewrite_expr(lo), self.rewrite_expr(hi)),
+                    })
+                    .collect(),
+            ),
+            ExprKind::AddrOf(base) => ExprKind::AddrOf(boxed(base)),
+            ExprKind::Format { value, width, decimals } => {
+                ExprKind::Format { value: boxed(value), width: boxed(width), decimals: decimals.as_deref().map(boxed) }
+            }
+        };
+        Expr { id: e.id, kind, span: e.span }
+    }
+
+    /// [`Checker::rewrite_expr`] for every expression in a statement. A
+    /// nested `with`'s body is left alone: it's rewritten when that `with`
+    /// is checked, when its own record's fields are known (and win).
+    fn rewrite_stmt(&self, s: &Stmt) -> Stmt {
+        let e = |e: &Expr| self.rewrite_expr(e);
+        let boxed = |s: &Stmt| Box::new(self.rewrite_stmt(s));
+        let list = |body: &[Stmt]| body.iter().map(|s| self.rewrite_stmt(s)).collect();
+        let kind = match &s.kind {
+            StmtKind::Empty => StmtKind::Empty,
+            StmtKind::Assign { target, value } => StmtKind::Assign { target: e(target), value: e(value) },
+            StmtKind::Call(call) => StmtKind::Call(e(call)),
+            StmtKind::Compound(body) => StmtKind::Compound(list(body)),
+            StmtKind::If { cond, then_branch, else_branch } => StmtKind::If {
+                cond: e(cond),
+                then_branch: boxed(then_branch),
+                else_branch: else_branch.as_deref().map(boxed),
+            },
+            StmtKind::While { cond, body } => StmtKind::While { cond: e(cond), body: boxed(body) },
+            StmtKind::Repeat { body, cond } => StmtKind::Repeat { body: list(body), cond: e(cond) },
+            StmtKind::For { var, start, end, down, body } => {
+                StmtKind::For { var: var.clone(), start: e(start), end: e(end), down: *down, body: boxed(body) }
+            }
+            StmtKind::Case { scrutinee, arms, else_body } => StmtKind::Case {
+                scrutinee: e(scrutinee),
+                arms: arms
+                    .iter()
+                    .map(|arm| CaseArm { labels: arm.labels.clone(), body: self.rewrite_stmt(&arm.body) })
+                    .collect(),
+                else_body: else_body.as_deref().map(list),
+            },
+            StmtKind::With { records, body } => {
+                StmtKind::With { records: records.iter().map(e).collect(), body: body.clone() }
+            }
+        };
+        Stmt { kind, span: s.span }
     }
 
     /// Resolve a `for` loop's control variable and start tracking it.
@@ -1139,6 +1330,15 @@ impl Checker {
         proc.uses.insert(sym);
         if write {
             proc.writes.insert(sym);
+            if let Some((_, span)) = self.with_selectors.iter().find(|(syms, _)| syms.contains(&sym)) {
+                let name = self.a.symbols[sym].name.clone();
+                self.error(
+                    *span,
+                    format!(
+                        "the `with` body changes `{name}`, which chooses this record; pascrust writes the record out at every use, so it would pick a different one"
+                    ),
+                );
+            }
         }
         if !self.active_for_vars.contains(&sym) {
             self.used_outside_for.insert(sym);
@@ -2045,4 +2245,128 @@ fn comparable(l: &Type, r: &Type) -> bool {
         || (l.is_stringish() && r.is_stringish())
         || (l == r && (l.is_ordinal() || matches!(l, Type::Pointer(_))))
         || (matches!(l, Type::Pointer(_) | Type::Nil) && matches!(r, Type::Pointer(_) | Type::Nil))
+}
+
+/// The pointer under the last `^` of a place: `p` in `p^.x`, `p^.next` in
+/// `p^.next^`. `None` if the place has no `^`.
+fn last_deref_base(e: &Expr) -> Option<&Expr> {
+    match &e.kind {
+        ExprKind::Deref(base) => Some(base),
+        ExprKind::Field(base, _) | ExprKind::Index(base, _) => last_deref_base(base),
+        _ => None,
+    }
+}
+
+/// `e` with the pointer under its last `^` replaced by `pointer`.
+fn replace_last_deref_base(e: &Expr, pointer: Expr) -> Expr {
+    let kind = match &e.kind {
+        ExprKind::Deref(_) => ExprKind::Deref(Box::new(pointer)),
+        ExprKind::Field(base, field) => {
+            ExprKind::Field(Box::new(replace_last_deref_base(base, pointer)), field.clone())
+        }
+        ExprKind::Index(base, indexes) => {
+            ExprKind::Index(Box::new(replace_last_deref_base(base, pointer)), indexes.clone())
+        }
+        _ => unreachable!("only called on a place with a `^`"),
+    };
+    Expr { id: e.id, kind, span: e.span }
+}
+
+/// Call `f` on each direct subexpression of `e`.
+fn each_child(e: &Expr, mut f: impl FnMut(&Expr)) {
+    match &e.kind {
+        ExprKind::Int(_) | ExprKind::Real(_) | ExprKind::Str(_) | ExprKind::Nil | ExprKind::Name(_) => {}
+        ExprKind::Field(base, _) | ExprKind::Deref(base) | ExprKind::AddrOf(base) => f(base),
+        ExprKind::Unary { operand, .. } => f(operand),
+        ExprKind::Index(base, indexes) => {
+            f(base);
+            indexes.iter().for_each(f);
+        }
+        ExprKind::Call { callee, args } => {
+            f(callee);
+            args.iter().for_each(f);
+        }
+        ExprKind::Binary { lhs, rhs, .. } => {
+            f(lhs);
+            f(rhs);
+        }
+        ExprKind::Set(elems) => {
+            for elem in elems {
+                match elem {
+                    SetElem::Single(e) => f(e),
+                    SetElem::Range(lo, hi) => {
+                        f(lo);
+                        f(hi);
+                    }
+                }
+            }
+        }
+        ExprKind::Format { value, width, decimals } => {
+            f(value);
+            f(width);
+            if let Some(d) = decimals {
+                f(d);
+            }
+        }
+    }
+}
+
+/// Does the statement mention the variable `pointer` (a `Name`) anywhere?
+fn mentions_name(s: &Stmt, pointer: &Expr) -> bool {
+    let ExprKind::Name(target) = &pointer.kind else { return true };
+    let key = target.key();
+    fn in_expr(e: &Expr, key: &str) -> bool {
+        if let ExprKind::Name(id) = &e.kind {
+            return id.key() == key;
+        }
+        let mut found = false;
+        each_child(e, |child| found |= in_expr(child, key));
+        found
+    }
+    let mut found = false;
+    let mut exprs = |e: &Expr| found |= in_expr(e, &key);
+    visit_stmt_exprs(s, &mut exprs);
+    found
+}
+
+/// Call `f` on every expression in a statement, nested statements included.
+fn visit_stmt_exprs(s: &Stmt, f: &mut impl FnMut(&Expr)) {
+    match &s.kind {
+        StmtKind::Empty => {}
+        StmtKind::Assign { target, value } => {
+            f(target);
+            f(value);
+        }
+        StmtKind::Call(e) => f(e),
+        StmtKind::Compound(body) => body.iter().for_each(|s| visit_stmt_exprs(s, f)),
+        StmtKind::Repeat { body, cond } => {
+            body.iter().for_each(|s| visit_stmt_exprs(s, f));
+            f(cond);
+        }
+        StmtKind::If { cond, then_branch, else_branch } => {
+            f(cond);
+            visit_stmt_exprs(then_branch, f);
+            if let Some(e) = else_branch {
+                visit_stmt_exprs(e, f);
+            }
+        }
+        StmtKind::While { cond, body } => {
+            f(cond);
+            visit_stmt_exprs(body, f);
+        }
+        StmtKind::For { start, end, body, .. } => {
+            f(start);
+            f(end);
+            visit_stmt_exprs(body, f);
+        }
+        StmtKind::Case { scrutinee, arms, else_body } => {
+            f(scrutinee);
+            arms.iter().for_each(|arm| visit_stmt_exprs(&arm.body, f));
+            else_body.iter().flatten().for_each(|s| visit_stmt_exprs(s, f));
+        }
+        StmtKind::With { records, body } => {
+            records.iter().for_each(&mut *f);
+            visit_stmt_exprs(body, f);
+        }
+    }
 }

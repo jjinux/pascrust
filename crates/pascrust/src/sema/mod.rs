@@ -182,6 +182,11 @@ pub struct Analysis {
     /// `Name` expressions that are fields of `Self` inside a method: the
     /// `Self` symbol and the Rust path from it (`["base", "x"]`).
     pub self_fields: HashMap<NodeId, (SymId, Vec<String>)>,
+    /// Each `with` statement (by the start of its span) rewritten without
+    /// `with`: the record written out in front of every field it supplies,
+    /// `with r do x := 1` → `r.x := 1`. Sema checks, and codegen emits, the
+    /// rewritten statement.
+    pub with_bodies: HashMap<usize, crate::ast::Stmt>,
     /// Method calls: the call's callee expression id → the method, and the
     /// path from the receiver to the object that defines it (`["base"]`
     /// for an inherited method).
