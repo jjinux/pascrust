@@ -208,11 +208,14 @@ impl<'a> Codegen<'a> {
         // The type both operands are converted to before the operation.
         let operand_ty = match op {
             Eq | NotEq | Lt | LtEq | Gt | GtEq => comparison_type(&lt, &rt),
-            Shl | Shr => ty.clone(),
             _ => ty.clone(),
         };
-        let left = self.coerce(lhs, &operand_ty);
+        // Comparing two pointers only looks at them, so neither side needs
+        // the `.clone()` that `coerce` gives a pointer it copies.
+        let compare_pointers = matches!(op, Eq | NotEq) && matches!(operand_ty, Type::Pointer(_));
+        let left = if compare_pointers { self.expr(lhs) } else { self.coerce(lhs, &operand_ty) };
         let right = match (op, &operand_ty, &rt) {
+            _ if compare_pointers => self.expr(rhs),
             // `PString` implements `+` and `==` for string literals and
             // chars directly, so the right operand can stay as it is.
             (Add | Eq | NotEq | Lt | LtEq | Gt | GtEq, Type::Str { .. }, Type::StrLit(_) | Type::Char) => {
