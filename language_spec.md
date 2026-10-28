@@ -64,7 +64,8 @@ Expressions
 - Integer and real arithmetic with TP's promotion rules; `/` is always real;
   `div`, `mod`; unary minus
 - `and`, `or`, `not`, `xor` on booleans (short-circuit) and on integers;
-  `shl`, `shr`
+  `shl`, `shr` (TP's: `shr` is a logical shift, and shifting by the type's
+  width or more gives 0)
 - Comparisons on numbers, chars, strings, booleans, enums
 - String concatenation `+`, char/string mixing
 - Integer, real (`1.5`, `1E3`), char (`'a'`, `#13`, `^M`), string (`'it''s'`),
@@ -83,7 +84,10 @@ Statements
 - `while`, `repeat ... until`, `for ... to/downto` (ordinal loop variables of
   any ordinal type), `case ... of` with lists and ranges and `else`
 - Procedure calls; `Exit`; `Halt` / `Halt(n)`
-- Value and `var` parameters; passing arrays, records and strings both ways
+- Value and `var` parameters; passing arrays, records and strings both ways.
+  Different fields of one record may be passed as two `var` arguments
+  (`Init(p.x, p.y)`, also through a pointer, `q^.x, q^.y`); the same place
+  twice, a record and its field, or two elements of one array may not
 
 Built-ins (System unit)
 
@@ -91,7 +95,8 @@ Built-ins (System unit)
   `:width:decimals` formatting, TP's default real format, `TRUE`/`FALSE`
 - `Ord`, `Chr`, `Succ`, `Pred`, `Inc`, `Dec`, `Odd`, `Abs`, `Sqr`, `Sqrt`,
   `Sin`, `Cos`, `ArcTan`, `Ln`, `Exp`, `Trunc`, `Round`, `Int`, `Frac`, `Pi`,
-  `Random`, `Random(n)`, `Randomize`, `MaxInt`, `MaxLongInt`
+  `Random`, `Random(n)`, `Randomize` (the same sequence as TP; see
+  References), `MaxInt`, `MaxLongInt`
 - `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`,
   `Val`
 - `High`, `Low`, `SizeOf` (of types with a defined Rust size)
@@ -154,7 +159,8 @@ More language
   examples)
 - String indexing `s[i]`, `s[0]`; `Hi`, `Lo`, `Swap`; `FillChar` and `Move`
   on arrays of scalars (checked, no raw memory); `ParamCount`, `ParamStr`
-- `Break`, `Continue` (TP 7)
+- `Break`, `Continue` (TP 7; `Continue` in `repeat` still runs the `until`
+  test)
 - `{$N+}` types `Single`, `Double`, `Extended`, `Comp` as `f32`/`f64`/`f64`/`i64`
 
 Crt unit (the whole examples set uses it)

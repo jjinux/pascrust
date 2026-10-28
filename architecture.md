@@ -24,7 +24,9 @@ inheritance, pointers with `New`/`Dispose`, `file of record` and `Text` files,
 nested procedures (recursive, and reading the enclosing procedure's locals),
 `var` parameters everywhere, typed-constant arrays, char- and enum-indexed
 arrays, and the `Crt`, `Dos` and `Graph` units. They do not use sets, variant
-records, `goto`, virtual methods, or procedural types.
+records, `goto`, virtual methods, or procedural types. (Virtual methods are
+supported anyway, §16; `with`, `{$I-}`/`IOResult` and `SeekEof` are too,
+for other old programs.)
 
 ---
 
@@ -60,7 +62,11 @@ foo.pas (+ units)                                   out/foo/
   (if available) so our formatter does not need to be perfect.
 - **driver**: writes a Cargo project, optionally runs `cargo build` /
   `cargo run`. The CLI is `pascrust build foo.pas`, `pascrust run foo.pas`,
-  `pascrust emit foo.pas` (print the Rust).
+  `pascrust emit foo.pas` (print the Rust). `run` uses `cargo run
+  --manifest-path out/foo/Cargo.toml` rather than running cargo inside
+  `out/foo`, so the program starts in the user's current directory and
+  relative file names and drive mappings mean what they'd expect. The
+  driver also works out which source ranges `{$I-}` covers (§18).
 
 Whole-program compilation: the driver reads the program and every unit it
 uses (recursively) before emitting anything, so sema can see everything. Each
@@ -115,7 +121,11 @@ Rationale:
 - Error messages: handwritten parsers give "expected `;` after statement at
   line 42" for free; combinator and PEG errors are notoriously poor.
 - Case-insensitivity, nested directive comments, and the `1..5` lexing
-  wrinkle are all trivial by hand and all awkward in lexer DSLs.
+  wrinkle are all trivial by hand and all awkward in lexer DSLs. So is `^`:
+  `^M` is the character #13, but `var p: ^T` is a pointer to `T`. Like Free
+  Pascal's scanner, the lexer reads `^` as the pointer symbol where a type
+  can appear (it tracks whether it's in a `type` or `var` section, or a
+  typed constant's type) and after something that can be dereferenced.
 - Zero build-time machinery and nothing extra to learn.
 
 Rejected:
@@ -619,9 +629,17 @@ window meanwhile (§19).
   `b < a`, exactly TP); `downto` → `(a..=b).rev()`; enum loops go through
   `Ordinal`. **`repeat ... until c`** → `loop { ...; if c { break } }`.
   **`case`** → `match` with `|` alternatives, `..=` ranges and `_ => {}` when
-  there is no `else`. `Break`/`Continue` map directly. `goto` is unsupported.
+  there is no `else`. `Break`/`Continue` map directly, except `Continue` in
+  a `repeat`, which must still run the `until` test: the body goes in a
+  labeled block, `'repeat_body: { ... }`, and `Continue` is
+  `break 'repeat_body;`. `goto` is unsupported.
 - **`and`/`or`** → `&&`/`||` (TP defaults to short-circuit, `{$B-}`); on
-  integers they are `&`/`|`. `xor`, `shl`, `shr` map directly.
+  integers they are `&`/`|`. `xor` and `shl` map directly, with two TP
+  details: `shr` is a logical shift (`-300 shr 4` is 4077), so a signed
+  value is shifted as unsigned; and shifting by the type's width or more
+  gives 0, so unless the count is a literal below the width the shift is
+  `x.checked_shl(n as u32).unwrap_or(0)`. A shift has the type of its left
+  operand.
 - **`Write`/`Writeln`** → `pwrite!(...)` / `pwriteln!(...)` macros from the
   runtime that accept any `PasWrite` value and the width helpers `w(x, 8)` and
   `wd(x, 8, 2)` for `x:8` and `x:8:2`; `writeln(f, ...)` → `pwriteln!(f; ...)`.
