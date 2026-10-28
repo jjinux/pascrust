@@ -37,6 +37,8 @@ fn pascal_main() {
     q.get_mut().value = 1;
     p.get_mut().next = q.clone();
     pwriteln!(p == q, " ", p != q, " ", p.get().next == q, " ", q.get().next.is_nil());
+    p.get().next.get_mut().value = 5;
+    pwriteln!(p.get().value, " ", q.get().value);
     q = p.clone();
     pwriteln!(p == q);
 }

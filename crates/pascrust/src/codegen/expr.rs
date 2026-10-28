@@ -262,10 +262,15 @@ impl<'a> Codegen<'a> {
     fn selector(&mut self, e: &Expr) -> String {
         match &e.kind {
             // `p^` inside a longer path, like `p^.next`: borrow the record,
-            // mutably if we're about to change it.
+            // mutably if we're about to change it. Only the last `^` in a
+            // path needs that: in `head^.next^.value := 2`, `head^` is just
+            // read to find `next`, so it's `head.get().next.get_mut()`.
             ExprKind::Deref(base) => {
                 let method = if self.mutable_place { "get_mut" } else { "get" };
-                format!("{}.{method}()", self.selector_base(base))
+                let saved = std::mem::replace(&mut self.mutable_place, false);
+                let base = self.selector_base(base);
+                self.mutable_place = saved;
+                format!("{base}.{method}()")
             }
             ExprKind::Field(base, field) => {
                 let path = match self.a.type_of(base.id).clone() {
