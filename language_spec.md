@@ -105,6 +105,10 @@ Built-ins (System unit)
   part of a string or byte array (`FillChar(s[1], n, ' ')`); `Move` between
   two whole variables of the same type. Other uses are an error, since
   pascrust can't copy raw bytes between unrelated types
+- System variables `ExitCode` (the exit code when the program ends),
+  `RandSeed`, `FileMode` (how `Reset` opens typed files), and `Input` and
+  `Output` as file arguments (`Writeln(Output, x)`); they're always the
+  console, so `Assign`/`Reset`/`Rewrite` on them is an error
 - `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`,
   `Val`
 - `High`, `Low`, `SizeOf` (of types with a defined Rust size)

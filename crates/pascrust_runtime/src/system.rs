@@ -2,6 +2,7 @@
 //! string conversion.
 
 use std::cell::Cell;
+use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 
 use crate::io::PasWrite;
 use crate::string::PString;
@@ -41,6 +42,44 @@ pub fn random(n: impl Into<i32>) -> i16 {
 /// default, `{$N-}`.)
 pub fn random_real() -> f64 {
     f64::from(next_seed()) / 4294967296.0
+}
+
+/// Pascal `RandSeed`, read.
+pub fn rand_seed() -> i32 {
+    RAND_SEED.with(|seed| seed.get() as i32)
+}
+
+/// `RandSeed := n`: start the "random" sequence from a known place.
+pub fn set_rand_seed(n: impl Into<i32>) {
+    RAND_SEED.with(|seed| seed.set(n.into() as u32));
+}
+
+// Unlike `RandSeed`, these two are statics, shared by all threads: the
+// program runs on a worker thread (see `run`), but `ExitCode` is read by the
+// main thread when the program ends. An *atomic* integer can be read and
+// written from several threads safely, with no lock.
+static EXIT_CODE: AtomicI32 = AtomicI32::new(0);
+static FILE_MODE: AtomicU8 = AtomicU8::new(2);
+
+/// Pascal `ExitCode`: the program's exit code when it ends normally.
+pub fn exit_code() -> i16 {
+    EXIT_CODE.load(Ordering::Relaxed) as i16
+}
+
+/// `ExitCode := n`.
+pub fn set_exit_code(n: impl Into<i32>) {
+    EXIT_CODE.store(n.into(), Ordering::Relaxed);
+}
+
+/// Pascal `FileMode`: how `Reset` opens typed files. 0 is read-only, 1
+/// write-only, 2 (the default) read and write.
+pub fn file_mode() -> u8 {
+    FILE_MODE.load(Ordering::Relaxed)
+}
+
+/// `FileMode := n`.
+pub fn set_file_mode(n: impl Into<i32>) {
+    FILE_MODE.store(n.into() as u8, Ordering::Relaxed);
 }
 
 /// Pascal `Randomize`: seed the generator from the clock. (TP uses the DOS

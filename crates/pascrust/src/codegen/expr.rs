@@ -172,6 +172,8 @@ impl<'a> Codegen<'a> {
                 Access::Reference => (format!("*{}", self.a.var_name(self.proc, sym)), prec::UNARY),
             },
             SymKind::Const { .. } => (symbol.rust_name.clone(), prec::ATOM),
+            SymKind::RuntimeVar { get, .. } => (format!("{get}()"), prec::POSTFIX),
+            SymKind::StdText { .. } => unreachable!("Input and Output are only file arguments"),
             SymKind::Proc(_) | SymKind::Builtin(_) | SymKind::UnitRoutine(_) => (self.call(e, &[]), prec::POSTFIX),
             SymKind::TypeName(_) => unreachable!("sema rejects types used as values"),
         }
@@ -540,7 +542,9 @@ impl<'a> Codegen<'a> {
                 let code = self.coerce(&args[0], &from.concrete());
                 cast(code, &from.concrete(), &ty).0
             }
-            SymKind::Var(_) | SymKind::Const { .. } => self.expr(callee).0,
+            SymKind::Var(_) | SymKind::Const { .. } | SymKind::RuntimeVar { .. } | SymKind::StdText { .. } => {
+                self.expr(callee).0
+            }
         }
     }
 

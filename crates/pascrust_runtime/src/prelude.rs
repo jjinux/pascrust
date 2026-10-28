@@ -12,7 +12,10 @@ pub use crate::ptr::Ptr;
 pub use crate::run::{halt, io_result, io_unchecked, rte, run_error};
 pub use crate::set::PSet;
 pub use crate::string::{PString, pos, pstr};
-pub use crate::system::{ch_dir, mk_dir, param_count, param_str, pas_str, random, random_real, randomize, rm_dir, val};
+pub use crate::system::{
+    ch_dir, exit_code, file_mode, mk_dir, param_count, param_str, pas_str, rand_seed, random, random_real, randomize,
+    rm_dir, set_exit_code, set_file_mode, set_rand_seed, val,
+};
 // The `Crt`, `Dos` and `Graph` units, when the program uses them.
 // `#[cfg(feature)]` compiles a line only when that Cargo feature is on.
 #[cfg(any(feature = "crt", feature = "graph"))]

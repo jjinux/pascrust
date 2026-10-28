@@ -268,6 +268,20 @@ impl Checker {
             let sym = self.add_symbol(name, rust.to_string(), SymKind::Const { value, ty });
             self.scopes[0].insert(name.to_string(), sym);
         }
+        // System variables that live in the runtime.
+        let runtime_vars = [
+            ("exitcode", Type::Int(IntKind::Integer), "exit_code", "set_exit_code"),
+            ("randseed", Type::Int(IntKind::LongInt), "rand_seed", "set_rand_seed"),
+            ("filemode", Type::Int(IntKind::Byte), "file_mode", "set_file_mode"),
+        ];
+        for (name, ty, get, set) in runtime_vars {
+            let sym = self.add_symbol(name, get.to_string(), SymKind::RuntimeVar { ty, get, set });
+            self.scopes[0].insert(name.to_string(), sym);
+        }
+        for (name, output) in [("input", false), ("output", true)] {
+            let sym = self.add_symbol(name, name.to_string(), SymKind::StdText { output });
+            self.scopes[0].insert(name.to_string(), sym);
+        }
         for &(name, builtin) in Builtin::ALL {
             let sym = self.add_symbol(name, name.to_string(), SymKind::Builtin(builtin));
             self.scopes[0].insert(name.to_string(), sym);
@@ -1087,6 +1101,14 @@ impl Checker {
     fn stmt(&mut self, s: &Stmt) {
         match &s.kind {
             StmtKind::Empty => {}
+            // `RandSeed := 42`: a runtime variable's setter.
+            StmtKind::Assign { target, value } if self.runtime_var(target).is_some() => {
+                let (sym, ty) = self.runtime_var(target).unwrap();
+                self.a.refs.insert(target.id, sym);
+                self.a.types.insert(target.id, ty.clone());
+                let value_ty = self.expr(value);
+                self.check_assignable(&ty, &value_ty, value.span);
+            }
             StmtKind::Assign { target, value } => {
                 let target_ty = self.place(target, true);
                 let value_ty = self.expr(value);
@@ -1409,6 +1431,16 @@ impl Checker {
         }
     }
 
+    /// If `e` names a runtime variable (`RandSeed`), its symbol and type.
+    fn runtime_var(&self, e: &Expr) -> Option<(SymId, Type)> {
+        let ExprKind::Name(id) = &e.kind else { return None };
+        let Some(Resolved::Sym(sym)) = self.resolve(&id.key()) else { return None };
+        match &self.a.symbols[sym].kind {
+            SymKind::RuntimeVar { ty, .. } => Some((sym, ty.clone())),
+            _ => None,
+        }
+    }
+
     /// `SizeOf(x)`, `High(x)` or `Low(x)`, where `x` is a type or a
     /// variable: the value, and its type.
     pub(super) fn type_query(&self, b: Builtin, arg: &Expr) -> Option<(ConstVal, Type)> {
@@ -1564,7 +1596,8 @@ impl Checker {
                         self.use_var(sym, false);
                         v.ty
                     }
-                    SymKind::Const { ty, .. } => ty,
+                    SymKind::Const { ty, .. } | SymKind::RuntimeVar { ty, .. } => ty,
+                    SymKind::StdText { .. } => Type::Text,
                     // A bare function name is a call with no arguments.
                     SymKind::Proc(_) | SymKind::Builtin(_) | SymKind::UnitRoutine(_) => self.call(e, e, &[]),
                     SymKind::TypeName(_) => {
@@ -1747,6 +1780,15 @@ impl Checker {
                         self.use_var(sym, write);
                         v.ty
                     }
+                    // `Writeln(Output, ...)`: the console.
+                    SymKind::StdText { .. } => {
+                        self.a.refs.insert(e.id, sym);
+                        Type::Text
+                    }
+                    SymKind::RuntimeVar { .. } => {
+                        self.error(e.span, format!("`{}` can only be read, or set with `:=`", ident.name));
+                        Type::Error
+                    }
                     // Assigning to a function's own name sets its result.
                     SymKind::Proc(p) if self.proc_stack.contains(&p) && self.a.procs[p].result.is_some() => {
                         let result = self.a.procs[p].result.unwrap();
@@ -1918,7 +1960,7 @@ impl Checker {
                 }
                 target
             }
-            SymKind::Var(_) | SymKind::Const { .. } => {
+            SymKind::Var(_) | SymKind::Const { .. } | SymKind::RuntimeVar { .. } | SymKind::StdText { .. } => {
                 if !args.is_empty() {
                     self.error(ident.span, format!("`{}` is not a procedure or function", ident.name));
                     return Type::Error;
@@ -2580,6 +2622,14 @@ impl Checker {
     /// state, so it's treated like a `var` argument.
     fn file_arg(&mut self, e: &Expr, name: &str, text_only: bool) {
         let ty = self.place(e, true);
+        // `Input` and `Output` are always open on the console.
+        if let Some(&sym) = self.a.refs.get(&e.id)
+            && let SymKind::StdText { output } = self.a.symbols[sym].kind
+            && !matches!(name, "Eof" | "Eoln" | "SeekEof" | "SeekEoln" | "Flush")
+        {
+            let which = if output { "Output" } else { "Input" };
+            self.error(e.span, format!("pascrust's `{which}` is always the console; `{name}` can't change it"));
+        }
         let ok = match ty {
             Type::Text | Type::Error => true,
             Type::File(_) => !text_only,
@@ -2606,6 +2656,8 @@ impl Checker {
             ExprKind::Name(id) => match self.resolve(&id.key())? {
                 Resolved::Sym(sym) => match &self.a.symbols[sym].kind {
                     SymKind::Var(v) => Some(v.ty.clone()),
+                    SymKind::RuntimeVar { ty, .. } => Some(ty.clone()),
+                    SymKind::StdText { .. } => Some(Type::Text),
                     _ => None,
                 },
                 Resolved::SelfField { ty, .. } => Some(ty),

@@ -127,6 +127,13 @@ pub fn run(program: fn()) {
     #[cfg(feature = "graph")]
     crate::graph::save_if_requested();
     crate::io::shutdown();
+    if let Ok(()) = result {
+        // A program that ends normally exits with `ExitCode` (usually 0).
+        let code = crate::system::exit_code();
+        if code != 0 {
+            std::process::exit(i32::from(code));
+        }
+    }
     if let Err(payload) = result {
         let err = to_runtime_error(payload);
         if err.message.is_empty() {

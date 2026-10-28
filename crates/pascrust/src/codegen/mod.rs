@@ -1253,6 +1253,12 @@ impl<'a> Codegen<'a> {
 
     fn assignment(&mut self, target: &Expr, value: &Expr) -> String {
         let target_ty = self.a.type_of(target.id).clone();
+        // `RandSeed := 42` → `set_rand_seed(42);`.
+        if let Some(&sym) = self.a.refs.get(&target.id)
+            && let SymKind::RuntimeVar { set, .. } = self.a.sym(sym).kind
+        {
+            return format!("{set}({});", self.coerce(value, &target_ty).0);
+        }
         // `p := p^.next` would borrow `p` (through `p.get()`) while assigning
         // to it, which the borrow checker rejects. Computing the value into
         // a temporary first ends that borrow before the assignment.

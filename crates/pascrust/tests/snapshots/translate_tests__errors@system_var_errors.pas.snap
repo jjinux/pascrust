@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/system_var_errors.pas
+---
+system_var_errors.pas:5:7: error: `RandSeed` can only be read, or set with `:=`
+  Inc(RandSeed);
+      ^^^^^^^^
+
+system_var_errors.pas:6:10: error: pascrust's `Output` is always the console; `Assign` can't change it
+  Assign(Output, 'log.txt');
+         ^^^^^^
+
+system_var_errors.pas:7:9: error: pascrust's `Input` is always the console; `Reset` can't change it
+  Reset(Input);
+        ^^^^^

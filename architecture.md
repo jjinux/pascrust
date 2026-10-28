@@ -648,6 +648,13 @@ window meanwhile (§19).
   a `repeat`, which must still run the `until` test: the body goes in a
   labeled block, `'repeat_body: { ... }`, and `Continue` is
   `break 'repeat_body;`. `goto` is unsupported.
+- **System variables** (`ExitCode`, `RandSeed`, `FileMode`) live in the
+  runtime, as a getter and a setter (`SymKind::RuntimeVar`): reading is
+  `rand_seed()`, assigning is `set_rand_seed(42)`. Only plain reads and
+  `:=` are allowed, not `var` arguments or `Inc`. `ExitCode` and
+  `FileMode` are atomics, since the main thread reads `ExitCode` when the
+  program's thread ends. `Input`/`Output` (`SymKind::StdText`) as a file
+  argument just mean the console: `Writeln(Output, x)` is `pwriteln!(x)`.
 - **`and`/`or`** → `&&`/`||` (TP defaults to short-circuit, `{$B-}`); on
   integers they are `&`/`|`. `xor` and `shl` map directly, with two TP
   details: `shr` is a logical shift (`-300 shr 4` is 4077), so a signed

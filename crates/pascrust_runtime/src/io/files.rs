@@ -427,7 +427,9 @@ impl<T: FileRecord> PFile<T> {
     /// Pascal `Reset(f)`: open an existing file for reading and writing.
     pub fn reset(&mut self) {
         let name = self.name();
-        match OpenOptions::new().read(true).write(true).open(dos_path(&name.to_string())) {
+        // `FileMode` says how: 0 read-only, 1 write-only, 2 both.
+        let mode = crate::system::file_mode();
+        match OpenOptions::new().read(mode != 1).write(mode != 0).open(dos_path(&name.to_string())) {
             Ok(file) => self.file = Some(file),
             Err(e) => open_error(e, &name),
         }

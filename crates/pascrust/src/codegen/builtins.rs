@@ -36,6 +36,12 @@ impl<'a> Codegen<'a> {
     pub(super) fn builtin(&mut self, b: Builtin, args: &[Expr], call_id: NodeId) -> String {
         use Builtin::*;
         let ty = |g: &Self, e: &Expr| g.a.type_of(e.id).clone();
+        // `Writeln(Output, ...)` and `Readln(Input, ...)` are the console ones.
+        if matches!(b, Write | Writeln | Read | Readln | Eof | Eoln | SeekEof | SeekEoln)
+            && args.first().is_some_and(|a| self.std_text(a))
+        {
+            return self.builtin(b, &args[1..], call_id);
+        }
         match b {
             Write | Writeln => match args.first().map(|a| ty(self, a)) {
                 // `Write(f, x, y)` on a typed file writes whole records.
@@ -81,6 +87,8 @@ impl<'a> Codegen<'a> {
                 let method = if b == Assign { "assign" } else { "rename" };
                 format!("{file}.{method}({});", self.string_arg(&args[1]))
             }
+            // `Flush(Output)`: the console.
+            Flush if self.std_text(&args[0]) => "pascrust_runtime::io::flush_stdout();".to_string(),
             Reset | Rewrite | Append | Close | Erase | Flush | Truncate => {
                 let method = format!("{b:?}").to_ascii_lowercase();
                 format!("{}.{method}();", self.place_receiver(&args[0]))
@@ -466,5 +474,12 @@ impl Codegen<'_> {
             }
             _ => self.coerce(value, elem).0,
         }
+    }
+}
+
+impl Codegen<'_> {
+    /// Is `e` the standard file `Input` or `Output`?
+    fn std_text(&self, e: &Expr) -> bool {
+        self.a.refs.get(&e.id).is_some_and(|&sym| matches!(self.a.sym(sym).kind, SymKind::StdText { .. }))
     }
 }

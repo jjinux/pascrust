@@ -61,6 +61,18 @@ pub enum SymKind {
     Builtin(Builtin),
     /// A routine from `Crt`, `Dos` or `System` with a fixed signature.
     UnitRoutine(&'static units::UnitRoutine),
+    /// A variable that lives in the runtime, like `RandSeed`: reading it
+    /// calls `get` (`rand_seed()`), assigning to it calls `set`.
+    RuntimeVar {
+        ty: Type,
+        get: &'static str,
+        set: &'static str,
+    },
+    /// `Input` or `Output`, the standard text files: `Writeln(Output, x)`
+    /// is `Writeln(x)`.
+    StdText {
+        output: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
