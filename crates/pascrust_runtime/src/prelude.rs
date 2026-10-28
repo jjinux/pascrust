@@ -8,6 +8,7 @@
 pub use crate::array::PArray;
 pub use crate::io::{PasWrite, eof, eoln, w, wd};
 pub use crate::ordinal::{Enumerated, Ordinal, enum_range};
+pub use crate::ptr::Ptr;
 pub use crate::run::{halt, rte};
 pub use crate::string::{PString, pos, pstr};
 pub use crate::system::{ch_dir, mk_dir, param_count, param_str, pas_str, random, random_real, randomize, rm_dir, val};

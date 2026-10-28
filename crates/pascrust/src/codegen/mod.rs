@@ -31,6 +31,7 @@ pub fn generate(program: &Program, units: &[Unit], analysis: &Analysis, map: &So
         explained: Default::default(),
         file: 0,
         vis: "",
+        mutable_place: false,
     };
     g.program(program);
     files.push(("main.rs".to_string(), std::mem::take(&mut g.out)));
@@ -56,6 +57,9 @@ struct Codegen<'a> {
     file: usize,
     /// Visibility for items: `pub ` in a unit's module, nothing in `main.rs`.
     vis: &'static str,
+    /// True while generating a place that will be written, so that `p^`
+    /// borrows the record mutably (`p.get_mut()`).
+    mutable_place: bool,
 }
 
 impl<'a> Codegen<'a> {
@@ -298,6 +302,16 @@ impl<'a> Codegen<'a> {
                         self.line(format!("    {}{}: {},", self.vis, field.rust_name, field.ty.rust()));
                     }
                     self.line("}");
+                }
+                Type::Pointer(p) => {
+                    let alias = p.alias.as_deref().expect("only named pointer types are emitted");
+                    if self.first_time("pointer") {
+                        self.line("///");
+                        self.line("/// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared");
+                        self.line("/// heap record (an `Rc<RefCell<...>>` inside): using `nil` or a disposed");
+                        self.line("/// record is a runtime error instead of undefined behaviour.");
+                    }
+                    self.line(format!("{}type {alias} = Ptr<{}>;", self.vis, p.target().rust()));
                 }
                 Type::Array(a) => {
                     let alias = a.alias.as_deref().expect("only named array types are emitted");
@@ -693,6 +707,15 @@ impl<'a> Codegen<'a> {
 
     fn assignment(&mut self, target: &Expr, value: &Expr) -> String {
         let target_ty = self.a.type_of(target.id).clone();
+        // `p := p^.next` would borrow `p` (through `p.get()`) while assigning
+        // to it, which the borrow checker rejects. Computing the value into
+        // a temporary first ends that borrow before the assignment.
+        if contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target))) {
+            let temp = temp_name(value);
+            let value_code = self.coerce(value, &target_ty).0;
+            let place = self.place(target);
+            return format!("let {temp} = {value_code};\n{}{place} = {temp};", "    ".repeat(self.indent));
+        }
         let place = self.place(target);
         // `x := x + n` reads better as Rust's compound assignment `x += n`.
         if let ExprKind::Binary { op: op @ (BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul), lhs, rhs } = &value.kind
@@ -767,6 +790,64 @@ impl<'a> Codegen<'a> {
     }
 }
 
+/// Does the expression dereference a pointer anywhere?
+fn contains_deref(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Deref(_) => true,
+        ExprKind::Field(base, _) => contains_deref(base),
+        ExprKind::Index(base, indexes) => contains_deref(base) || indexes.iter().any(contains_deref),
+        ExprKind::Unary { operand, .. } => contains_deref(operand),
+        ExprKind::Binary { lhs, rhs, .. } => contains_deref(lhs) || contains_deref(rhs),
+        ExprKind::Call { args, .. } => args.iter().any(contains_deref),
+        _ => false,
+    }
+}
+
+/// The variable names (lowercase) at the root of each pointer dereference.
+fn deref_roots(e: &Expr) -> Vec<String> {
+    let mut roots = Vec::new();
+    fn walk(e: &Expr, roots: &mut Vec<String>) {
+        match &e.kind {
+            ExprKind::Deref(base) => {
+                roots.push(root_name(base));
+                walk(base, roots);
+            }
+            ExprKind::Field(base, _) => walk(base, roots),
+            ExprKind::Index(base, indexes) => {
+                walk(base, roots);
+                indexes.iter().for_each(|i| walk(i, roots));
+            }
+            ExprKind::Unary { operand, .. } => walk(operand, roots),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                walk(lhs, roots);
+                walk(rhs, roots);
+            }
+            ExprKind::Call { args, .. } => args.iter().for_each(|a| walk(a, roots)),
+            _ => {}
+        }
+    }
+    walk(e, &mut roots);
+    roots
+}
+
+/// The name of the variable a place expression starts from.
+fn root_name(e: &Expr) -> String {
+    match &e.kind {
+        ExprKind::Name(id) => id.key(),
+        ExprKind::Field(base, _) | ExprKind::Index(base, _) | ExprKind::Deref(base) => root_name(base),
+        _ => String::new(),
+    }
+}
+
+/// A name for a hoisted temporary: the last field name (`next` for
+/// `p^.next`), or `value`.
+fn temp_name(e: &Expr) -> String {
+    match &e.kind {
+        ExprKind::Field(_, field) => crate::sema::names::snake_case(&field.name),
+        _ => "value".to_string(),
+    }
+}
+
 /// The value a Pascal variable of type `ty` starts with. Turbo Pascal
 /// leaves local variables uninitialized (whatever was on the stack); Rust
 /// insists on initialization, and zero is the safe choice.
@@ -781,6 +862,7 @@ fn default_value(ty: &Type) -> String {
         Type::Enum(e) => format!("{}::{}", e.rust_name, e.variants[0]),
         Type::Array(a) if a.alias.is_none() => "PArray::default()".to_string(),
         Type::Array(_) | Type::Record(_) | Type::Object(_) => format!("{}::default()", ty.rust()),
+        Type::Pointer(_) => "Ptr::nil()".to_string(),
         Type::Nil | Type::Void | Type::Error => "()".to_string(),
     }
 }

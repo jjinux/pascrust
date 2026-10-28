@@ -1,0 +1,198 @@
+//! `Ptr<T>`: Pascal pointers, made safe.
+//!
+//! A Pascal pointer is an address: `New(p)` allocates a record on the heap,
+//! `p^` reaches it, several pointers may hold the same address, and
+//! `Dispose(p)` frees it, after which any other pointer to it dangles. That's
+//! exactly what Rust forbids, so instead of an address, a `Ptr<T>` holds a
+//! *handle* to a shared heap cell:
+//!
+//! - `Rc` (reference counting) lets several `Ptr`s share one cell; the cell
+//!   is freed when the last handle goes away.
+//! - `RefCell` lets any of them change the record. Rust normally checks at
+//!   compile time that nobody reads a value while it's being changed;
+//!   `RefCell` does that check at run time instead, because with pointers the
+//!   compiler can't know who points where.
+//! - The `Option` inside is the record itself, or `None` once disposed, so
+//!   a dangling pointer is a clean runtime error rather than a crash.
+//!
+//! This is the "virtual heap" idea from the project's planning notes: the
+//! Pascal heap lives inside Rust, and misuse raises an error to the host
+//! instead of corrupting memory.
+
+use std::cell::{Ref, RefCell, RefMut};
+use std::fmt;
+use std::rc::Rc;
+
+pub struct Ptr<T>(Option<Rc<RefCell<Option<T>>>>);
+
+impl<T> Ptr<T> {
+    /// Pascal `nil`.
+    pub const fn nil() -> Ptr<T> {
+        Ptr(None)
+    }
+
+    pub fn is_nil(&self) -> bool {
+        self.0.is_none()
+    }
+
+    /// A new heap record initialized to `value`.
+    pub fn new(value: T) -> Ptr<T> {
+        Ptr(Some(Rc::new(RefCell::new(Some(value)))))
+    }
+
+    /// Pascal `Dispose(p)`: free the record and set `p` to `nil`. Other
+    /// pointers to the same record become dangling: using them is a runtime
+    /// error.
+    pub fn dispose(&mut self) {
+        match self.0.take() {
+            Some(cell) => match cell.try_borrow_mut() {
+                Ok(mut slot) => {
+                    if slot.take().is_none() {
+                        crate::rte(204, "Invalid pointer operation: record disposed twice");
+                    }
+                }
+                Err(_) => crate::rte(204, "Invalid pointer operation: disposing a record that's in use"),
+            },
+            None => crate::rte(204, "Invalid pointer operation: Dispose(nil)"),
+        }
+    }
+
+    fn cell(&self) -> &RefCell<Option<T>> {
+        match &self.0 {
+            Some(cell) => cell,
+            None => crate::rte(204, "Invalid pointer operation: dereferencing nil"),
+        }
+    }
+
+    /// Pascal `p^` for reading. The returned guard keeps the record borrowed
+    /// until it's dropped, at the end of the statement.
+    pub fn get(&self) -> Ref<'_, T> {
+        let guard = match self.cell().try_borrow() {
+            Ok(guard) => guard,
+            Err(_) => crate::rte(204, ALIASED),
+        };
+        // `Ref::map` narrows a borrow of the `Option<T>` to a borrow of the
+        // `T` inside it.
+        Ref::map(guard, |slot| match slot {
+            Some(value) => value,
+            None => crate::rte(204, "Invalid pointer operation: using a disposed record"),
+        })
+    }
+
+    /// Pascal `p^` for writing (`p^.x := 1`).
+    pub fn get_mut(&self) -> RefMut<'_, T> {
+        let guard = match self.cell().try_borrow_mut() {
+            Ok(guard) => guard,
+            Err(_) => crate::rte(204, ALIASED),
+        };
+        RefMut::map(guard, |slot| match slot {
+            Some(value) => value,
+            None => crate::rte(204, "Invalid pointer operation: using a disposed record"),
+        })
+    }
+}
+
+/// The message for a `RefCell` conflict. In Pascal, two pointers to the same
+/// record (or a `var` parameter that is a field of the record) may be used at
+/// once; in Rust's model, one of them is still "in use" when the other
+/// writes.
+const ALIASED: &str = "Invalid pointer operation: a heap record is used through two references at once \
+    (e.g. passed as a `var` argument while another pointer changes it)";
+
+impl<T: Default> Ptr<T> {
+    /// Pascal `New(p)`: a new heap record. Turbo Pascal leaves its contents
+    /// undefined; ours starts out zeroed (`Default`).
+    pub fn alloc() -> Ptr<T> {
+        Ptr::new(T::default())
+    }
+}
+
+/// Copying a pointer copies the handle, not the record: both point at the
+/// same cell, as in Pascal.
+impl<T> Clone for Ptr<T> {
+    fn clone(&self) -> Ptr<T> {
+        Ptr(self.0.clone())
+    }
+}
+
+impl<T> Default for Ptr<T> {
+    fn default() -> Ptr<T> {
+        Ptr::nil()
+    }
+}
+
+/// Pointer equality is identity: do they point at the same record?
+impl<T> PartialEq for Ptr<T> {
+    fn eq(&self, other: &Ptr<T>) -> bool {
+        match (&self.0, &other.0) {
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+}
+
+impl<T> fmt::Debug for Ptr<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Some(cell) => write!(f, "Ptr({:p})", Rc::as_ptr(cell)),
+            None => write!(f, "nil"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default, Clone)]
+    struct Node {
+        value: i16,
+        next: Ptr<Node>,
+    }
+
+    #[test]
+    fn linked_list() {
+        let mut head: Ptr<Node> = Ptr::nil();
+        for v in 1..=3 {
+            let p: Ptr<Node> = Ptr::alloc();
+            p.get_mut().value = v;
+            p.get_mut().next = head.clone();
+            head = p;
+        }
+        let mut sum = 0;
+        let mut p = head.clone();
+        while !p.is_nil() {
+            sum += p.get().value;
+            let next = p.get().next.clone();
+            p = next;
+        }
+        assert_eq!(sum, 6);
+    }
+
+    #[test]
+    fn sharing_and_identity() {
+        let a: Ptr<Node> = Ptr::alloc();
+        let b = a.clone();
+        b.get_mut().value = 7;
+        assert_eq!(a.get().value, 7);
+        assert!(a == b);
+        assert!(a != Ptr::alloc());
+    }
+
+    #[test]
+    #[should_panic]
+    fn dangling_pointer_is_an_error() {
+        let mut a: Ptr<Node> = Ptr::alloc();
+        let b = a.clone();
+        a.dispose();
+        let _ = b.get().value;
+    }
+
+    #[test]
+    #[should_panic]
+    fn nil_dereference_is_an_error() {
+        let p: Ptr<Node> = Ptr::nil();
+        let _ = p.get().value;
+    }
+}

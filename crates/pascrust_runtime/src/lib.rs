@@ -16,6 +16,7 @@ pub mod dos;
 pub mod io;
 pub mod ordinal;
 pub mod prelude;
+pub mod ptr;
 pub mod run;
 pub mod string;
 pub mod system;

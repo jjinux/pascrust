@@ -36,6 +36,8 @@ builtins! {
     Length => "length", Copy => "copy", Pos => "pos", Concat => "concat",
     Delete => "delete", Insert => "insert", UpCase => "upcase", Str => "str",
     Val => "val",
+    // Pointers
+    New => "new", Dispose => "dispose",
 }
 
 impl Builtin {
@@ -59,6 +61,8 @@ impl Builtin {
                 | Insert
                 | Str
                 | Val
+                | New
+                | Dispose
         )
     }
 }

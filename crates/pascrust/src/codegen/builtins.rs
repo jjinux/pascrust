@@ -114,6 +114,11 @@ impl<'a> Codegen<'a> {
                 None => "random_real()".to_string(),
             },
             Randomize => "randomize()".to_string(),
+            New => {
+                let place = self.place(&args[0]);
+                format!("{place} = Ptr::alloc();")
+            }
+            Dispose => format!("{}.dispose();", self.place_receiver(&args[0])),
             UpCase => format!("{}.to_ascii_uppercase()", self.postfix(&args[0], &Type::Char)),
             Length => match ty(self, &args[0]) {
                 Type::StrLit(n) => n.to_string(),

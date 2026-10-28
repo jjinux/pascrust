@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::names::{self, screaming_snake_case, snake_case};
-use super::types::{ArrayType, EnumType, Field, ObjectType, RecordType};
+use super::types::{ArrayType, EnumType, Field, ObjectType, PointerType, RecordType};
 use super::*;
 use crate::ast::*;
 
@@ -57,6 +57,8 @@ pub(super) struct Checker {
     /// For each method body we're inside: the index of its scope in
     /// `scopes` and the method's procedure.
     method_scopes: Vec<(usize, ProcId)>,
+    /// Pointer types whose target hasn't been resolved yet.
+    pending_pointers: Vec<(Rc<PointerType>, Ident)>,
     /// The Rust module name of the unit being checked, if any.
     current_unit: Option<String>,
     /// Each user unit's interface: what a `uses` clause makes visible.
@@ -85,6 +87,7 @@ impl Checker {
             declaring_type: false,
             unit_exports: HashMap::new(),
             current_unit: None,
+            pending_pointers: Vec::new(),
             method_scopes: Vec::new(),
             subrange_types: HashMap::new(),
             errors: Vec::new(),
@@ -387,12 +390,29 @@ impl Checker {
                 }
                 Decl::Proc(p) => self.proc_decl(p),
             }
+            self.resolve_pointers();
+        }
+    }
+
+    /// Point each pending `^Name` at its target, now that `Name` may have
+    /// been declared. Pascal requires that by the end of the `type` section;
+    /// we check after every declaration and report leftovers at the end.
+    fn resolve_pointers(&mut self) {
+        let pending = std::mem::take(&mut self.pending_pointers);
+        for (ptr, target) in pending {
+            match self.lookup(&target.key()).map(|s| self.a.symbols[s].kind.clone()) {
+                Some(SymKind::TypeName(ty)) => *ptr.target.borrow_mut() = Some(ty),
+                _ => self.pending_pointers.push((ptr, target)),
+            }
         }
     }
 
     /// Every procedure declared `forward` (or in a unit interface) in the
     /// current scope must have been given a body.
     fn check_forwards(&mut self) {
+        for (_, target) in std::mem::take(&mut self.pending_pointers) {
+            self.error(target.span, format!("unknown type `{}`", target.name));
+        }
         let mut missing: Vec<(Span, String)> = Vec::new();
         for (key, &sym) in self.scopes.last().unwrap() {
             if let SymKind::Proc(p) = self.a.symbols[sym].kind
@@ -750,6 +770,18 @@ impl Checker {
                     ty = Type::Array(Rc::new(ArrayType { index: index_ty, lo, hi, elem: ty, alias }));
                 }
                 if name.is_some() && self.declaring_type {
+                    self.a.type_defs.push((ty.clone(), t.span()));
+                }
+                ty
+            }
+            TypeExpr::Pointer(target, _) => {
+                let alias = if self.declaring_type { name.map(|n| self.type_name(n)) } else { None };
+                let ptr = Rc::new(PointerType { target_name: target.name.clone(), target: Default::default(), alias });
+                // The target may not be declared yet; resolve it when the
+                // declarations around it are done.
+                self.pending_pointers.push((ptr.clone(), target.clone()));
+                let ty = Type::Pointer(ptr);
+                if self.declaring_type {
                     self.a.type_defs.push((ty.clone(), t.span()));
                 }
                 ty
@@ -1150,7 +1182,11 @@ impl Checker {
                 let base_ty = self.expr(base);
                 self.select_index(base_ty, indexes, e.span)
             }
-            ExprKind::Deref(_) | ExprKind::Set(_) | ExprKind::AddrOf(_) => {
+            ExprKind::Deref(base) => {
+                let base_ty = self.expr(base);
+                self.deref_type(base_ty, e.span)
+            }
+            ExprKind::Set(_) | ExprKind::AddrOf(_) => {
                 self.error(e.span, "this kind of expression is not supported yet");
                 Type::Error
             }
@@ -1240,6 +1276,12 @@ impl Checker {
                 let base_ty = self.place(base, write);
                 self.select_index(base_ty, indexes, e.span)
             }
+            // Writing through `p^` changes the record, not the pointer, so
+            // the pointer itself is only read.
+            ExprKind::Deref(base) => {
+                let base_ty = self.expr(base);
+                self.deref_type(base_ty, e.span)
+            }
             _ => {
                 self.error(e.span, "this can't be assigned to or passed by `var`");
                 Type::Error
@@ -1247,6 +1289,17 @@ impl Checker {
         };
         self.a.types.insert(e.id, ty.clone());
         ty
+    }
+
+    fn deref_type(&mut self, base: Type, span: Span) -> Type {
+        match base {
+            Type::Pointer(p) => p.target(),
+            Type::Error => Type::Error,
+            other => {
+                self.error(span, format!("`^` needs a pointer, found {other}"));
+                Type::Error
+            }
+        }
     }
 
     fn select_field(&mut self, base: Type, field: &Ident) -> Type {
@@ -1516,6 +1569,15 @@ impl Checker {
                 }
                 Type::Void
             }
+            New | Dispose => {
+                if arity(&mut self.errors, span, args.len(), 1..=1, &name) {
+                    let ty = self.place(&args[0], true);
+                    if !matches!(ty, Type::Pointer(_) | Type::Error) {
+                        self.error(args[0].span, format!("`{name}` needs a pointer variable, found {ty}"));
+                    }
+                }
+                Type::Void
+            }
             Exit | Break | Continue | Randomize => {
                 arity(&mut self.errors, span, args.len(), 0..=0, &name);
                 Type::Void
@@ -1713,6 +1775,6 @@ pub fn int_common(l: &Type, r: &Type) -> Option<Type> {
 fn comparable(l: &Type, r: &Type) -> bool {
     (l.is_numeric() && r.is_numeric())
         || (l.is_stringish() && r.is_stringish())
-        || (l == r && l.is_ordinal())
-        || (*l == Type::Nil || *r == Type::Nil)
+        || (l == r && (l.is_ordinal() || matches!(l, Type::Pointer(_))))
+        || (matches!(l, Type::Pointer(_) | Type::Nil) && matches!(r, Type::Pointer(_) | Type::Nil))
 }

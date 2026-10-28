@@ -84,6 +84,8 @@ pub enum Type {
     Record(Rc<RecordType>),
     /// A Turbo Pascal 5.5 `object` type.
     Object(Rc<ObjectType>),
+    /// `^T`, a pointer.
+    Pointer(Rc<PointerType>),
     /// The type of `nil`.
     Nil,
     /// The "type" of a procedure call, which has no value.
@@ -133,6 +135,40 @@ pub struct Field {
     pub name: String,
     pub rust_name: String,
     pub ty: Type,
+}
+
+/// `^T`. Pascal lets a pointer type name a type declared *later* in the
+/// same `type` section (that's how linked lists are declared:
+/// `NodePtr = ^Node; Node = record next: NodePtr; ... end`), so the target
+/// starts out unresolved and is filled in once the section is done.
+///
+/// `RefCell` allows that late filling-in through a shared `Rc`. The type is
+/// recursive (a node contains a pointer to a node), so `Debug` and
+/// `PartialEq` look only at the target's name, not its contents, which would
+/// recurse forever.
+pub struct PointerType {
+    pub target_name: String,
+    pub target: std::cell::RefCell<Option<Type>>,
+    /// The Rust type alias generated for a named pointer type.
+    pub alias: Option<String>,
+}
+
+impl PointerType {
+    pub fn target(&self) -> Type {
+        self.target.borrow().clone().unwrap_or(Type::Error)
+    }
+}
+
+impl PartialEq for PointerType {
+    fn eq(&self, other: &PointerType) -> bool {
+        self.target_name.eq_ignore_ascii_case(&other.target_name)
+    }
+}
+
+impl fmt::Debug for PointerType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "^{}", self.target_name)
+    }
 }
 
 /// An object type. Its methods are recorded in the [`super::Analysis`]
@@ -235,6 +271,10 @@ impl Type {
             Type::Enum(e) => e.rust_name.clone(),
             Type::Record(r) => r.rust_name.clone(),
             Type::Object(o) => o.rust_name.clone(),
+            Type::Pointer(p) => match &p.alias {
+                Some(alias) => alias.clone(),
+                None => format!("Ptr<{}>", p.target().rust()),
+            },
             Type::Array(a) => match &a.alias {
                 Some(alias) => alias.clone(),
                 None => a.rust_unaliased(),
@@ -250,6 +290,8 @@ impl Type {
             Type::Array(a) => a.elem.is_copy(),
             Type::Record(r) => r.fields.iter().all(|f| f.ty.is_copy()),
             Type::Object(o) => o.is_copy(),
+            // Copying a pointer means cloning its `Rc` handle.
+            Type::Pointer(_) => false,
             _ => true,
         }
     }
@@ -263,6 +305,7 @@ impl Type {
             (Type::Real, t) if t.is_numeric() => true,
             (Type::Char, Type::Char | Type::StrLit(1)) => true,
             (Type::Str { .. }, t) if t.is_stringish() => true,
+            (Type::Pointer(_), Type::Nil) => true,
             (a, b) => a == b,
         }
     }
@@ -291,6 +334,7 @@ impl fmt::Display for Type {
             Type::Enum(e) => write!(f, "{}", e.rust_name),
             Type::Record(r) => write!(f, "{}", r.rust_name),
             Type::Object(o) => write!(f, "{}", o.rust_name),
+            Type::Pointer(p) => write!(f, "^{}", p.target_name),
             Type::Array(a) => write!(f, "array[{}..{}] of {}", a.lo, a.hi, a.elem),
             Type::Nil => write!(f, "Pointer"),
             Type::Void => write!(f, "no value"),

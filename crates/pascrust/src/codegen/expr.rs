@@ -57,6 +57,15 @@ impl<'a> Codegen<'a> {
             ExprKind::Binary { op, lhs, rhs } => self.binary(e, *op, lhs, rhs),
             ExprKind::Format { value, .. } => self.expr(value),
             ExprKind::Field(..) if self.a.method_calls.contains_key(&e.id) => (self.call(e, &[]), prec::POSTFIX),
+            // A whole record through a pointer: copy it out of the cell.
+            ExprKind::Deref(_) => {
+                let code = self.selector(e);
+                if self.a.type_of(e.id).is_copy() {
+                    (format!("*{code}"), prec::UNARY)
+                } else {
+                    (format!("{code}.clone()"), prec::POSTFIX)
+                }
+            }
             ExprKind::Field(..) | ExprKind::Index(..) => (self.selector(e), prec::POSTFIX),
             _ => unreachable!("sema rejects this expression"),
         }
@@ -109,6 +118,21 @@ impl<'a> Codegen<'a> {
             return ("PString::new()".to_string(), prec::POSTFIX);
         }
         let code = self.expr(e);
+        // Pascal copies records and pointers on assignment. For types that
+        // aren't `Copy` in Rust (anything holding a `Ptr`), that copy has to
+        // be an explicit `.clone()`. A value that's already fresh (a
+        // function result, a literal) needs no clone.
+        if !to.is_copy() && is_place(e) && !matches!(e.kind, ExprKind::Deref(_)) {
+            let receiver = match (&e.kind, self.a.refs.get(&e.id)) {
+                (ExprKind::Name(_), Some(&sym))
+                    if matches!(self.a.sym(sym).kind, SymKind::Var(_)) && !self.a.self_fields.contains_key(&e.id) =>
+                {
+                    self.a.var_name(self.proc, sym).to_string()
+                }
+                _ => paren(code, prec::POSTFIX),
+            };
+            return (format!("{receiver}.clone()"), prec::POSTFIX);
+        }
         convert(code, &from, to)
     }
 
@@ -168,6 +192,19 @@ impl<'a> Codegen<'a> {
             GtEq => (">=", prec::CMP),
             In => unreachable!("sema rejects `in` without sets"),
         };
+        // `p = nil` reads best as `p.is_nil()`.
+        if matches!(op, Eq | NotEq) && (lt == Type::Nil || rt == Type::Nil) && lt != rt {
+            let pointer = if lt == Type::Nil { rhs } else { lhs };
+            // No `.clone()` needed just to look at the pointer.
+            let receiver = match &pointer.kind {
+                ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => {
+                    self.selector_base(pointer)
+                }
+                _ => paren(self.expr(pointer), prec::POSTFIX),
+            };
+            let code = format!("{receiver}.is_nil()");
+            return if op == Eq { (code, prec::POSTFIX) } else { (format!("!{code}"), prec::UNARY) };
+        }
         // The type both operands are converted to before the operation.
         let operand_ty = match op {
             Eq | NotEq | Lt | LtEq | Gt | GtEq => comparison_type(&lt, &rt),
@@ -202,7 +239,17 @@ impl<'a> Codegen<'a> {
         }
         match &e.kind {
             ExprKind::Name(_) => self.var_place(self.a.refs[&e.id]),
-            ExprKind::Field(..) | ExprKind::Index(..) => self.selector(e),
+            ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => {
+                let saved = std::mem::replace(&mut self.mutable_place, true);
+                let mut code = self.selector(e);
+                self.mutable_place = saved;
+                // A whole record through a pointer, `p^ := ...`: assign
+                // through the `RefMut` guard.
+                if let ExprKind::Deref(_) = e.kind {
+                    code = format!("*{code}");
+                }
+                code
+            }
             _ => unreachable!("sema rejects other assignment targets"),
         }
     }
@@ -211,6 +258,12 @@ impl<'a> Codegen<'a> {
     /// `a[i][j]`; the runtime's `PArray` does the bounds arithmetic.
     fn selector(&mut self, e: &Expr) -> String {
         match &e.kind {
+            // `p^` inside a longer path, like `p^.next`: borrow the record,
+            // mutably if we're about to change it.
+            ExprKind::Deref(base) => {
+                let method = if self.mutable_place { "get_mut" } else { "get" };
+                format!("{}.{method}()", self.selector_base(base))
+            }
             ExprKind::Field(base, field) => {
                 let path = match self.a.type_of(base.id).clone() {
                     Type::Record(r) => r.field(&field.name).expect("sema checked the field").rust_name.clone(),
@@ -252,7 +305,7 @@ impl<'a> Codegen<'a> {
             ExprKind::Name(_) if matches!(self.a.sym(self.a.refs[&base.id]).kind, SymKind::Var(_)) => {
                 self.a.var_name(self.proc, self.a.refs[&base.id]).to_string()
             }
-            ExprKind::Field(..) | ExprKind::Index(..) => self.selector(base),
+            ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => self.selector(base),
             _ => paren(self.expr(base), prec::POSTFIX),
         }
     }
@@ -387,6 +440,11 @@ impl<'a> Codegen<'a> {
             ConstVal::Str(bytes) => str_literal(bytes),
         }
     }
+}
+
+/// Is `e` a variable or a part of one (as opposed to a computed value)?
+pub(super) fn is_place(e: &Expr) -> bool {
+    matches!(e.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_))
 }
 
 /// The type in which two values are compared.
