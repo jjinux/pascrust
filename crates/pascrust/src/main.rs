@@ -118,10 +118,16 @@ fn project(file: &Path, out: Option<PathBuf>) -> Result<PathBuf, String> {
 }
 
 fn cargo(dir: &Path, cargo_args: &[&str], program_args: &[String]) -> Result<ExitCode, String> {
+    // `--manifest-path` rather than running cargo in `dir`, so the program
+    // starts in the user's current directory: relative file names and drive
+    // mappings like `PASCRUST_DRIVE_A=examples` mean what they'd expect.
+    let (command, flags) = cargo_args.split_first().expect("a cargo command");
     let status = Command::new("cargo")
-        .args(cargo_args)
+        .arg(command)
+        .arg("--manifest-path")
+        .arg(dir.join("Cargo.toml"))
+        .args(flags)
         .args(program_args)
-        .current_dir(dir)
         .status()
         .map_err(|e| format!("cannot run cargo: {e}"))?;
     // Pass the program's exit code through, so `Halt(3)` exits with 3.
