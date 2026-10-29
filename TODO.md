@@ -153,6 +153,10 @@ chosen so each step is testable with the previous ones.
   - [ ] `i16::MIN div -1` panics (runtime error 255); TP wraps.
   - Not changed: `Round(2.5)` is 3. The reviewer suggested ties-to-even to match Free Pascal, but Turbo Pascal's documentation says halves round away from zero. `Eof` on a text file being written stays runtime error 104, as in Free Pascal (the reviewer thought TP returns True).
 
+## Requests from the user, 2026-10-28
+
+- [ ] Rename the project to "PascRust" wherever a friendly name fits: the README, the other docs, `Cargo.toml` descriptions, the GitHub repo description, CLI help text and messages, comments and generated-code headers. The directory, the crates, the binary (`pascrust`), the repo name and other identifiers stay `pascrust`.
+
 ## Phase 5: Dos and Graph, then the graphics examples
 
 - [x] `dos` feature (the parts the examples use; the rest is in Phase 7): `GetDate`/`GetTime` (`chrono`), `FExpand`/`FSearch`/`FSplit` with the drive-letter mapping and `\`→`/` translation, `Exec`/`DosExitCode` via `std::process::Command`, `ChDir`/`MkDir`/`RmDir`/`GetDir`, `GetEnv`, `DosVersion`, `FindFirst`/`FindNext`, `DiskFree`/`DiskSize` best effort; `PathStr` and friends as `PString` aliases.
