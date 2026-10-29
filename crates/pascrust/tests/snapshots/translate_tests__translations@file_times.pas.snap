@@ -44,6 +44,7 @@ fn pascal_main() {
     let mut g: PFile<i16> = PFile::default();
     let mut attr: u16 = 0;
     let mut n: i16 = 0;
+    let mut result_: i16 = 0;
     checks = 0;
     failures = 0;
     dt.year = 1997;
@@ -66,6 +67,62 @@ fn pascal_main() {
         back.hour == 7 && back.min == 30 && back.sec == 40,
         pstr("and the time, to 2 seconds"),
     );
+    dt.year = 1980;
+    dt.month = 1;
+    dt.day = 32;
+    dt.hour = 0;
+    dt.min = 0;
+    dt.sec = 0;
+    pack_time(&mut dt, &mut stamp);
+    check(&mut checks, &mut failures, stamp == 4194304, pstr("PackTime: day 32 spills into the month, as in TP"));
+    f.assign("open.txt");
+    f.rewrite();
+    fwriteln!(f, "written before SetFTime");
+    set_f_time(&mut f, when_packed);
+    f.close();
+    get_f_time(&mut f, &mut stamp);
+    check(&mut checks, &mut failures, stamp == when_packed, pstr("SetFTime on an open file outlasts Close"));
+    set_f_attr(&mut f, 0);
+    f.rewrite();
+    fwriteln!(f, "changed");
+    f.close();
+    get_f_attr(&mut f, &mut attr);
+    check(&mut checks, &mut failures, attr & u16::from(ARCHIVE) != 0, pstr("writing a file sets Archive again"));
+    set_f_attr(&mut f, i16::from(HIDDEN) + i16::from(SYS_FILE));
+    f.rename("moved.txt");
+    get_f_attr(&mut f, &mut attr);
+    check(
+        &mut checks,
+        &mut failures,
+        i32::from(attr) & i32::from(i16::from(HIDDEN) + i16::from(SYS_FILE))
+            == i32::from(i16::from(HIDDEN) + i16::from(SYS_FILE)),
+        pstr("attributes go with the file through Rename"),
+    );
+    set_f_attr(&mut f, READ_ONLY);
+    set_f_time(&mut f, when_packed);
+    check(&mut checks, &mut failures, dos_error() == 0, pstr("SetFTime on a read-only file"));
+    // `{$I-}`: an I/O error in `io_unchecked` sets `IOResult` instead of
+    // stopping the program.
+    io_unchecked(|| f.erase());
+    result_ = io_result();
+    check(&mut checks, &mut failures, result_ == 5, pstr("Erase of a read-only file: access denied"));
+    set_f_attr(&mut f, 0);
+    f.erase();
+    f.rewrite();
+    f.close();
+    get_f_attr(&mut f, &mut attr);
+    check(&mut checks, &mut failures, attr == u16::from(ARCHIVE), pstr("a new file with the old name is just Archive"));
+    f.erase();
+    dt.day = 0;
+    pack_time(&mut dt, &mut stamp);
+    f.rewrite();
+    f.close();
+    set_f_time(&mut f, stamp);
+    check(&mut checks, &mut failures, dos_error() == 0, pstr("SetFTime with day 0"));
+    f.erase();
+    f.assign("nodir\\x.txt");
+    get_f_attr(&mut f, &mut attr);
+    check(&mut checks, &mut failures, dos_error() == 3, pstr("GetFAttr in a missing directory: DosError 3"));
     f.assign("stamp.txt");
     f.rewrite();
     fwriteln!(f, "hello");

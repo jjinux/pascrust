@@ -1,5 +1,14 @@
 ok: PackTime and UnpackTime keep the date
 ok: and the time, to 2 seconds
+ok: PackTime: day 32 spills into the month, as in TP
+ok: SetFTime on an open file outlasts Close
+ok: writing a file sets Archive again
+ok: attributes go with the file through Rename
+ok: SetFTime on a read-only file
+ok: Erase of a read-only file: access denied
+ok: a new file with the old name is just Archive
+ok: SetFTime with day 0
+ok: GetFAttr in a missing directory: DosError 3
 ok: SetFTime
 ok: GetFTime reads back what SetFTime set
 ok: a new file is Archive, not a Directory
@@ -8,4 +17,4 @@ ok: SetFAttr Hidden, and not ReadOnly any more
 ok: GetFTime of a typed file
 ok: GetFAttr of a directory
 ok: GetFAttr of a missing file: DosError 2
-10 of 10 checks passed
+19 of 19 checks passed

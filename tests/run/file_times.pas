@@ -11,7 +11,7 @@ var
   f: Text;
   g: file of Integer;
   attr: Word;
-  n: Integer;
+  n, result: Integer;
 
 procedure Check(ok: Boolean; what: string);
 begin
@@ -38,6 +38,56 @@ begin
   UnpackTime(whenPacked, back);
   Check((back.Year = 1997) and (back.Month = 3) and (back.Day = 11), 'PackTime and UnpackTime keep the date');
   Check((back.Hour = 7) and (back.Min = 30) and (back.Sec = 40), 'and the time, to 2 seconds');
+  dt.Year := 1980;
+  dt.Month := 1;
+  dt.Day := 32;
+  dt.Hour := 0;
+  dt.Min := 0;
+  dt.Sec := 0;
+  PackTime(dt, stamp);
+  Check(stamp = 4194304, 'PackTime: day 32 spills into the month, as in TP');
+  Assign(f, 'open.txt');
+  Rewrite(f);
+  WriteLn(f, 'written before SetFTime');
+  SetFTime(f, whenPacked);
+  Close(f);
+  GetFTime(f, stamp);
+  Check(stamp = whenPacked, 'SetFTime on an open file outlasts Close');
+  SetFAttr(f, 0);
+  Rewrite(f);
+  WriteLn(f, 'changed');
+  Close(f);
+  GetFAttr(f, attr);
+  Check(attr and Archive <> 0, 'writing a file sets Archive again');
+  SetFAttr(f, Hidden + SysFile);
+  Rename(f, 'moved.txt');
+  GetFAttr(f, attr);
+  Check(attr and (Hidden + SysFile) = Hidden + SysFile, 'attributes go with the file through Rename');
+  SetFAttr(f, ReadOnly);
+  SetFTime(f, whenPacked);
+  Check(DosError = 0, 'SetFTime on a read-only file');
+  {$I-}
+  Erase(f);
+  {$I+}
+  result := IOResult;
+  Check(result = 5, 'Erase of a read-only file: access denied');
+  SetFAttr(f, 0);
+  Erase(f);
+  Rewrite(f);
+  Close(f);
+  GetFAttr(f, attr);
+  Check(attr = Archive, 'a new file with the old name is just Archive');
+  Erase(f);
+  dt.Day := 0;
+  PackTime(dt, stamp);
+  Rewrite(f);
+  Close(f);
+  SetFTime(f, stamp);
+  Check(DosError = 0, 'SetFTime with day 0');
+  Erase(f);
+  Assign(f, 'nodir\x.txt');
+  GetFAttr(f, attr);
+  Check(DosError = 3, 'GetFAttr in a missing directory: DosError 3');
   Assign(f, 'stamp.txt');
   Rewrite(f);
   WriteLn(f, 'hello');

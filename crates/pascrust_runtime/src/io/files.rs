@@ -27,15 +27,35 @@ fn open_error(e: std::io::Error, name: &PString) -> ! {
     crate::rte(code, format!("{e}: {name}"))
 }
 
+/// `Erase`: DOS refused to delete a read-only file (access denied); Unix
+/// would delete it, since that's up to the directory.
+fn remove_file(path: &std::path::Path) -> std::io::Result<()> {
+    if std::fs::metadata(path)?.permissions().readonly() {
+        return Err(std::io::ErrorKind::PermissionDenied.into());
+    }
+    std::fs::remove_file(path)
+}
+
 /// A file variable of either kind, for the `Dos` routines that take any
 /// file (`GetFTime(var F; ...)`): its assigned name, if it has one.
 pub trait AnyFile {
     fn assigned_name(&self) -> Option<PString>;
+
+    /// Write out anything buffered, so that it doesn't land after a
+    /// `SetFTime` and change the file's time again. (A default method:
+    /// typed files write straight through and need nothing.)
+    fn flush_buffer(&mut self) {}
 }
 
 impl AnyFile for PText {
     fn assigned_name(&self) -> Option<PString> {
         self.name
+    }
+
+    fn flush_buffer(&mut self) {
+        if let TextMode::Writing(writer) = &mut self.mode {
+            let _ = writer.flush();
+        }
     }
 }
 
@@ -176,7 +196,7 @@ impl PText {
     /// Pascal `Erase(f)`: delete the (closed) file.
     pub fn erase(&mut self) {
         let name = *self.name();
-        if let Err(e) = std::fs::remove_file(dos_path(&name.to_string())) {
+        if let Err(e) = remove_file(&dos_path(&name.to_string())) {
             open_error(e, &name);
         }
     }
@@ -536,7 +556,7 @@ impl<T: FileRecord> PFile<T> {
     /// Pascal `Erase(f)`.
     pub fn erase(&mut self) {
         let name = self.name();
-        if let Err(e) = std::fs::remove_file(dos_path(&name.to_string())) {
+        if let Err(e) = remove_file(&dos_path(&name.to_string())) {
             open_error(e, &name);
         }
     }

@@ -788,8 +788,11 @@ sense; only what can't be real is faked.
   disk's size overflows TP's `LongInt`; `SetDate`/`SetTime` don't touch
   the computer's clock; the Ctrl-Break and verify switches are remembered.
   `SetFAttr`'s `Hidden`, `SysFile` and `Archive` bits have nowhere to go on
-  a modern file system, so they're remembered per path while the program
-  runs (`ReadOnly` really changes the permissions). The routines that take
+  a modern file system, so they're remembered while the program runs, by
+  device and inode on Unix so they follow a renamed file; a changed
+  modification time sets `Archive` again, and a changed creation time
+  means a new file. `ReadOnly` really changes the permissions (on Unix,
+  clearing it gives write access back to the owner only). The routines that take
   TP's untyped `var F` take any file through the runtime's `AnyFile` trait.
   DOS kept a `FindFirst` search's state in the `SearchRec` itself, so a
   program never closes a search; pascrust keeps each search's matches in

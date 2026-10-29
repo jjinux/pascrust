@@ -13,8 +13,9 @@ thread_local! {
     static EXIT_CODE: Cell<u16> = const { Cell::new(0) };
 }
 
-/// The `DosError` variable: the result of the last `Exec`, `FindFirst` or
-/// `FindNext` (0 = success, 2 = file not found, 18 = no more files).
+/// The `DosError` variable: the result of the last `Exec`, `FindFirst`,
+/// `FindNext` or file time or attribute routine (0 = success, 2 = file not
+/// found, 3 = path not found, 18 = no more files).
 pub fn dos_error() -> i16 {
     DOS_ERROR.with(Cell::get)
 }
@@ -417,7 +418,7 @@ fn glob(pattern: &[u8], text: &[u8]) -> bool {
 /// minute, seconds / 2), in local time.
 fn pack_system_time(time: std::time::SystemTime) -> i32 {
     let local: chrono::DateTime<Local> = time.into();
-    let dt = DateTime {
+    let mut dt = DateTime {
         year: local.year().clamp(1980, 2107) as u16,
         month: local.month() as u16,
         day: local.day() as u16,
@@ -426,7 +427,7 @@ fn pack_system_time(time: std::time::SystemTime) -> i32 {
         sec: local.second() as u16,
     };
     let mut packed = 0;
-    pack_time(&dt, &mut packed);
+    pack_time(&mut dt, &mut packed);
     packed
 }
 
@@ -445,11 +446,19 @@ pub struct DateTime {
 
 /// `PackTime(dt, time)`: pack a date and time into a `LongInt` as DOS
 /// stored file times (see `pack_system_time`). Seconds are kept to 2.
-pub fn pack_time(dt: &DateTime, time: &mut i32) {
-    let year = u32::from(dt.year.saturating_sub(1980) & 127);
-    let date = (year << 9) | (u32::from(dt.month & 15) << 5) | u32::from(dt.day & 31);
-    let clock = (u32::from(dt.hour & 31) << 11) | (u32::from(dt.min & 63) << 5) | u32::from((dt.sec / 2) & 31);
-    *time = ((date << 16) | clock) as i32;
+/// Like TP, it adds the fields up in place without checking them, so an
+/// out-of-range one spills into the next (day 32 is the next month's 0).
+/// `dt` is `&mut` only because TP declares it `var T: DateTime` (passed by
+/// reference to save copying it); it isn't changed.
+pub fn pack_time(dt: &mut DateTime, time: &mut i32) {
+    let field = |value: u16, shift: u32| (i32::from(value)).wrapping_shl(shift);
+    *time = (i32::from(dt.year) - 1980)
+        .wrapping_shl(25)
+        .wrapping_add(field(dt.month, 21))
+        .wrapping_add(field(dt.day, 16))
+        .wrapping_add(field(dt.hour, 11))
+        .wrapping_add(field(dt.min, 5))
+        .wrapping_add(i32::from(dt.sec / 2));
 }
 
 /// `UnpackTime(time, dt)`: the reverse of `PackTime`.
@@ -478,16 +487,22 @@ fn file_path(f: &impl crate::io::AnyFile) -> Option<std::path::PathBuf> {
     }
 }
 
-/// `DosError` for an I/O error: 2 file not found, 5 access denied.
-fn io_dos_error(e: &std::io::Error) -> i16 {
+/// `DosError` for an I/O error on `path`: 2 file not found, 3 path not
+/// found (its directory is missing), 5 access denied.
+fn io_dos_error(e: &std::io::Error, path: &std::path::Path) -> i16 {
     match e.kind() {
-        std::io::ErrorKind::NotFound => 2,
+        std::io::ErrorKind::NotFound => match path.parent() {
+            Some(dir) if !dir.as_os_str().is_empty() && !dir.is_dir() => 3,
+            _ => 2,
+        },
         std::io::ErrorKind::PermissionDenied => 5,
         _ => 1,
     }
 }
 
-/// `GetFTime(f, time)`: the file's modification time, packed.
+/// `GetFTime(f, time)`: the file's modification time, packed. (The file
+/// routines take `&mut` files, mirroring TP's `var F`; only `SetFTime`
+/// changes anything, by flushing.)
 pub fn get_f_time(f: &mut impl crate::io::AnyFile, time: &mut i32) {
     let Some(path) = file_path(f) else { return };
     match std::fs::metadata(&path).and_then(|m| m.modified()) {
@@ -495,45 +510,134 @@ pub fn get_f_time(f: &mut impl crate::io::AnyFile, time: &mut i32) {
             *time = pack_system_time(modified);
             set_dos_error(0);
         }
-        Err(e) => set_dos_error(io_dos_error(&e)),
+        Err(e) => set_dos_error(io_dos_error(&e, &path)),
     }
 }
 
-/// `SetFTime(f, time)`: set the file's modification time from a packed time.
+/// `SetFTime(f, time)`: set the file's modification time from a packed
+/// time. In TP the file was open, and whatever the program had written
+/// before still counts as written before the new time, so it's flushed
+/// first. (Writing to the file afterwards changes the time again.)
 pub fn set_f_time(f: &mut impl crate::io::AnyFile, time: impl Into<i32>) {
     let Some(path) = file_path(f) else { return };
+    f.flush_buffer();
     let mut dt = DateTime::default();
     unpack_time(time, &mut dt);
-    let local = Local.with_ymd_and_hms(
-        i32::from(dt.year),
-        u32::from(dt.month),
-        u32::from(dt.day),
-        u32::from(dt.hour),
-        u32::from(dt.min),
-        u32::from(dt.sec),
-    );
-    let Some(local) = local.earliest() else {
-        set_dos_error(1);
-        return;
-    };
-    let result = std::fs::File::options().write(true).open(&path).and_then(|file| file.set_modified(local.into()));
+    let modified = local_time(&dt).into();
+    // Setting the time doesn't need write access (it needs to own the
+    // file), so a read-only file works too. Windows wants write access.
+    let result = std::fs::File::open(&path)
+        .and_then(|file| file.set_modified(modified))
+        .or_else(|_| std::fs::File::options().write(true).open(&path)?.set_modified(modified));
+    if result.is_ok() {
+        remember_time(&path);
+    }
     set_dos_error(match result {
         Ok(()) => 0,
-        Err(e) => io_dos_error(&e),
+        Err(e) => io_dos_error(&e, &path),
     });
 }
 
+/// A `DateTime` as a local time. DOS stored whatever it was given; a time
+/// that doesn't exist (in the hour skipped when clocks go forward, or day
+/// 0) is moved to the nearest one that does.
+fn local_time(dt: &DateTime) -> chrono::DateTime<Local> {
+    let year = i32::from(dt.year);
+    let month = u32::from(dt.month).clamp(1, 12);
+    // The last valid day of the month, at most: `from_ymd_opt` checks.
+    let date = (1..=u32::from(dt.day).clamp(1, 31))
+        .rev()
+        .find_map(|day| chrono::NaiveDate::from_ymd_opt(year, month, day))
+        .unwrap_or_default();
+    let clock = chrono::NaiveTime::from_hms_opt(
+        u32::from(dt.hour).min(23),
+        u32::from(dt.min).min(59),
+        u32::from(dt.sec).min(59),
+    )
+    .unwrap_or_default();
+    let naive = date.and_time(clock);
+    Local
+        .from_local_datetime(&naive)
+        .earliest()
+        .or_else(|| Local.from_local_datetime(&(naive + chrono::TimeDelta::hours(1))).earliest())
+        .unwrap_or_else(|| Local.from_utc_datetime(&naive))
+}
+
+/// Which file a path names, however it's reached. On Unix it's the
+/// device and inode, so a remembered attribute follows the file through
+/// `Rename`, and a new file with the old name doesn't inherit it.
+/// Elsewhere it's the full path. (`#[cfg]` picks one definition of each
+/// at compile time.)
+#[cfg(unix)]
+type FileId = (u64, u64);
+#[cfg(not(unix))]
+type FileId = std::path::PathBuf;
+
+#[cfg(unix)]
+fn file_id(_path: &std::path::Path, meta: &std::fs::Metadata) -> FileId {
+    use std::os::unix::fs::MetadataExt;
+    (meta.dev(), meta.ino())
+}
+
+#[cfg(not(unix))]
+fn file_id(path: &std::path::Path, _meta: &std::fs::Metadata) -> FileId {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// The attribute bits a modern file system has no place for (`Hidden`,
+/// `SysFile`, `Archive` set by `SetFAttr`), and the file's times then: a
+/// different creation time means it's a new file that reused the inode, a
+/// different modification time that it's been written since.
+struct ExtraAttrs {
+    bits: u8,
+    created: Option<std::time::SystemTime>,
+    modified: Option<std::time::SystemTime>,
+}
+
 thread_local! {
-    /// The attribute bits a modern file system has no place for (`Hidden`,
-    /// `SysFile`, `Archive` set by `SetFAttr`), remembered per path.
-    static EXTRA_ATTRS: std::cell::RefCell<std::collections::HashMap<std::path::PathBuf, u8>> =
+    /// The bits `SetFAttr` set, by `file_id`.
+    static EXTRA_ATTRS: std::cell::RefCell<std::collections::HashMap<FileId, ExtraAttrs>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// After `SetFTime`: the new time isn't a change to the file's contents.
+fn remember_time(path: &std::path::Path) {
+    let Ok(meta) = std::fs::metadata(path) else { return };
+    EXTRA_ATTRS.with_borrow_mut(|attrs| {
+        if let Some(extra) = attrs.get_mut(&file_id(path, &meta)) {
+            extra.modified = meta.modified().ok();
+        }
+    });
+}
+
+/// Make the file read-only, or writable again. On Unix, `set_readonly`
+/// would make a file writable by everyone; this gives write access back to
+/// the owner only.
+fn set_read_only(path: &std::path::Path, meta: &std::fs::Metadata, read_only: bool) -> std::io::Result<()> {
+    let mut permissions = meta.permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = permissions.mode();
+        let mode = if read_only {
+            mode & !0o222
+        } else if permissions.readonly() {
+            mode | 0o200
+        } else {
+            mode
+        };
+        permissions.set_mode(mode);
+    }
+    #[cfg(not(unix))]
+    permissions.set_readonly(read_only);
+    std::fs::set_permissions(path, permissions)
 }
 
 /// `GetFAttr(f, attr)`: the file's attributes. `ReadOnly` and `Directory`
 /// come from the file itself, `Hidden` from a name starting with `.`, and
 /// `Archive` (set for every file, as DOS did for new ones), `SysFile` and
 /// a `Hidden` set by `SetFAttr` are remembered while the program runs.
+/// As in DOS, writing to a file sets `Archive` again.
 pub fn get_f_attr(f: &mut impl crate::io::AnyFile, attr: &mut u16) {
     let Some(path) = file_path(f) else { return };
     match std::fs::metadata(&path) {
@@ -545,13 +649,21 @@ pub fn get_f_attr(f: &mut impl crate::io::AnyFile, attr: &mut u16) {
             if path.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) {
                 bits |= HIDDEN;
             }
-            if let Some(extra) = EXTRA_ATTRS.with_borrow(|attrs| attrs.get(&path).copied()) {
+            let extra = EXTRA_ATTRS.with_borrow(|attrs| {
+                let extra = attrs.get(&file_id(&path, &meta))?;
+                if extra.created != meta.created().ok() {
+                    return None;
+                }
+                let written = extra.modified != meta.modified().ok();
+                Some(if written { extra.bits | ARCHIVE } else { extra.bits })
+            });
+            if let Some(extra) = extra {
                 bits = (bits & (READ_ONLY | DIRECTORY)) | extra;
             }
             *attr = u16::from(bits);
             set_dos_error(0);
         }
-        Err(e) => set_dos_error(io_dos_error(&e)),
+        Err(e) => set_dos_error(io_dos_error(&e, &path)),
     }
 }
 
@@ -561,16 +673,20 @@ pub fn set_f_attr(f: &mut impl crate::io::AnyFile, attr: impl Into<i32>) {
     let Some(path) = file_path(f) else { return };
     let attr = attr.into() as u8;
     let result = std::fs::metadata(&path).and_then(|meta| {
-        let mut permissions = meta.permissions();
-        permissions.set_readonly(attr & READ_ONLY != 0);
-        std::fs::set_permissions(&path, permissions)
+        set_read_only(&path, &meta, attr & READ_ONLY != 0)?;
+        Ok(meta)
     });
     match result {
-        Ok(()) => {
-            EXTRA_ATTRS.with_borrow_mut(|attrs| attrs.insert(path, attr & (HIDDEN | SYS_FILE | ARCHIVE)));
+        Ok(meta) => {
+            let extra = ExtraAttrs {
+                bits: attr & (HIDDEN | SYS_FILE | ARCHIVE),
+                created: meta.created().ok(),
+                modified: meta.modified().ok(),
+            };
+            EXTRA_ATTRS.with_borrow_mut(|attrs| attrs.insert(file_id(&path, &meta), extra));
             set_dos_error(0);
         }
-        Err(e) => set_dos_error(io_dos_error(&e)),
+        Err(e) => set_dos_error(io_dos_error(&e, &path)),
     }
 }
 
@@ -621,6 +737,24 @@ mod find_tests {
 
     #[cfg(unix)]
     #[test]
+    fn set_f_attr_gives_write_access_back_to_the_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = scratch("modes").join("mode.txt");
+        std::fs::write(&path, "x").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let mut f = crate::io::PText::default();
+        f.assign(path.to_string_lossy().as_ref());
+        let mode = || std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        set_f_attr(&mut f, ARCHIVE);
+        assert_eq!(mode(), 0o644);
+        set_f_attr(&mut f, READ_ONLY);
+        assert_eq!(mode(), 0o444);
+        set_f_attr(&mut f, 0);
+        assert_eq!(mode(), 0o644);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_link_to_a_directory_is_a_directory() {
         let dir = scratch("links");
         std::fs::create_dir(dir.join("sub")).unwrap();
@@ -632,9 +766,9 @@ mod find_tests {
 
     #[test]
     fn pack_and_unpack_time() {
-        let dt = DateTime { year: 1997, month: 3, day: 11, hour: 7, min: 30, sec: 41 };
+        let mut dt = DateTime { year: 1997, month: 3, day: 11, hour: 7, min: 30, sec: 41 };
         let mut packed = 0;
-        pack_time(&dt, &mut packed);
+        pack_time(&mut dt, &mut packed);
         let mut back = DateTime::default();
         unpack_time(packed, &mut back);
         // Seconds are kept to 2, as DOS did.
