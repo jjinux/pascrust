@@ -146,14 +146,6 @@ impl AnyAnimal {
             _ => rte(204, "Invalid pointer operation: the record isn't a TDog"),
         }
     }
-    fn tricks(&mut self) -> i16 {
-        match self {
-            AnyAnimal::Dog(o) => o.tricks(),
-            AnyAnimal::Puppy(o) => o.tricks(),
-            AnyAnimal::OldDog(o) => o.tricks(),
-            _ => rte(204, "Invalid pointer operation: `tricks` on the wrong object"),
-        }
-    }
 }
 
 impl TAnimalMethods for AnyAnimal {
@@ -174,6 +166,43 @@ impl TAnimalMethods for AnyAnimal {
             AnyAnimal::Dog(o) => o.speak(times),
             AnyAnimal::Puppy(o) => o.speak(times),
             AnyAnimal::OldDog(o) => o.speak(times),
+        }
+    }
+}
+
+impl TDogMethods for AnyAnimal {
+    fn t_dog(&mut self) -> &mut TDog {
+        match self {
+            AnyAnimal::Dog(o) => o,
+            AnyAnimal::Puppy(o) => &mut o.base,
+            AnyAnimal::OldDog(o) => &mut o.base,
+            _ => rte(204, "Invalid pointer operation: the record isn't a TDog"),
+        }
+    }
+    fn tricks(&mut self) -> i16 {
+        match self {
+            AnyAnimal::Dog(o) => o.tricks(),
+            AnyAnimal::Puppy(o) => o.tricks(),
+            AnyAnimal::OldDog(o) => o.tricks(),
+            _ => rte(204, "Invalid pointer operation: `tricks` on the wrong object"),
+        }
+    }
+}
+
+impl TPuppyMethods for AnyAnimal {
+    fn t_puppy(&mut self) -> &mut TPuppy {
+        match self {
+            AnyAnimal::Puppy(o) => o,
+            _ => rte(204, "Invalid pointer operation: the record isn't a TPuppy"),
+        }
+    }
+}
+
+impl TOldDogMethods for AnyAnimal {
+    fn t_old_dog(&mut self) -> &mut TOldDog {
+        match self {
+            AnyAnimal::OldDog(o) => o,
+            _ => rte(204, "Invalid pointer operation: the record isn't a TOldDog"),
         }
     }
 }

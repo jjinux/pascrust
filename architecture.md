@@ -569,7 +569,12 @@ methods are supported too (below).
   version of each virtual method. Plain variables use static dispatch; a
   `var` parameter of the base type is `&mut dyn TShapeMethods`; every
   pointer type into the hierarchy is `Ptr<AnyShape>`, an enum with a variant
-  per object, which implements the root's trait by `match`ing. All versions
+  per object, which implements every member's trait by `match`ing (a
+  descendant's accessor and methods are a runtime error on a variant that
+  isn't that object). So a method first declared below the root works
+  through a pointer (`pc^.Report`), and passing `p^` to a `var` parameter
+  of an object type passes the whole enum, `&mut *p.get_mut()`, keeping
+  the record's real type. All versions
   of a virtual method receive the same lifted globals, since they share the
   trait's signature. Constructors and destructors are ordinary methods: the
   enum variant, set when the record is allocated, plays the role of TP's

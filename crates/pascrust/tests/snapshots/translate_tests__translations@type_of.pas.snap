@@ -154,6 +154,25 @@ impl TShapeMethods for AnyShape {
     }
 }
 
+impl TCircleMethods for AnyShape {
+    fn t_circle(&mut self) -> &mut TCircle {
+        match self {
+            AnyShape::Circle(o) => o,
+            AnyShape::Ring(o) => &mut o.base,
+            _ => rte(204, "Invalid pointer operation: the record isn't a TCircle"),
+        }
+    }
+}
+
+impl TRingMethods for AnyShape {
+    fn t_ring(&mut self) -> &mut TRing {
+        match self {
+            AnyShape::Ring(o) => o,
+            _ => rte(204, "Invalid pointer operation: the record isn't a TRing"),
+        }
+    }
+}
+
 impl TShapeMethods for TShape {
     fn t_shape(&mut self) -> &mut TShape {
         self

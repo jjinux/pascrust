@@ -164,6 +164,25 @@ impl TBaseMethods for AnyBase {
     }
 }
 
+impl TMiddleMethods for AnyBase {
+    fn t_middle(&mut self) -> &mut TMiddle {
+        match self {
+            AnyBase::Middle(o) => o,
+            AnyBase::Leaf(o) => &mut o.base,
+            _ => rte(204, "Invalid pointer operation: the record isn't a TMiddle"),
+        }
+    }
+}
+
+impl TLeafMethods for AnyBase {
+    fn t_leaf(&mut self) -> &mut TLeaf {
+        match self {
+            AnyBase::Leaf(o) => o,
+            _ => rte(204, "Invalid pointer operation: the record isn't a TLeaf"),
+        }
+    }
+}
+
 impl TBaseMethods for TBase {
     fn t_base(&mut self) -> &mut TBase {
         self

@@ -726,18 +726,6 @@ impl<'a> Codegen<'a> {
                 self.line("}");
             }
         }
-        // Virtual methods introduced below the root: through a pointer to
-        // that object, `pc^.Area`.
-        for (target, _) in members.iter().skip(1) {
-            for slot in self.slots_introduced(target) {
-                let arms: Vec<String> = members
-                    .iter()
-                    .filter(|(o, _)| o.lineage().iter().any(|(a, _)| a == target))
-                    .map(|(o, _)| variant_name(o))
-                    .collect();
-                self.enum_dispatch(&name, slot, &arms, members.len(), vis);
-            }
-        }
         self.indent -= 1;
         self.line("}");
         self.blank();
@@ -757,21 +745,64 @@ impl<'a> Codegen<'a> {
         }
         let variants: Vec<String> = members.iter().map(|(o, _)| variant_name(o)).collect();
         for slot in self.slots_introduced(root) {
-            self.enum_dispatch(&name, slot, &variants, members.len(), "");
+            self.enum_dispatch(&name, slot, &variants, members.len());
         }
         self.indent -= 1;
         self.line("}");
+        // The enum implements the other members' traits too, so a pointer
+        // to a descendant (`pc^.Area`, or `pc^.Report` where `Report` calls
+        // virtual methods) works, and so does passing `pc^` to a
+        // `var c: TCircle` parameter. Each `match`es on the variants that
+        // are that object or descended from it.
+        for (target, span) in members.iter().skip(1) {
+            let arms: Vec<(String, Vec<String>)> = members
+                .iter()
+                .filter_map(|(o, _)| {
+                    let (_, path) = o.lineage().into_iter().find(|(a, _)| a == target)?;
+                    Some((variant_name(o), path))
+                })
+                .collect();
+            self.blank();
+            self.line(format!("impl {} for {name} {{", self.trait_path(target, *span)));
+            self.indent += 1;
+            let target_path = self.type_path(target, *span);
+            self.line(format!("fn {}(&mut self) -> &mut {target_path} {{", accessor(target)));
+            self.line("    match self {");
+            for (variant, path) in &arms {
+                let part = if path.is_empty() { "o".to_string() } else { format!("&mut o.{}", path.join(".")) };
+                self.line(format!("        {name}::{variant}(o) => {part},"));
+            }
+            self.line(format!(
+                "        _ => rte(204, \"Invalid pointer operation: the record isn't a {}\"),",
+                target.rust_name
+            ));
+            self.line("    }");
+            self.line("}");
+            let variants: Vec<String> = arms.into_iter().map(|(variant, _)| variant).collect();
+            for slot in self.slots_introduced(target) {
+                self.enum_dispatch(&name, slot, &variants, members.len());
+            }
+            self.indent -= 1;
+            self.line("}");
+        }
+    }
+
+    /// The path to an object's trait from the file being written, like
+    /// [`Codegen::type_path`]: `TCircleMethods` or `crate::circles::TCircleMethods`.
+    fn trait_path(&self, object: &ObjectType, span: Span) -> String {
+        let path = self.type_path(object, span);
+        format!("{}{}", path.strip_suffix(object.rust_name.as_str()).unwrap_or(""), trait_name(object))
     }
 
     /// A virtual method on the hierarchy's enum: run the version of the
     /// object in the variant.
-    fn enum_dispatch(&mut self, name: &str, slot: ProcId, variants: &[String], total: usize, vis: &str) {
+    fn enum_dispatch(&mut self, name: &str, slot: ProcId, variants: &[String], total: usize) {
         let (params, ret) = self.method_signature(slot);
         let info = &self.a.procs[slot];
         let mut args: Vec<String> = info.captures.iter().map(|c| self.a.var_name(slot, c.sym).to_string()).collect();
         args.extend(info.params.iter().map(|&p| self.a.sym(p).rust_name.clone()));
         let (method, args) = (info.rust_name.clone(), args.join(", "));
-        self.line(format!("{vis}fn {method}({params}){ret} {{"));
+        self.line(format!("fn {method}({params}){ret} {{"));
         self.line("    match self {");
         for variant in variants {
             self.line(format!("        {name}::{variant}(o) => o.{method}({args}),"));

@@ -727,7 +727,16 @@ impl<'a> Codegen<'a> {
                 }
                 _ => 0,
             };
-            if var.role == crate::sema::VarRole::Param(ParamMode::Var) && depth > 0 {
+            // `Paint(p^)` with `var s: TShape`: the whole record behind the
+            // pointer (the hierarchy's enum, which implements every
+            // object's trait), so the record's real type picks the methods.
+            let dyn_param = matches!(&ty, Type::Object(o) if self.in_dispatch(o));
+            if var.role == crate::sema::VarRole::Param(ParamMode::Var)
+                && dyn_param
+                && let ExprKind::Deref(pointer) = &arg.kind
+            {
+                parts.push(format!("&mut *{}.get_mut()", self.selector_base(pointer)));
+            } else if var.role == crate::sema::VarRole::Param(ParamMode::Var) && depth > 0 {
                 parts.push(format!("&mut {}{}", self.selector_base(arg), ".base".repeat(depth)));
             } else if var.role == crate::sema::VarRole::Param(ParamMode::Var) && shared(key) {
                 // `&mut q.get_mut().x` becomes `&mut point.x`, where `point`
