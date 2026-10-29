@@ -3,7 +3,11 @@ program CommentsPlacement;
 { Where comments land in the Rust: after an end, before an else if,
   before until, on loop variables, on declarations with no Rust of
   their own. }
-uses CmtUnit; { for Ready }
+uses CmtUnit, CmtUnit2; { for Ready and Two }
+
+const
+  Primes: array[1..3] of Integer =
+    (2, 3, 5);   { the first primes }
 
 type
   TCount = Integer;   { an alias makes no Rust }
@@ -21,6 +25,16 @@ var
 
 procedure Later(k: Integer); forward; { body below }
 
+procedure Outer;
+
+  procedure Later;   { a nested namesake }
+  begin
+  end;
+
+begin
+  Later;
+end;
+
 { the real Later }
 procedure Later(k: Integer);
 begin
@@ -34,10 +48,12 @@ end;
 
 procedure Count;
 var {Counts to three.}
-  i: Integer;   { the counter }
+  i, j: Integer;   { the counters }
 begin
   for i := 1 to 3 do
     Write(i);
+  for j := 1 to 0 do
+    Write(j);
   WriteLn;
 end;
 
@@ -59,6 +75,17 @@ begin
   begin
     y := 2;
   end; { else branch }
+  if x > 5 then begin
+    y := 0;
+  end else begin { otherwise }
+    y := y + 0;
+  end;
+  begin end; { an empty block }
+  case x of
+    5: y := 0;
+    { other values
+      need nothing }
+  end; { case }
   while n < 2 do
   begin
     Inc(n);
@@ -78,5 +105,6 @@ begin
   c.total := 0;
   c.Bump;
   t := c.total;
-  WriteLn(x, ' ', y, ' ', n, ' ', Ready, ' ', t);
+  Outer;
+  WriteLn(x, ' ', y, ' ', n, ' ', Ready, ' ', t, ' ', Primes[3] + Two);
 end. { end of program }

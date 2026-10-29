@@ -834,11 +834,18 @@ sense; only what can't be real is faked.
   line inside the Rust block, since rustfmt puts comments after a `{` there
   anyway. A comment inside a statement (`b := 2 + {why} 3;`) goes at the
   end of that statement's line. The comment after an `end` goes after the
-  `}` that closes the block. Comments around `program`/`unit` and `uses`
-  head the Rust file. Declarations that make no Rust of their own still
-  pass their comments on: a `forward`, interface or object-method heading's
-  go with the body, a loop variable's where its `let` would have been, and
-  an alias's (`TInt = Integer`) on a `// Pascal:` line of its own.
+  `}` that closes the block, except `end else begin {otherwise}`, whose
+  comment starts the else branch. Comments before a `case`'s `end` go
+  before the `_ => {}` arm (rustfmt would take them for the last arm's).
+  Comments before or on the `program`/`unit` line, and up to its `uses`
+  clause, head the Rust file; one after a `program` line with no `uses`
+  goes with the first declaration instead, since it may well be about
+  that. Declarations that make no Rust of their own still pass their
+  comments on: a `forward`, interface or object-method heading's go with
+  its body (matched by name within the same procedure), a loop variable's
+  where its `let` would have been (`// Pascal: \`r, c: integer\` // r=row`),
+  an alias's (`TInt = Integer`) on a `// Pascal:` line of its own, and a
+  unit with no initialization code keeps the comments at its end.
   Attaching is done with a table of line starts and binary searches, so it
   takes a moment even for a long program.
 - Codegen emits teaching comments at the first use of each notable construct

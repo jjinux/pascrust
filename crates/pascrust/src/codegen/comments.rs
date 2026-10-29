@@ -30,6 +30,8 @@ pub(super) struct Comments {
     /// group's anchor, and whether it's the group's last variable, whose
     /// `let` gets the group's comment.
     var_names: HashMap<usize, (usize, bool)>,
+    /// Each variable group's declaration (`x, y: Integer`), by its anchor.
+    pub(super) var_groups: HashMap<usize, Span>,
     /// Every type declaration: its anchor and the whole `Name = type` span.
     /// An alias (`TInt = Integer`) makes no Rust item, so codegen writes
     /// its comments on their own.
@@ -43,10 +45,13 @@ impl Comments {
             anchors: Vec::new(),
             field_groups: HashMap::new(),
             var_names: HashMap::new(),
+            var_groups: HashMap::new(),
             type_decls: Vec::new(),
             headings: Vec::new(),
             bodies: Vec::new(),
             headings_of_files: Vec::new(),
+            scope: Vec::new(),
+            block_ends: std::collections::HashSet::new(),
         };
         walker.heading(&program.name, program.uses.last().unwrap_or(&program.name).span.end);
         walker.block(&program.block);
@@ -64,6 +69,7 @@ impl Comments {
         let mut result = Comments {
             field_groups: walker.field_groups,
             var_names: walker.var_names,
+            var_groups: walker.var_groups,
             type_decls: walker.type_decls,
             ..Comments::default()
         };
@@ -87,9 +93,16 @@ impl Comments {
                 .flatten()
                 .filter(|&&(_, end)| end <= comment.span.start)
                 .max_by_key(|&&(start, _)| start);
-            if let Some(&(start, _)) = before {
-                result.add_trailing(start, one_line(&comment.text));
-                continue;
+            if let Some(&(start, end)) = before {
+                // `end else begin {otherwise}` is about the `else`: leave it
+                // to the else branch, which comes next.
+                let between = map.slice(Span::new(end, comment.span.start));
+                let after_else = walker.block_ends.contains(&start)
+                    && String::from_utf8_lossy(between).to_ascii_lowercase().contains("else");
+                if !after_else {
+                    result.add_trailing(start, one_line(&comment.text));
+                    continue;
+                }
             }
             // (A comment ending the first line of a construct that goes on,
             // `for i := 1 to n do {each row}`, becomes a leading comment of
@@ -162,6 +175,15 @@ impl Comments {
         self.trailing.remove(&at)
     }
 
+    /// The declaration of the variable group whose last variable is at
+    /// `at`, if it is the last of a group.
+    pub(super) fn var_group_of_last(&self, at: usize) -> Option<Span> {
+        match self.var_names.get(&at) {
+            Some(&(anchor, true)) => self.var_groups.get(&anchor).copied(),
+            _ => None,
+        }
+    }
+
     /// The trailing comment for the variable (or typed constant) declared
     /// at `at`. In a group of variables, the last one gets it.
     pub(super) fn take_decl_trailing(&mut self, at: usize) -> Option<String> {
@@ -203,6 +225,7 @@ struct Anchors<'a> {
     anchors: Vec<(usize, usize)>,
     field_groups: HashMap<usize, Vec<(Vec<String>, usize)>>,
     var_names: HashMap<usize, (usize, bool)>,
+    var_groups: HashMap<usize, Span>,
     type_decls: Vec<(usize, Span)>,
     /// Procedure headings with no body, by name (`shape.area` for a
     /// method), and their anchors; and the procedures with bodies.
@@ -210,6 +233,11 @@ struct Anchors<'a> {
     bodies: Vec<(String, usize)>,
     /// The anchors of `program Name; uses ...;` and `unit Name; ...`.
     headings_of_files: Vec<usize>,
+    /// The procedures the walk is inside, for the keys of `headings` and
+    /// `bodies`: a nested procedure isn't the body of an outer heading.
+    scope: Vec<String>,
+    /// The anchors that are the `end` of a block.
+    block_ends: std::collections::HashSet<usize>,
 }
 
 impl Anchors<'_> {
@@ -231,13 +259,22 @@ impl Anchors<'_> {
     fn block_end(&mut self, span: Span) {
         if let Some(at) = end_keyword(self.map, span) {
             self.anchors.push((at, at + 3));
+            self.block_ends.insert(at);
         }
     }
 
     fn decls(&mut self, decls: &[Decl]) {
         for decl in decls {
             match decl {
-                Decl::Const(c) => self.anchors.push((c.name.span.start, c.name.span.end)),
+                Decl::Const(c) => {
+                    // To the end of the value: a typed constant's list of
+                    // values can go on for lines.
+                    let end = match &c.value {
+                        ConstValue::Expr(e) => e.span.end,
+                        ConstValue::List(_, span) | ConstValue::Record(_, span) => span.end,
+                    };
+                    self.anchors.push((c.name.span.start, end));
+                }
                 Decl::Type(t) => {
                     // The type is the anchor: that's where `type_defs` puts it.
                     let span = t.ty.span();
@@ -248,6 +285,7 @@ impl Anchors<'_> {
                 Decl::Var(v) => {
                     let at = v.names[0].span.start;
                     self.anchors.push((at, v.ty.span().end));
+                    self.var_groups.insert(at, v.names[0].span.to(v.ty.span()));
                     for (i, name) in v.names.iter().enumerate() {
                         self.var_names.insert(name.span.start, (at, i == v.names.len() - 1));
                     }
@@ -259,9 +297,12 @@ impl Anchors<'_> {
                         Some(owner) => format!("{}.{}", owner.key(), p.name.key()),
                         None => p.name.key(),
                     };
+                    let key = format!("{}/{key}", self.scope.join("/"));
                     if let ProcBody::Block(body) = &p.body {
                         self.bodies.push((key, p.span.start));
+                        self.scope.push(p.name.key());
                         self.block(body);
+                        self.scope.pop();
                     } else {
                         self.headings.push((key, p.span.start));
                     }
@@ -290,7 +331,8 @@ impl Anchors<'_> {
         if let TypeExpr::Object { methods, .. } = ty {
             for method in methods {
                 self.anchors.push((method.span.start, method.header_span.end));
-                self.headings.push((format!("{name}.{}", method.name.key()), method.span.start));
+                let key = format!("{}/{name}.{}", self.scope.join("/"), method.name.key());
+                self.headings.push((key, method.span.start));
             }
         }
     }
@@ -330,6 +372,7 @@ impl Anchors<'_> {
                 if let Some(body) = else_body {
                     self.stmts(body);
                 }
+                self.block_end(s.span);
             }
             StmtKind::Empty | StmtKind::Assign { .. } | StmtKind::Call(_) => {}
         }

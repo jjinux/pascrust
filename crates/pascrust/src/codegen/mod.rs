@@ -327,6 +327,14 @@ impl<'a> Codegen<'a> {
             if let Some(comment) = end_comment {
                 self.append_comment(&comment);
             }
+        } else if self.comments.has_any(unit.end.start) {
+            // No initialization code (`begin {none} end.`), but keep the
+            // comments at the end of the unit.
+            self.blank();
+            self.leading_comments(unit.end.start);
+            if let Some(comment) = self.comments.take_trailing(unit.end.start) {
+                self.line(comment);
+            }
         }
         self.vis = "";
     }
@@ -1096,8 +1104,13 @@ impl<'a> Codegen<'a> {
                 // which often describe the whole procedure.
                 if let Some(at) = at {
                     self.leading_comments(at);
+                    let group = self.comments.var_group_of_last(at);
                     if let Some(comment) = self.comments.take_decl_trailing(at) {
-                        self.line(comment);
+                        // Say which variables the comment was about.
+                        match group {
+                            Some(span) => self.line(format!("// Pascal: `{}` {comment}", self.pascal_text(span))),
+                            None => self.line(comment),
+                        }
                     }
                 }
                 continue;
@@ -1152,10 +1165,11 @@ impl<'a> Codegen<'a> {
         }
         self.stmt_code(s);
         // A `begin ... end` statement has no lines of its own in Rust.
-        if let StmtKind::Compound(_) = s.kind
+        if let StmtKind::Compound(body) = &s.kind
             && let Some(comment) = self.block_end_comments(s.span)
         {
-            self.append_comment(&comment);
+            // An empty `begin end` wrote nothing to put it after.
+            if body.is_empty() { self.line(comment) } else { self.append_comment(&comment) }
         }
         self.trailing_comment(s.span.start);
     }
@@ -1206,7 +1220,7 @@ impl<'a> Codegen<'a> {
                 self.for_loop(s, var, start, end, *down, body);
                 self.loops.pop();
             }
-            StmtKind::Case { scrutinee, arms, else_body } => self.case(scrutinee, arms, else_body.as_deref()),
+            StmtKind::Case { scrutinee, arms, else_body } => self.case(s.span, scrutinee, arms, else_body.as_deref()),
             StmtKind::With { .. } => {
                 // `self.a` is a plain shared reference, so copying it out lets
                 // us borrow the rewritten body while `self` is borrowed mutably.
@@ -1303,7 +1317,7 @@ impl<'a> Codegen<'a> {
     }
 
     /// `case` becomes `match`.
-    fn case(&mut self, scrutinee: &Expr, arms: &[CaseArm], else_body: Option<&[Stmt]>) {
+    fn case(&mut self, span: Span, scrutinee: &Expr, arms: &[CaseArm], else_body: Option<&[Stmt]>) {
         let scrutinee_ty = self.a.type_of(scrutinee.id).concrete();
         let scrutinee_code = self.expr(scrutinee).0;
         self.line(format!("match {scrutinee_code} {{"));
@@ -1347,22 +1361,38 @@ impl<'a> Codegen<'a> {
             _ => None,
         };
         let exhaustive = domain == Some(seen.len());
+        // Comments before the case's `end` can't go after the last arm, where
+        // rustfmt would take them for that arm's: they go at the end of the
+        // `else` arm, or before the `_ => {}` that stands for no `else`.
+        let end_at = comments::end_keyword(self.map, span);
         match else_body {
             Some(body) if !exhaustive => {
                 self.line("_ => {");
                 self.indent += 1;
                 self.stmts(body);
+                if let Some(at) = end_at {
+                    self.leading_comments(at);
+                }
                 self.indent -= 1;
                 self.line("}");
             }
             // Pascal's `case` does nothing when no label matches; Rust's
             // `match` must cover every value, so say so explicitly. (Unless
             // the labels already cover every value, as they can for an enum.)
-            None if !exhaustive => self.line("_ => {}"),
+            None if !exhaustive => {
+                if let Some(at) = end_at {
+                    self.leading_comments(at);
+                }
+                self.line("_ => {}");
+            }
             _ => {}
         }
+        let end_comment = self.block_end_comments(span);
         self.indent -= 1;
         self.line("}");
+        if let Some(comment) = end_comment {
+            self.append_comment(&comment);
+        }
     }
 
     /// A case label's ordinal value, for spotting duplicates.
