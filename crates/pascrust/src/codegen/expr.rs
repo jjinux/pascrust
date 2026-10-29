@@ -41,6 +41,19 @@ impl<'a> Codegen<'a> {
         if let Some(name) = self.hoisted.get(&e.id) {
             return (name.clone(), prec::ATOM);
         }
+        // `p^.n + F`: the read through `p` would keep the record borrowed
+        // while `F` runs, and `F` may change it (through another pointer).
+        // So `p^.n` is read into a `let` first.
+        if let ExprKind::Binary { lhs, rhs, .. } = &e.kind
+            && !self.hoisted.contains_key(&lhs.id)
+            && reads_pointer(lhs)
+            && self.has_call(rhs)
+        {
+            let code = self.expr(lhs).0;
+            let name = self.temp_name(&super::value_temp_base(lhs));
+            self.pending.push(format!("let {name} = {code};"));
+            self.hoisted.insert(lhs.id, name);
+        }
         // `items[Count]` in a method is `self.items[self.count()]`, which
         // borrows `self.items` while `count` needs all of `self`. An index
         // whose call can reach the array is worked out first, into a `let`.
@@ -842,13 +855,21 @@ impl<'a> Codegen<'a> {
             .collect();
         let shared = |key: &Option<String>| key.is_some() && heap.iter().filter(|k| *k == key).count() > 1;
         let mut records: Vec<(String, String, String)> = Vec::new(); // (key, pointer, name)
-        // Value arguments with a call, not yet in a `let`: (position in
-        // `parts`, parameter). If a later argument has to go in a `let`,
-        // these go first, so the arguments still run left to right.
-        let mut calls_before: Vec<(usize, usize)> = Vec::new();
+        // Value arguments not yet in a `let`: (position in `parts`,
+        // parameter, whether it calls something). If a later argument has to
+        // go in a `let` and one of these calls something, they all go
+        // first, in order, so the arguments still run left to right, as TP
+        // pushed them: in `Show(x, Bump, p^.v)`, `x` is read before `Bump`.
+        let mut values_before: Vec<(usize, usize, bool)> = Vec::new();
+        // Whether an earlier `var` argument is borrowed through a pointer
+        // (`Add(p^.x, F)`): it's borrowed for the whole call, so a later
+        // argument that calls something (which may change the record) is
+        // worked out into a `let` first.
+        let mut pointer_var_before = false;
         for ((param, arg), key) in params.iter().zip(args).zip(&heap) {
             let var = self.a.var(*param);
             let ty = var.ty.clone();
+            let is_var_arg = var.role == crate::sema::VarRole::Param(ParamMode::Var);
             // An object passed where an ancestor is expected: its ancestor
             // part, `&mut circle.base`. (With virtual methods, the parameter
             // takes the whole object, `&mut dyn TShapeMethods`.)
@@ -906,23 +927,34 @@ impl<'a> Codegen<'a> {
                     Some(Receiver::ImplicitSelf) => self.calls(arg),
                     None => false,
                 };
-                if borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root)) || derefs(arg) || uses_receiver {
+                if borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root))
+                    || derefs(arg)
+                    || uses_receiver
+                    || (pointer_var_before && self.has_call(arg))
+                {
                     // `ShowV(Bump, p^.value)`: Bump runs before `p^.value`
                     // is read, as in Pascal.
-                    for (position, earlier) in std::mem::take(&mut calls_before) {
-                        let temp = self.temp_name(&self.a.sym(earlier).rust_name.clone());
-                        let earlier_code = std::mem::replace(&mut parts[position], temp.clone());
-                        self.pending.push(format!("let {temp} = {earlier_code};"));
+                    let earlier = std::mem::take(&mut values_before);
+                    if earlier.iter().any(|&(_, _, calls)| calls) {
+                        for (position, earlier_param, _) in earlier {
+                            let temp = self.temp_name(&self.a.sym(earlier_param).rust_name.clone());
+                            let earlier_code = std::mem::replace(&mut parts[position], temp.clone());
+                            self.pending.push(format!("let {temp} = {earlier_code};"));
+                        }
                     }
                     let temp = self.temp_name(&self.a.sym(*param).rust_name.clone());
                     self.pending.push(format!("let {temp} = {code};"));
                     parts.push(temp);
                 } else {
-                    if self.has_call(arg) {
-                        calls_before.push((parts.len(), *param));
+                    // A literal can't change, so it needn't move.
+                    if !matches!(arg.kind, ExprKind::Int(_) | ExprKind::Real(_) | ExprKind::Str(_)) {
+                        values_before.push((parts.len(), *param, self.has_call(arg)));
                     }
                     parts.push(code);
                 }
+            }
+            if is_var_arg && super::contains_deref(arg) {
+                pointer_var_before = true;
             }
         }
         (parts.join(", "), records.into_iter().map(|(_, pointer, name)| (pointer, name)).collect())
@@ -1173,5 +1205,18 @@ pub(super) fn char_literal(b: u8) -> String {
         b'\t' => "b'\\t'".to_string(),
         0x20..=0x7e => format!("b'{}'", b as char),
         _ => format!("b'\\x{b:02x}'"),
+    }
+}
+
+/// Does `e` read through a pointer itself, outside any call? (A call's
+/// arguments that read through a pointer are put into `let`s by the call.)
+fn reads_pointer(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Deref(_) => true,
+        ExprKind::Field(base, _) => reads_pointer(base),
+        ExprKind::Index(base, indexes) => reads_pointer(base) || indexes.iter().any(reads_pointer),
+        ExprKind::Unary { operand, .. } => reads_pointer(operand),
+        ExprKind::Binary { lhs, rhs, .. } => reads_pointer(lhs) || reads_pointer(rhs),
+        _ => false,
     }
 }

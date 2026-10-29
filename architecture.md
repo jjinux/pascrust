@@ -715,8 +715,12 @@ window meanwhile (§19).
   `Inc(a[Pick])`, a `var` argument), is worked out into a `let` first, as
   Free Pascal works out the target's index before the value; and the
   `let`s the right side of `and`/`or` needs go inside it, in a block, so
-  they only run when that side does. (Free Pascal calls first for reals,
-  strings and sets; PascRust doesn't. See TODO.md.)
+  they only run when that side does. Arguments run left to right, as TP
+  pushed them, even when some go into `let`s first. A read through a
+  pointer next to a call (`p^.n + F`, `Add(p^.n, F)`) is done into a `let`
+  before the call, so its borrow has ended when `F` changes the record.
+  (Free Pascal calls first for reals, strings and sets, and runs calls
+  before plain arguments; PascRust doesn't. See TODO.md.)
 - **`Read`/`Readln`** → `preadln!(x, y)`, with TP's lenient numeric parsing
   (leading blanks, stops at the first bad character).
 - **Files**: `PText` wraps a buffered reader/writer; `PFile<T>` serializes

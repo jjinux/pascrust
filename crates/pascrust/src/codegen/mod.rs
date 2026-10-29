@@ -1911,7 +1911,7 @@ impl Covered {
 }
 
 /// Does the expression dereference a pointer anywhere?
-fn contains_deref(e: &Expr) -> bool {
+pub(super) fn contains_deref(e: &Expr) -> bool {
     match &e.kind {
         ExprKind::Deref(_) => true,
         ExprKind::Field(base, _) => contains_deref(base),
@@ -1987,7 +1987,7 @@ fn root_name(e: &Expr) -> String {
 
 /// A name for a hoisted temporary: the last field name (`next` for
 /// `p^.next`), or `value`.
-fn value_temp_base(e: &Expr) -> String {
+pub(super) fn value_temp_base(e: &Expr) -> String {
     match &e.kind {
         ExprKind::Field(_, field) => crate::sema::names::snake_case(&field.name),
         _ => "value".to_string(),

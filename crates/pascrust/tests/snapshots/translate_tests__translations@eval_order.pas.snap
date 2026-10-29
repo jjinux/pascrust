@@ -77,6 +77,11 @@ fn via_pointer(q: &PCount) -> i16 {
     result
 }
 
+/// Pascal: `procedure Add(var target: Integer; amount: Integer);`
+fn add(target: &mut i16, amount: i16) {
+    *target += amount;
+}
+
 /// Pascal: `function Mark: Integer;`
 ///
 /// Uses globals, which are passed in as parameters.
@@ -115,6 +120,12 @@ fn pascal_main() {
     let value = n_arg + via_pointer(&q);
     p.get_mut().n = value;
     pwriteln!("p^.n + ViaPointer: ", p.get().n);
+    let n_arg = p.get().n;
+    total = n_arg + via_pointer(&q);
+    pwriteln!("total := p^.n + ViaPointer: ", total, " ", p.get().n);
+    let amount = via_pointer(&q);
+    add(&mut p.get_mut().n, amount);
+    pwriteln!("Add(p^.n, ViaPointer): ", p.get().n);
     log.assign("order.txt");
     log.rewrite();
     fwriteln!(log, "a", mark(&mut log), "b");

@@ -47,6 +47,11 @@ begin
   ViaPointer := 5;
 end;
 
+procedure Add(var target: Integer; amount: Integer);
+begin
+  target := target + amount;
+end;
+
 function Mark: Integer;
 begin
   Write(log, 'x');
@@ -71,6 +76,10 @@ begin
   p^.n := 0;
   p^.n := p^.n + ViaPointer;
   WriteLn('p^.n + ViaPointer: ', p^.n);
+  total := p^.n + ViaPointer;
+  WriteLn('total := p^.n + ViaPointer: ', total, ' ', p^.n);
+  Add(p^.n, ViaPointer);
+  WriteLn('Add(p^.n, ViaPointer): ', p^.n);
   Assign(log, 'order.txt');
   Rewrite(log);
   WriteLn(log, 'a', Mark, 'b');

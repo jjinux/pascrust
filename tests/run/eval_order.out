@@ -4,5 +4,7 @@ F1G2 Write(F, G)
 F1 G2
 total + Twice(3): 7
 p^.n + ViaPointer: 5
+total := p^.n + ViaPointer: 10 6
+Add(p^.n, ViaPointer): 12
 file: ax2b
 an empty file name is the screen
