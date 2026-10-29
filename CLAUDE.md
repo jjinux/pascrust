@@ -66,9 +66,11 @@ program to produce expected output (`tests/gen_expected.sh`) is fine.
 
 ## Reviews
 
-Have Claude Fable review every commit: after committing, give a Fable
-subagent (the Agent tool with `model: "fable"`) the commit to review, with
-the project's goals, and ask it to reproduce each finding with a small
+Have Claude Fable review all the work, the way you'd review every PR:
+after each major feature, or every few commits, give a Fable subagent (the
+Agent tool with `model: "fable"`) the commits since the last review (every
+commit must be covered by one), with the project's goals, and ask it to
+reproduce each finding with a small
 Pascal program (compared with `fpc -Mtp` where FPC matches TP). Its scratch
 files go in `out/review/`, and it must not read or search anything outside
 the project. Fix the straightforward findings in follow-up commits (each
