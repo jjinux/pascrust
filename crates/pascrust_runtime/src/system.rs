@@ -182,8 +182,21 @@ pub fn dos_path(path: &str) -> std::path::PathBuf {
     let rest = rest.replace('\\', "/");
     let path = match base {
         // `A:\X` is absolute on drive A; `A:X` is relative to it. Either way
-        // it lives under the drive's directory.
-        Some(base) => base.join(rest.trim_start_matches('/')),
+        // it lives under the drive's directory, and as in DOS, `..` can't
+        // climb above the drive's root.
+        Some(base) => {
+            let mut parts: Vec<&str> = Vec::new();
+            for part in rest.split('/') {
+                match part {
+                    "" | "." => {}
+                    ".." => {
+                        parts.pop();
+                    }
+                    _ => parts.push(part),
+                }
+            }
+            base.join(parts.join("/"))
+        }
         None => std::path::PathBuf::from(rest),
     };
     match_case(&path)
@@ -322,6 +335,9 @@ mod tests {
         assert_eq!(dos_path("data\\mark.dat"), std::path::PathBuf::from("data/mark.dat"));
         // Drive A: isn't mapped (no PASCRUST_DRIVE_A): it's where we started.
         assert_eq!(dos_path("q:\\tictac"), start_dir().join("tictac"));
+        // `..` stops at the drive's root.
+        assert_eq!(dos_path("q:\\..\\tictac"), start_dir().join("tictac"));
+        assert_eq!(dos_path("q:\\sub\\..\\tictac"), start_dir().join("tictac"));
     }
 
     #[test]

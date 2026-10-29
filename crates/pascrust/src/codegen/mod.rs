@@ -1324,24 +1324,33 @@ impl<'a> Codegen<'a> {
         self.indent += 1;
         // Turbo Pascal doesn't object to a label appearing twice; the first
         // arm wins. Rust warns about the unreachable second one, so drop it.
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = Covered::default();
         for arm in arms {
             let mut labels = Vec::new();
             let mut dropped = Vec::new();
             for label in &arm.labels {
-                match label {
-                    CaseLabel::Value(e) => {
-                        let code = self.case_label(e);
-                        if seen.insert(self.label_ord(e)) {
-                            labels.push(code);
-                        } else {
-                            dropped.push(code);
-                        }
-                    }
+                let (lo, hi, code) = match label {
+                    CaseLabel::Value(e) => (self.label_ord(e), self.label_ord(e), self.case_label(e)),
+                    // Rust ranges only work on numbers and chars, so an
+                    // enum range (`Mon..Fri`) lists its values.
                     CaseLabel::Range(lo, hi) => {
-                        seen.extend(self.label_ord(lo)..=self.label_ord(hi));
-                        labels.push(format!("{}..={}", self.case_label(lo), self.case_label(hi)));
+                        let (lo_ord, hi_ord) = (self.label_ord(lo), self.label_ord(hi));
+                        let code = match &scrutinee_ty {
+                            Type::Enum(e) => (lo_ord..=hi_ord)
+                                .filter_map(|i| e.variants.get(i as usize))
+                                .map(|v| format!("{}::{v}", e.rust_name))
+                                .collect::<Vec<_>>()
+                                .join(" | "),
+                            _ => format!("{}..={}", self.case_label(lo), self.case_label(hi)),
+                        };
+                        (lo_ord, hi_ord, code)
                     }
+                };
+                if seen.covers(lo, hi) {
+                    dropped.push(code);
+                } else {
+                    seen.add(lo, hi);
+                    labels.push(code);
                 }
             }
             if !dropped.is_empty() {
@@ -1354,13 +1363,16 @@ impl<'a> Codegen<'a> {
             self.block_body(&arm.body);
             self.line("}");
         }
+        // Rust knows when a `match` covers every value of the type, and then
+        // warns about a `_` arm.
         let domain = match &scrutinee_ty {
-            Type::Enum(e) => Some(e.variants.len()),
-            Type::Bool => Some(2),
-            Type::Char | Type::Int(crate::sema::IntKind::Byte) => Some(256),
+            Type::Enum(e) => Some((0, e.variants.len() as i64 - 1)),
+            Type::Bool => Some((0, 1)),
+            Type::Char => Some((0, 255)),
+            Type::Int(kind) => Some(kind.range()),
             _ => None,
         };
-        let exhaustive = domain == Some(seen.len());
+        let exhaustive = domain.is_some_and(|(lo, hi)| seen.covers(lo, hi));
         // Comments before the case's `end` can't go after the last arm, where
         // rustfmt would take them for that arm's: they go at the end of the
         // `else` arm, or before the `_ => {}` that stands for no `else`.
@@ -1408,7 +1420,7 @@ impl<'a> Codegen<'a> {
             }
         }
         let end_comment = match (end_comment, self.block_end_comments(span)) {
-            (Some(before), Some(after)) => Some(format!("{before} {after}")),
+            (Some(before), Some(after)) => Some(format!("{before}; {}", after.trim_start_matches("// "))),
             (before, after) => before.or(after),
         };
         self.indent -= 1;
@@ -1619,6 +1631,34 @@ impl<'a> Codegen<'a> {
         let value = &self.a.case_labels[&e.id];
         let ty = self.a.type_of(e.id).concrete();
         self.const_value(value, &ty)
+    }
+}
+
+/// The values a `case`'s labels cover so far, as sorted, separate ranges.
+/// (Ranges, not every value: `1..1000000000:` is a fine label.)
+#[derive(Default)]
+struct Covered {
+    ranges: Vec<(i64, i64)>,
+}
+
+impl Covered {
+    /// Is every value in `lo..=hi` already covered?
+    fn covers(&self, lo: i64, hi: i64) -> bool {
+        self.ranges.iter().any(|&(start, end)| start <= lo && hi <= end)
+    }
+
+    fn add(&mut self, lo: i64, hi: i64) {
+        self.ranges.push((lo, hi));
+        self.ranges.sort();
+        // Merge ranges that overlap or touch (`1..3` and `4..6`).
+        let mut merged: Vec<(i64, i64)> = Vec::new();
+        for &(start, end) in &self.ranges {
+            match merged.last_mut() {
+                Some(last) if start <= last.1.saturating_add(1) => last.1 = last.1.max(end),
+                _ => merged.push((start, end)),
+            }
+        }
+        self.ranges = merged;
     }
 }
 

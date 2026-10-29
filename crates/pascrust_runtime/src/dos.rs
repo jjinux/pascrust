@@ -263,11 +263,15 @@ struct Found {
 /// How many searches stay open at once. DOS kept a search's state in the
 /// `SearchRec` itself, so a program never closes one (and a copy of a
 /// `SearchRec` can carry on with it any time). So pascrust keeps every
-/// search, up to this many. Past that it forgets one that has run out, or
-/// if none has, the one used longest ago. A recursive directory walk
-/// leaves each level's search idle while it searches the levels below,
-/// but those have all run out by the time it goes on.
+/// search, up to this many, and then forgets the one used longest ago. A
+/// recursive directory walk leaves each level's search idle while it
+/// searches the levels below, so the limit is high.
 const OPEN_SEARCHES: usize = 10_000;
+
+/// Searches that have run out are rarely used again (only by a copy of a
+/// `SearchRec` made before the end), but they can be long lists, so only
+/// this many of them are kept, the ones used most recently.
+const RUN_OUT_SEARCHES: usize = 100;
 
 /// One `FindFirst`'s matches, when it was last used, and whether
 /// `FindNext` has gone past its last match.
@@ -379,12 +383,16 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
     let id = now as u32;
     SEARCHES.with_borrow_mut(|searches| {
         searches.insert(id, Search { last_used: now, run_out: false, matches: std::rc::Rc::new(found) });
-        if searches.len() > OPEN_SEARCHES {
-            // `false` sorts before `true`, so this prefers one that has run
-            // out, and then the one used longest ago.
-            let forget =
-                searches.iter().min_by_key(|(_, search)| (!search.run_out, search.last_used)).map(|(&id, _)| id);
-            searches.remove(&forget.unwrap_or_default());
+        let run_out = searches.values().filter(|search| search.run_out).count();
+        let forget = if run_out > RUN_OUT_SEARCHES {
+            searches.iter().filter(|(_, search)| search.run_out).min_by_key(|(_, search)| search.last_used)
+        } else if searches.len() > OPEN_SEARCHES {
+            searches.iter().min_by_key(|(_, search)| search.last_used)
+        } else {
+            None
+        };
+        if let Some(id) = forget.map(|(&id, _)| id) {
+            searches.remove(&id);
         }
     });
     set_search_state(s, id, 0);
@@ -780,6 +788,11 @@ mod find_tests {
             find_next(&mut child);
         }
         assert!(SEARCHES.with_borrow(|searches| searches.contains_key(&handle)));
+        // And only so many of the children, which have run out, are kept.
+        // (The limit applies when a search starts; the last child ran out
+        // after that.)
+        let run_out = SEARCHES.with_borrow(|searches| searches.values().filter(|s| s.run_out).count());
+        assert_eq!(run_out, RUN_OUT_SEARCHES + 1);
     }
 
     #[cfg(unix)]

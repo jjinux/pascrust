@@ -120,6 +120,8 @@ begin
   Check(s.Name <> '.', 'no . in the root of a drive');
   FindFirst('A:\sub\..\*.*', Directory, s);
   Check(s.Name <> '.', 'nor when the root is reached through ..');
+  FindFirst('A:\..\*.*', Directory, s);
+  Check(s.Name <> '.', '.. stops at the root of a drive');
   MkDir('tree');
   Make('tree\a.txt', 'a');
   MkDir('tree\sub');

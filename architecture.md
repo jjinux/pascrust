@@ -654,7 +654,9 @@ window meanwhile (§19).
 - **`for i := a to b`** → `for i in a..=b` (bounds evaluated once, empty if
   `b < a`, exactly TP); `downto` → `(a..=b).rev()`; enum loops go through
   `Ordinal`. **`repeat ... until c`** → `loop { ...; if c { break } }`.
-  **`case`** → `match` with `|` alternatives, `..=` ranges and `_ => {}` when
+  **`case`** → `match` with `|` alternatives, `..=` ranges (an enum range,
+  `Mon..Fri`, lists its values: Rust ranges are for numbers and chars),
+  labels an earlier arm covers dropped with a comment, and `_ => {}` when
   there is no `else` (none when the labels cover every value, as they can
   for an enum or `Boolean`; an `else` then can't run, and is kept under
   `#[allow(unreachable_patterns)]` with a comment saying so).
@@ -802,12 +804,12 @@ sense; only what can't be real is faked.
   a table, with the handle and position in `SearchRec.Fill`. A copy of a
   `SearchRec` can carry on with a search at any time, so none is dropped
   when it runs out; instead, past 100 open searches the one used longest
-  ago goes, preferring one that has run out. (A loop over `*.PAS` that
-  checks whether each `.BAK` exists starts a search per file, while the
-  loop's own search stays in use; a recursive directory walk leaves each
-  level's search idle while it searches below, but those searches have
-  run out by then.) It keeps 10,000, which costs little: a search is a
-  list of names and numbers.
+  ago goes. (A loop over `*.PAS` that checks whether each `.BAK` exists
+  starts a search per file, while the loop's own search stays in use; a
+  recursive directory walk leaves each level's search idle while it
+  searches below, so up to 10,000 searches are kept.) Searches that have
+  run out are rarely used again, but a listing of a big directory is a
+  long list, so only the 100 used most recently of those are kept.
 - **System and Crt** (`MemAvail`/`MaxAvail` report 512,000 bytes,
   `Mark`/`Release` and `SetTextBuf` become comments, `Test8087` is 3,
   `DirectVideo`/`CheckSnow`/`CheckEOF` are remembered and ignored): see

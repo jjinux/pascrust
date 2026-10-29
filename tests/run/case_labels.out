@@ -1,0 +1,9 @@
+ok: a range of a billion values
+ok: two ranges cover every Integer
+ok: one range covers every Word
+ok: a ShortInt case with an else that can't run
+ok: an enum range: Mon..Fri
+ok: an enum range with an else
+ok: a range an earlier arm covers: the first arm wins
+ok: ranges that overlap an earlier one
+8 of 8 checks passed

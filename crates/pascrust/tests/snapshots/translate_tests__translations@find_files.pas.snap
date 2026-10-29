@@ -156,6 +156,8 @@ fn pascal_main() {
     check(&mut checks, &mut failures, s.name != ".", pstr("no . in the root of a drive"));
     find_first("A:\\sub\\..\\*.*", DIRECTORY, &mut s);
     check(&mut checks, &mut failures, s.name != ".", pstr("nor when the root is reached through .."));
+    find_first("A:\\..\\*.*", DIRECTORY, &mut s);
+    check(&mut checks, &mut failures, s.name != ".", pstr(".. stops at the root of a drive"));
     mk_dir("tree");
     make(&mut f, pstr("tree\\a.txt"), pstr("a"));
     mk_dir("tree\\sub");

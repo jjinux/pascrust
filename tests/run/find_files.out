@@ -10,6 +10,7 @@ ok: a copy of a SearchRec goes on by itself
 ok: FindFirst on a copy leaves the original's search alone
 ok: no . in the root of a drive
 ok: nor when the root is reached through ..
+ok: .. stops at the root of a drive
 ok: a walk through 151 directories sees both files
 ok: a search goes on while 120 others start and stop
 ok: ? matches nothing at the end of a name
@@ -18,4 +19,4 @@ ok: VolumeID alone: no volume label
 ok: a failed FindFirst ends the search before it
 ok: no match: DosError 18
 ok: missing directory: DosError 3
-20 of 20 checks passed
+21 of 21 checks passed
