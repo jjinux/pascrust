@@ -1,5 +1,5 @@
 program Lifting;
-{ Nested procedures and globals, which pascrust "lifts" into top-level
+{ Nested procedures and globals, which PascRust "lifts" into top-level
   Rust functions with extra parameters. }
 var
   count: integer;

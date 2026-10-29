@@ -259,22 +259,16 @@ pub fn get_dir(drive: impl Into<i32>) -> PString {
         n @ 1..=26 => (b'A' + n as u8 - 1) as char,
         _ => 'C',
     };
-    if drive != 'C' {
-        return PString::from(format!("{drive}:\\").as_str());
-    }
-    let base = dos_path("C:\\");
-    let cwd = std::env::current_dir().unwrap_or_default();
-    // Above drive C:'s directory (after `ChDir('..')` from its root), DOS
-    // would still be at `C:\`: it can't go higher.
-    let Ok(rest) = cwd.strip_prefix(&base) else { return PString::from("C:\\") };
-    let parts: Vec<String> = rest
-        .components()
-        .filter_map(|c| match c {
-            std::path::Component::Normal(part) => Some(part.to_string_lossy().to_uppercase()),
-            _ => None,
-        })
-        .collect();
-    PString::from(format!("C:\\{}", parts.join("\\")).as_str())
+    PString::from(format!("{drive}:\\{}", drive_dir_parts(drive).join("\\")).as_str())
+}
+
+/// A drive's current directory, as DOS names it (`["SUB", "DEEP"]` for
+/// `A:\SUB\DEEP`): where `ChDir` went, if that's inside the drive's
+/// directory, and its root if not. (PascRust keeps one current directory,
+/// not one per drive; above a drive's directory DOS would still be at its
+/// root, since it can't go higher.)
+pub(crate) fn drive_dir_parts(drive: char) -> Vec<String> {
+    current_dir_on(&dos_path(&format!("{drive}:\\"))).iter().map(|part| part.to_uppercase()).collect()
 }
 
 /// Pascal `MemAvail` (faked): the free heap. A typical DOS figure, so

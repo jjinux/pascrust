@@ -1,7 +1,7 @@
 program SystemMisc;
-{ GetDir, and the System routines pascrust fakes: MemAvail, MaxAvail,
+{ GetDir, and the System routines PascRust fakes: MemAvail, MaxAvail,
   Mark, Release, SetTextBuf, Test8087. Self-checking. (GetDir gives
-  pascrust's DOS paths, where drive C: is where the program started, so
+  PascRust's DOS paths, where drive C: is where the program started, so
   this .out is written by hand.) }
 type
   PNode = ^Node;

@@ -132,7 +132,10 @@ Built-ins (System unit)
   File names with a drive letter go to that drive's directory
   (`PASCRUST_DRIVE_A`); `A:X` is relative to the current directory when
   it's on drive A (PascRust keeps one current directory, not one per
-  drive), and `..` stops at the drive's root
+  drive), and `..` stops at the drive's root. `GetDir` and `FExpand`
+  agree: after `ChDir('A:\SUB')`, `GetDir(1)` is `A:\SUB` and
+  `FExpand('A:X')` is `A:\SUB\X`. `Assign(f, '')` is standard input and
+  output, as in TP
 - Faked, so old programs run: `MemAvail`/`MaxAvail` (512,000 bytes),
   `Mark`/`Release` (records are freed when nothing points to them, so they
   do nothing), `SetTextBuf` (files are buffered already), `Test8087` (3)

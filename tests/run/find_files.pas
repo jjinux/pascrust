@@ -1,7 +1,7 @@
 program FindFiles;
 { FindFirst and FindNext with DOS wildcards and attributes. Self-checking.
   (Free Pascal returns matches in directory order, so this .out is built
-  from the checks, by hand: pascrust sorts them by name.) }
+  from the checks, by hand: PascRust sorts them by name.) }
 uses Dos;
 var
   checks, failures: Integer;
@@ -9,7 +9,7 @@ var
   f: Text;
   found: string;
   count, i, existing, walkedFiles, walkedDirs: Integer;
-  number: string;
+  number, dir: string;
 
 procedure Check(ok: Boolean; what: string);
 begin
@@ -197,6 +197,10 @@ begin
   Check((DosError = 0) and (s.Name = 'inner.txt'), 'A:*.TXT after ChDir(''A:\sub'')');
   FindFirst('A:*.*', Directory, s);
   Check(s.Name = '.', 'and A: is no longer the root, so . is listed');
+  GetDir(1, dir);
+  Check(dir = 'A:\SUB', 'GetDir of drive A');
+  Check(FExpand('A:x.dat') = 'A:\SUB\X.DAT', 'FExpand starts from the drive''s current directory');
+  Check(FExpand('A:..\x.dat') = 'A:\X.DAT', 'and .. goes up from it');
   Assign(f, 'A:inner.txt');
   Erase(f);
   ChDir('A:\');

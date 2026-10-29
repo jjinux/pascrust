@@ -1192,11 +1192,13 @@ impl Checker {
                 self.a.types.insert(target.id, ty.clone());
                 let value_ty = self.expr(value);
                 self.check_assignable(&ty, &value_ty, value.span);
+                self.check_constant_range(&ty, value);
             }
             StmtKind::Assign { target, value } => {
                 let target_ty = self.place(target, true);
                 let value_ty = self.expr(value);
                 self.check_assignable(&target_ty, &value_ty, value.span);
+                self.check_constant_range(&target_ty, value);
             }
             StmtKind::Call(e) => self.call_statement(e),
             StmtKind::Compound(body) => self.stmts(body),
@@ -1220,6 +1222,7 @@ impl Checker {
                 for bound in [start, end] {
                     let ty = self.expr(bound);
                     self.check_assignable(&var_ty, &ty, bound.span);
+                    self.check_constant_range(&var_ty, bound);
                 }
                 self.stmt(body);
                 self.active_for_vars.pop();
@@ -1667,6 +1670,18 @@ impl Checker {
     fn check_assignable(&mut self, target: &Type, value: &Type, span: Span) {
         if !target.accepts(value) {
             self.error(span, format!("cannot assign a {value} value to a {target} variable"));
+        }
+    }
+
+    /// A constant that doesn't fit the integer type it's stored in
+    /// (`i := 65535` for an Integer, `b := 300` for a Byte) is an error in
+    /// TP ("Constant out of range"); at run time a value would just wrap.
+    fn check_constant_range(&mut self, target: &Type, value: &Expr) {
+        if let Type::Int(kind) = target.concrete()
+            && let Some(ConstVal::Int(n)) = self.eval_const(value)
+            && !kind.contains(n)
+        {
+            self.error(value.span, format!("the constant {n} is out of range for {target}"));
         }
     }
 

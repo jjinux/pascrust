@@ -1,6 +1,6 @@
 program DosMisc;
 { The smaller Dos routines: FSplit, EnvCount/EnvStr, DosError as a
-  variable, and the ones pascrust fakes (DosVersion, DiskFree/DiskSize,
+  variable, and the ones PascRust fakes (DosVersion, DiskFree/DiskSize,
   SetDate/SetTime, the Ctrl-Break and verify switches, SwapVectors).
   Self-checking. (Free Pascal reports the real system's version and disk
   space, so this .out is built from the checks, by hand.) }

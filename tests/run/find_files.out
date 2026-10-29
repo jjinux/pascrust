@@ -21,4 +21,7 @@ ok: no match: DosError 18
 ok: missing directory: DosError 3
 ok: A:*.TXT after ChDir('A:\sub')
 ok: and A: is no longer the root, so . is listed
-23 of 23 checks passed
+ok: GetDir of drive A
+ok: FExpand starts from the drive's current directory
+ok: and .. goes up from it
+26 of 26 checks passed

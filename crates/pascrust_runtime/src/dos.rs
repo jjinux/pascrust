@@ -170,25 +170,29 @@ pub fn f_search(name: impl Into<PString>, dir_list: impl Into<PString>) -> PStri
 /// `FExpand(path)`: the full DOS path, like `C:\GAMES\SCORES.DAT`.
 ///
 /// PascRust pretends each drive letter is a directory on this machine (see
-/// [`dos_path`]) whose current directory is its root, and that the current
-/// drive is C:. So `scores.dat` expands to `C:\SCORES.DAT`, which
-/// `dos_path` turns back into `scores.dat` in drive C's directory. Programs
-/// that pick paths apart looking for `\` and `:` keep working.
+/// [`dos_path`]), and that the current drive is C:. A relative path starts
+/// from the drive's current directory (`GetDir`), so `scores.dat` expands to
+/// `C:\SCORES.DAT` at the start, which `dos_path` turns back into
+/// `scores.dat` in drive C's directory. Programs that pick paths apart
+/// looking for `\` and `:` keep working.
 pub fn f_expand(path: impl Into<PString>) -> PString {
     let path = path.into().to_string().replace('/', "\\");
     let (drive, rest) = match path.as_bytes() {
         [d, b':', ..] if d.is_ascii_alphabetic() => (d.to_ascii_uppercase() as char, &path[2..]),
         _ => ('C', path.as_str()),
     };
+    let mut parts: Vec<String> = Vec::new();
+    if !rest.starts_with('\\') {
+        parts = crate::system::drive_dir_parts(drive);
+    }
     // Resolve `.` and `..` components.
-    let mut parts: Vec<&str> = Vec::new();
     for part in rest.split('\\') {
         match part {
             "" | "." => {}
             ".." => {
                 parts.pop();
             }
-            part => parts.push(part),
+            part => parts.push(part.to_string()),
         }
     }
     PString::from(format!("{drive}:\\{}", parts.join("\\")).to_uppercase().as_str())

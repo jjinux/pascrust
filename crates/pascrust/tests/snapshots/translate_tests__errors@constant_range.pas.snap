@@ -1,0 +1,28 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/constant_range.pas
+---
+constant_range.pas:10:8: error: the constant 65535 is out of range for Integer
+  i := 65535;
+       ^^^^^
+
+constant_range.pas:11:8: error: the constant 70000 is out of range for Integer
+  i := Big;
+       ^^^
+
+constant_range.pas:12:8: error: the constant 65535 is out of range for Integer
+  i := Swap(-1);
+       ^^^^^^^^
+
+constant_range.pas:13:8: error: the constant 300 is out of range for Byte
+  b := 300;
+       ^^^
+
+constant_range.pas:14:8: error: the constant -1 is out of range for Byte
+  b := -1;
+       ^^
+
+constant_range.pas:15:17: error: the constant 256 is out of range for Byte
+  for b := 0 to 256 do
+                ^^^

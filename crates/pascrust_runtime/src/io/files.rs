@@ -100,8 +100,11 @@ impl PText {
     /// Pascal `Assign(f, name)`.
     pub fn assign(&mut self, name: impl Into<PString>) {
         self.close_quietly();
-        self.name = Some(name.into());
-        self.crt = false;
+        let name = name.into();
+        // `Assign(f, '')` is standard input and output, as in TP: the same
+        // console `AssignCrt` gives.
+        self.crt = name.length() == 0;
+        self.name = Some(name);
     }
 
     /// `Output` or `Input` passed as a `var f: Text` parameter: a file that's
@@ -303,9 +306,14 @@ impl Drop for PText {
 #[macro_export]
 macro_rules! fwrite {
     ($file:expr $(, $arg:expr)* $(,)?) => {{
-        let mut buf: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
-        $( $crate::io::PasWrite::pas_write(&$arg, &mut buf); )*
-        $file.write_bytes(&buf);
+        // Each value is written before the next is worked out, as with
+        // `pwrite!`: a function in the list that writes to the same file
+        // comes out in its place.
+        $({
+            let mut buf: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
+            $crate::io::PasWrite::pas_write(&$arg, &mut buf);
+            $file.write_bytes(&buf);
+        })*
     }};
 }
 
@@ -313,10 +321,8 @@ macro_rules! fwrite {
 #[macro_export]
 macro_rules! fwriteln {
     ($file:expr $(, $arg:expr)* $(,)?) => {{
-        let mut buf: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
-        $( $crate::io::PasWrite::pas_write(&$arg, &mut buf); )*
-        buf.push(b'\n');
-        $file.write_bytes(&buf);
+        $crate::fwrite!($file $(, $arg)*);
+        $file.write_bytes(b"\n");
     }};
 }
 

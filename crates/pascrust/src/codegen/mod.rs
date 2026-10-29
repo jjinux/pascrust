@@ -1459,6 +1459,36 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// Can a call in `e` reach the variable `root` names without naming
+    /// it: a method call (every method takes all of `self`), or a function
+    /// that receives the variable as a global or outer variable?
+    fn call_reaches(&self, e: &Expr, root: &Expr) -> bool {
+        if self.a.method_calls.contains_key(&e.id) {
+            return true;
+        }
+        let root_sym = self.a.refs.get(&root.id).copied();
+        let receives = |callee: &Expr| match self.a.refs.get(&callee.id).map(|&sym| &self.a.sym(sym).kind) {
+            Some(SymKind::Proc(p)) => self.a.procs[*p].captures.iter().any(|c| Some(c.sym) == root_sym),
+            _ => false,
+        };
+        let item = |elem: &SetElem| match elem {
+            SetElem::Single(x) => self.call_reaches(x, root),
+            SetElem::Range(lo, hi) => self.call_reaches(lo, root) || self.call_reaches(hi, root),
+        };
+        match &e.kind {
+            ExprKind::Call { callee, args } => receives(callee) || args.iter().any(|a| self.call_reaches(a, root)),
+            ExprKind::Name(_) => receives(e),
+            ExprKind::Field(base, _) | ExprKind::Deref(base) => self.call_reaches(base, root),
+            ExprKind::Index(base, indexes) => {
+                self.call_reaches(base, root) || indexes.iter().any(|i| self.call_reaches(i, root))
+            }
+            ExprKind::Unary { operand, .. } => self.call_reaches(operand, root),
+            ExprKind::Binary { lhs, rhs, .. } => self.call_reaches(lhs, root) || self.call_reaches(rhs, root),
+            ExprKind::Set(elems) => elems.iter().any(item),
+            _ => false,
+        }
+    }
+
     /// Does `e` call a function or method anywhere (with or without
     /// parentheses)?
     fn has_call(&self, e: &Expr) -> bool {
@@ -1628,10 +1658,12 @@ impl<'a> Codegen<'a> {
             && !matches!(target_ty, Type::Str { .. })
             && self.same_as_place(lhs, &place)
             // `n += f()` calls `f` before it reads `n`, but Pascal (as Free
-            // Pascal does it) reads `n` first, which matters when `f` changes
-            // `n`. So a right side with a call keeps `n = n + f()`, which
-            // Rust works out left to right.
-            && !self.has_call(rhs)
+            // Pascal does it) reads `n` first, which matters when `f` can
+            // change `n`: when `n` is passed to it, or it's a global or outer
+            // variable the function receives. Then it stays `n = n + f(...)`,
+            // which Rust works out left to right. (For a set, `s |= f(&mut s)`
+            // wouldn't even borrow-check.)
+            && !(self.has_call(rhs) && (mentions(rhs, &root_name(target)) || self.call_reaches(rhs, root_expr(target))))
             // `s[i] |= s[1]` borrows `s` mutably for the place before reading
             // `s[1]` (the operator is a trait method, unlike `+=` on
             // numbers), which the borrow checker rejects.
@@ -1833,6 +1865,14 @@ fn deref_roots(e: &Expr) -> Vec<String> {
 }
 
 /// The name of the variable a place expression starts from.
+/// The variable at the root of a place: `a` in `a[i].x`.
+fn root_expr(e: &Expr) -> &Expr {
+    match &e.kind {
+        ExprKind::Field(base, _) | ExprKind::Index(base, _) | ExprKind::Deref(base) => root_expr(base),
+        _ => e,
+    }
+}
+
 fn root_name(e: &Expr) -> String {
     match &e.kind {
         ExprKind::Name(id) => id.key(),

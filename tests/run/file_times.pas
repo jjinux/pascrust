@@ -1,7 +1,7 @@
 program FileTimes;
 { File times and attributes: PackTime/UnpackTime, GetFTime/SetFTime and
   GetFAttr/SetFAttr. Self-checking. (Free Pascal on Unix can't remember
-  Hidden or Archive, which pascrust does while the program runs, so this
+  Hidden or Archive, which PascRust does while the program runs, so this
   .out is built from the checks, by hand.) }
 uses Dos;
 var

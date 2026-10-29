@@ -14,7 +14,7 @@ use pascrust_runtime::prelude::*;
 
 // FindFirst and FindNext with DOS wildcards and attributes. Self-checking.
 // (Free Pascal returns matches in directory order, so this .out is built
-// from the checks, by hand: pascrust sorts them by name.)
+// from the checks, by hand: PascRust sorts them by name.)
 
 /// Pascal: `procedure Check(ok: Boolean; what: string);`
 ///
@@ -82,6 +82,7 @@ fn pascal_main() {
     let mut walked_files: i16 = 0;
     let mut walked_dirs: i16 = 0;
     let mut number: PString = PString::new();
+    let mut dir: PString = PString::new();
     checks = 0;
     failures = 0;
     make(&mut f, pstr("b.txt"), pstr("bee"));
@@ -249,6 +250,15 @@ fn pascal_main() {
     );
     find_first("A:*.*", DIRECTORY, &mut s);
     check(&mut checks, &mut failures, s.name == ".", pstr("and A: is no longer the root, so . is listed"));
+    dir = get_dir(1);
+    check(&mut checks, &mut failures, dir == "A:\\SUB", pstr("GetDir of drive A"));
+    check(
+        &mut checks,
+        &mut failures,
+        f_expand("A:x.dat") == "A:\\SUB\\X.DAT",
+        pstr("FExpand starts from the drive's current directory"),
+    );
+    check(&mut checks, &mut failures, f_expand("A:..\\x.dat") == "A:\\X.DAT", pstr("and .. goes up from it"));
     f.assign("A:inner.txt");
     f.erase();
     ch_dir("A:\\");
