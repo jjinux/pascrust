@@ -244,6 +244,8 @@ Graph, the rest
 - [x] Fake: `InstallUserFont` and `SetGraphBufSize` succeed and change nothing (there are no `.CHR` files to load). `RegisterBGIdriver`, `RegisterBGIfont` and `InstallUserDriver` are refused instead, with the reason: they take `@DriverProc` (code linked in from an `.OBJ` file) or a driver file, and the call can simply go.
 
 Last: raw bytes and C strings
+- [ ] Decide on untyped memory (`GetMem`, `Pointer`, untyped `var`): see the proposal in `notes/untyped_memory.md`, which `GetImage`/`PutImage`, untyped files and `PChar` all wait for. Questions there for the user.
+- [ ] Question for the user (from a Fable review): is the directory the program starts in a drive's root? `GetDir` calls it `C:\`, and `FindFirst('A:*.*')` there lists no `.`/`..`, but `FindFirst('*.*')` there does (the `find_files` test expects that). DOS would list neither in a root.
 - [ ] Untyped files (`file` without `of`) with `BlockRead`/`BlockWrite`, and untyped `var` parameters, as byte views of records and arrays (with `SizeOf`).
 - [ ] `PChar` and the `Strings` unit (`StrLen`, `StrCopy`, `StrCat`, `StrComp`, `StrPas`, `StrPCopy`, ...), as a handle to a byte buffer plus an offset, since `PChar` arithmetic is pointer arithmetic. Then `WinDos` (the `Dos` routines with `PChar` arguments) is mostly aliases.
 - [ ] Skip: `Graph3` and `Turbo3` (Turbo Pascal 3.0 compatibility).
