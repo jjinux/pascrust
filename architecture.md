@@ -656,7 +656,9 @@ window meanwhile (§19).
   `Ordinal`. **`repeat ... until c`** → `loop { ...; if c { break } }`.
   **`case`** → `match` with `|` alternatives, `..=` ranges (an enum range,
   `Mon..Fri`, lists its values: Rust ranges are for numbers and chars),
-  labels an earlier arm covers dropped with a comment, and `_ => {}` when
+  labels an earlier arm covers dropped with a comment, or trimmed to the
+  values no earlier label has (Rust warns about a pattern that can't
+  match), and `_ => {}` when
   there is no `else` (none when the labels cover every value, as they can
   for an enum or `Boolean`; an `else` then can't run, and is kept under
   `#[allow(unreachable_patterns)]` with a comment saying so).

@@ -6,4 +6,8 @@ ok: an enum range: Mon..Fri
 ok: an enum range with an else
 ok: a range an earlier arm covers: the first arm wins
 ok: ranges that overlap an earlier one
-8 of 8 checks passed
+ok: enum ranges that overlap: the first wins
+ok: and the second has the rest
+ok: ranges sharing an end: the first wins
+ok: a Boolean range
+12 of 12 checks passed

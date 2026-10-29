@@ -1,0 +1,24 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/case_label_ranges.pas
+---
+case_label_ranges.pas:11:5: error: case label 300 is out of range for Byte
+    300: WriteLn('too big for a Byte');
+    ^^^
+
+case_label_ranges.pas:12:5: error: case label -1 is out of range for Byte
+    -1: WriteLn('a Byte is never negative');
+    ^^
+
+case_label_ranges.pas:15:5: error: the low end of this case range is above its high end
+    5..1: WriteLn('backwards');
+    ^^^^
+
+case_label_ranges.pas:16:5: error: case label 40000 is out of range for Integer
+    40000: WriteLn('too big for an Integer');
+    ^^^^^
+
+case_label_ranges.pas:19:5: error: the low end of this case range is above its high end
+    Fri..Mon: WriteLn('backwards');
+    ^^^^^^^^

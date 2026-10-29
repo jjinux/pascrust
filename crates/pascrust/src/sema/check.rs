@@ -1181,9 +1181,23 @@ impl Checker {
                             CaseLabel::Value(e) => vec![e],
                             CaseLabel::Range(lo, hi) => vec![lo, hi],
                         };
+                        let mut ords = Vec::new();
                         for e in exprs {
                             let label_ty = self.expr(e);
                             if let Some(value) = self.eval_const(e) {
+                                // A label the value can never equal (300 for a
+                                // Byte): TP rejects it, and Rust couldn't write it.
+                                if let (Type::Int(kind), ConstVal::Int(n)) = (&ty, &value)
+                                    && !kind.contains(*n)
+                                {
+                                    self.error(e.span, format!("case label {n} is out of range for {ty}"));
+                                }
+                                ords.push(match &value {
+                                    ConstVal::Int(n) => Some(*n),
+                                    ConstVal::Bool(b) => Some(*b as i64),
+                                    ConstVal::Str(bytes) if bytes.len() == 1 => Some(bytes[0] as i64),
+                                    _ => None,
+                                });
                                 self.a.case_labels.insert(e.id, value);
                             } else {
                                 self.error(e.span, "`case` labels must be constants");
@@ -1191,6 +1205,11 @@ impl Checker {
                             if !ty.accepts(&label_ty) {
                                 self.error(e.span, format!("expected a {ty} label, found {label_ty}"));
                             }
+                        }
+                        if let (CaseLabel::Range(lo, hi), [Some(low), Some(high)]) = (label, ords.as_slice())
+                            && low > high
+                        {
+                            self.error(lo.span.to(hi.span), "the low end of this case range is above its high end");
                         }
                     }
                     self.stmt(&arm.body);

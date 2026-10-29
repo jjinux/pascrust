@@ -68,6 +68,7 @@ fn pascal_main() {
     let mut b: u8 = 0;
     let mut d: Day = Day::Mon;
     let mut what: PString = PString::new();
+    let mut flag: bool = false;
     checks = 0;
     failures = 0;
     l = 5;
@@ -132,7 +133,7 @@ fn pascal_main() {
         1 | 2 => {
             what = pstr("one or two");
         }
-        // 1..=2 also appeared in an earlier arm, which wins.
+        // 1..=2 also appeared in an earlier label, which wins.
         0 => {
             what = pstr("zero");
         }
@@ -146,12 +147,56 @@ fn pascal_main() {
         3..=7 => {
             what = pstr("middle");
         }
-        1..=5 | 6..=10 => {
+        // 1..=5, 6..=10 overlapped an earlier label, which wins: only the rest is here.
+        1..=2 | 8..=10 => {
             what = pstr("low");
         }
         _ => {}
     }
     check(&mut checks, &mut failures, what == "low", pstr("ranges that overlap an earlier one"));
+    d = Day::Wed;
+    match d {
+        Day::Mon | Day::Tue | Day::Wed => {
+            what = pstr("early");
+        }
+        // Day::Tue | Day::Wed | Day::Thu | Day::Fri | Day::Sat overlapped an earlier label, which wins: only the rest is here.
+        Day::Thu | Day::Fri | Day::Sat => {
+            what = pstr("later");
+        }
+        _ => {}
+    }
+    check(&mut checks, &mut failures, what == "early", pstr("enum ranges that overlap: the first wins"));
+    d = Day::Thu;
+    match d {
+        Day::Mon | Day::Tue | Day::Wed => {
+            what = pstr("early");
+        }
+        // Day::Tue | Day::Wed | Day::Thu | Day::Fri | Day::Sat overlapped an earlier label, which wins: only the rest is here.
+        Day::Thu | Day::Fri | Day::Sat => {
+            what = pstr("later");
+        }
+        _ => {}
+    }
+    check(&mut checks, &mut failures, what == "later", pstr("and the second has the rest"));
+    b = 7;
+    match b {
+        3..=7 => {
+            what = pstr("first");
+        }
+        // 7..=10 overlapped an earlier label, which wins: only the rest is here.
+        8..=10 => {
+            what = pstr("second");
+        }
+        _ => {}
+    }
+    check(&mut checks, &mut failures, what == "first", pstr("ranges sharing an end: the first wins"));
+    flag = true;
+    match flag {
+        false | true => {
+            what = pstr("either");
+        }
+    }
+    check(&mut checks, &mut failures, what == "either", pstr("a Boolean range"));
     pwriteln!(checks - failures, " of ", checks, " checks passed");
     if failures > 0 {
         halt(1);

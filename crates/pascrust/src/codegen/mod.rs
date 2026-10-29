@@ -1328,33 +1328,34 @@ impl<'a> Codegen<'a> {
         for arm in arms {
             let mut labels = Vec::new();
             let mut dropped = Vec::new();
+            let mut trimmed = Vec::new();
             for label in &arm.labels {
-                let (lo, hi, code) = match label {
-                    CaseLabel::Value(e) => (self.label_ord(e), self.label_ord(e), self.case_label(e)),
-                    // Rust ranges only work on numbers and chars, so an
-                    // enum range (`Mon..Fri`) lists its values.
-                    CaseLabel::Range(lo, hi) => {
-                        let (lo_ord, hi_ord) = (self.label_ord(lo), self.label_ord(hi));
-                        let code = match &scrutinee_ty {
-                            Type::Enum(e) => (lo_ord..=hi_ord)
-                                .filter_map(|i| e.variants.get(i as usize))
-                                .map(|v| format!("{}::{v}", e.rust_name))
-                                .collect::<Vec<_>>()
-                                .join(" | "),
-                            _ => format!("{}..={}", self.case_label(lo), self.case_label(hi)),
-                        };
-                        (lo_ord, hi_ord, code)
-                    }
+                let (lo, hi) = match label {
+                    CaseLabel::Value(e) => (self.label_ord(e), self.label_ord(e)),
+                    CaseLabel::Range(lo, hi) => (self.label_ord(lo), self.label_ord(hi)),
                 };
-                if seen.covers(lo, hi) {
-                    dropped.push(code);
-                } else {
-                    seen.add(lo, hi);
-                    labels.push(code);
+                // Only the values no earlier label has: Rust warns about a
+                // pattern, or the end of a range, that can never match.
+                let pieces = seen.uncovered(lo, hi);
+                if pieces.is_empty() {
+                    dropped.push(self.ord_range_pattern(&scrutinee_ty, lo, hi));
+                } else if pieces != [(lo, hi)] {
+                    trimmed.push(self.ord_range_pattern(&scrutinee_ty, lo, hi));
                 }
+                for (start, end) in pieces {
+                    labels.push(self.ord_range_pattern(&scrutinee_ty, start, end));
+                }
+                seen.add(lo, hi);
             }
+            // TP lets labels repeat, and the first one wins.
             if !dropped.is_empty() {
-                self.line(format!("// {} also appeared in an earlier arm, which wins.", dropped.join(", ")));
+                self.line(format!("// {} also appeared in an earlier label, which wins.", dropped.join(", ")));
+            }
+            if !trimmed.is_empty() {
+                self.line(format!(
+                    "// {} overlapped an earlier label, which wins: only the rest is here.",
+                    trimmed.join(", ")
+                ));
             }
             if labels.is_empty() {
                 continue;
@@ -1427,6 +1428,22 @@ impl<'a> Codegen<'a> {
         self.line("}");
         if let Some(comment) = end_comment {
             self.append_comment(&comment);
+        }
+    }
+
+    /// The pattern for the ordinals `lo..=hi` of a `case` on `ty`. Rust
+    /// ranges only work on numbers and chars, so an enum's or a Boolean's
+    /// values are listed (`Day::Mon | Day::Tue`).
+    fn ord_range_pattern(&self, ty: &Type, lo: i64, hi: i64) -> String {
+        let one = |n: i64| match ty {
+            Type::Enum(e) => format!("{}::{}", e.rust_name, e.variants[n as usize]),
+            Type::Bool => (n != 0).to_string(),
+            _ => self.const_value(&crate::sema::ConstVal::Int(n), ty),
+        };
+        match ty {
+            _ if lo == hi => one(lo),
+            Type::Enum(_) | Type::Bool => (lo..=hi).map(one).collect::<Vec<_>>().join(" | "),
+            _ => format!("{}..={}", one(lo), one(hi)),
         }
     }
 
@@ -1626,12 +1643,6 @@ impl<'a> Codegen<'a> {
             _ => unreachable!("sema checked the initializer's shape"),
         }
     }
-
-    fn case_label(&self, e: &Expr) -> String {
-        let value = &self.a.case_labels[&e.id];
-        let ty = self.a.type_of(e.id).concrete();
-        self.const_value(value, &ty)
-    }
 }
 
 /// The values a `case`'s labels cover so far, as sorted, separate ranges.
@@ -1645,6 +1656,25 @@ impl Covered {
     /// Is every value in `lo..=hi` already covered?
     fn covers(&self, lo: i64, hi: i64) -> bool {
         self.ranges.iter().any(|&(start, end)| start <= lo && hi <= end)
+    }
+
+    /// The parts of `lo..=hi` not covered yet.
+    fn uncovered(&self, lo: i64, hi: i64) -> Vec<(i64, i64)> {
+        let mut pieces = Vec::new();
+        let mut next = lo;
+        for &(start, end) in &self.ranges {
+            if end < next || start > hi {
+                continue;
+            }
+            if start > next {
+                pieces.push((next, start - 1));
+            }
+            next = end.saturating_add(1);
+        }
+        if next <= hi {
+            pieces.push((next, hi));
+        }
+        pieces
     }
 
     fn add(&mut self, lo: i64, hi: i64) {

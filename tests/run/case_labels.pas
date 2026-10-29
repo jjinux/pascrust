@@ -14,6 +14,7 @@ var
   b: Byte;
   d: Day;
   what: string;
+  flag: Boolean;
 
 procedure Check(ok: Boolean; what: string);
 begin
@@ -81,6 +82,29 @@ begin
     1..5, 6..10: what := 'low';
   end;
   Check(what = 'low', 'ranges that overlap an earlier one');
+  d := Wed;
+  case d of
+    Mon..Wed: what := 'early';
+    Tue..Sat: what := 'later';
+  end;
+  Check(what = 'early', 'enum ranges that overlap: the first wins');
+  d := Thu;
+  case d of
+    Mon..Wed: what := 'early';
+    Tue..Sat: what := 'later';
+  end;
+  Check(what = 'later', 'and the second has the rest');
+  b := 7;
+  case b of
+    3..7: what := 'first';
+    7..10: what := 'second';
+  end;
+  Check(what = 'first', 'ranges sharing an end: the first wins');
+  flag := True;
+  case flag of
+    False..True: what := 'either';
+  end;
+  Check(what = 'either', 'a Boolean range');
   WriteLn(checks - failures, ' of ', checks, ' checks passed');
   if failures > 0 then
     Halt(1);

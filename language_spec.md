@@ -83,7 +83,10 @@ Statements
 - Assignment; compound `begin ... end`; `if`/`then`/`else` (dangling else
   binds to the nearest `if`)
 - `while`, `repeat ... until`, `for ... to/downto` (ordinal loop variables of
-  any ordinal type), `case ... of` with lists and ranges and `else`
+  any ordinal type), `case ... of` with lists and ranges (of numbers,
+  chars, enums and Booleans) and `else`. As in TP, a label may repeat or
+  overlap an earlier one, and the first wins; a label the value can never
+  equal (300 for a `Byte`, a range like `5..1`) is an error
 - Procedure calls; `Exit`; `Halt` / `Halt(n)`
 - Value and `var` parameters; passing arrays, records and strings both ways.
   Different fields of one record may be passed as two `var` arguments
