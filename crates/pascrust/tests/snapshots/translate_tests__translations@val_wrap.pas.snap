@@ -38,6 +38,8 @@ fn pascal_main() {
     pwriteln!(l, " ", code);
     val("12x", &mut i, &mut code);
     pwriteln!(i, " ", code);
+    val("-$10", &mut i, &mut code);
+    pwriteln!(i, " ", code);
 }
 
 fn main() {

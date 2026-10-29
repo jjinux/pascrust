@@ -125,10 +125,16 @@ macro_rules! impl_val_int {
                 if $unsigned && text.starts_with('-') {
                     return None;
                 }
-                let wide = match text.strip_prefix('$') {
-                    Some(hex) => u64::from_str_radix(hex, 16).ok()? as i64,
-                    None => text.parse::<i64>().ok()?,
+                // A sign may come before `$`: `-$1` is -1.
+                let (negative, unsigned) = match text.strip_prefix('-') {
+                    Some(rest) if rest.starts_with('$') => (true, rest),
+                    _ => (false, text),
                 };
+                let wide = match unsigned.strip_prefix('$') {
+                    Some(hex) => u64::from_str_radix(hex, 16).ok()? as i64,
+                    None => unsigned.parse::<i64>().ok()?,
+                };
+                let wide = if negative { wide.wrapping_neg() } else { wide };
                 Some(wide as $t)
             }
         } )*
@@ -138,6 +144,10 @@ impl_val_int!(i8: false, i16: false, i32: false, u8: true, u16: true);
 
 impl ValTarget for f64 {
     fn parse_pascal(text: &str) -> Option<f64> {
+        // Rust also reads `infinity`; Free Pascal only `inf` and `nan`.
+        if text.to_ascii_lowercase().trim_start_matches(['-', '+']).starts_with("infinity") {
+            return None;
+        }
         text.parse().ok()
     }
 }
