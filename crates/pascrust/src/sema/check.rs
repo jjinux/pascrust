@@ -82,6 +82,11 @@ pub(super) struct Checker {
     next_synthetic_id: NodeId,
     errors: Vec<Diagnostic>,
     call_sites: Vec<CallSite>,
+    /// Where `PChar`s are stored and passed, for `pchar::check`.
+    pchar_flows: Vec<super::pchar::Flow>,
+    pchar_arg_flows: Vec<super::pchar::ArgFlow>,
+    /// The variable each array lent a `PChar` belongs to.
+    pchar_array_roots: HashMap<NodeId, SymId>,
 }
 
 /// An untyped parameter, or `p^` of a `Pointer`, has no type of its own.
@@ -112,6 +117,9 @@ impl Checker {
             next_synthetic_id: NodeId::MAX,
             errors: Vec::new(),
             call_sites: Vec::new(),
+            pchar_flows: Vec::new(),
+            pchar_arg_flows: Vec::new(),
+            pchar_array_roots: HashMap::new(),
         };
         checker.a.procs.push(ProcInfo {
             name: "main program".to_string(),
@@ -142,7 +150,9 @@ impl Checker {
             a.for_only.insert(f.var, only_in_loops);
         }
         a.for_loop_list = self.for_loops.iter().map(|f| (f.stmt_start, f.var, f.proc)).collect();
-        (a, self.errors, self.call_sites)
+        let mut errors = self.errors;
+        errors.extend(super::pchar::check(&a, &self.pchar_flows, &self.pchar_arg_flows));
+        (a, errors, self.call_sites)
     }
 
     fn error(&mut self, span: Span, message: impl Into<String>) {
@@ -257,6 +267,7 @@ impl Checker {
             ("char", Type::Char),
             ("text", Type::Text),
             ("pointer", Type::AnyPointer),
+            ("pchar", Type::PChar),
             // Only reached as a value, as in `SizeOf(string)`: in a type,
             // `string` is a keyword the parser handles.
             ("string", Type::Str { cap: 255 }),
@@ -560,6 +571,11 @@ impl Checker {
                 let value_ty = self.expr(e);
                 if !ty.accepts(&value_ty) {
                     self.error(e.span, format!("expected a {ty} value, found {value_ty}"));
+                } else if *ty == Type::PChar && value_ty.is_char_array0() {
+                    self.error(
+                        e.span,
+                        "a typed constant can't keep a PChar into a Char array in PascRust (it lends a PChar to an array only for one statement)",
+                    );
                 }
             }
             (ConstValue::List(items, span), Type::Array(a)) => {
@@ -1204,6 +1220,23 @@ impl Checker {
                 let value_ty = self.expr(value);
                 self.check_assignable(&target_ty, &value_ty, value.span);
                 self.check_constant_range(&target_ty, value);
+                self.note_pchar_array(value, &target_ty, false);
+                if matches!(target_ty, Type::PChar | Type::AnyPointer) {
+                    let flow = super::pchar::Flow {
+                        proc: self.cur(),
+                        sink: self.pchar_sink(target),
+                        srcs: self.pchar_sources(value),
+                        span: value.span,
+                    };
+                    self.pchar_flows.push(flow);
+                }
+                // `P[i] := C` or `P^ := C` writes through `P`.
+                if let ExprKind::Index(base, _) | ExprKind::Deref(base) = &target.kind
+                    && self.a.types.get(&base.id) == Some(&Type::PChar)
+                {
+                    let srcs = self.pchar_sources(base);
+                    self.mark_written(&srcs);
+                }
             }
             StmtKind::Call(e) => self.call_statement(e),
             StmtKind::Compound(body) => self.stmts(body),
@@ -1690,6 +1723,99 @@ impl Checker {
         }
     }
 
+    /// A zero-based `Char` array used where a `PChar` is wanted: codegen
+    /// lends it a `PChar` for the statement (and writes the characters back
+    /// after it if `written`).
+    fn note_pchar_array(&mut self, e: &Expr, target: &Type, written: bool) {
+        if *target == Type::PChar && self.a.types.get(&e.id).is_some_and(Type::is_char_array0) {
+            self.a.pchar_arrays.entry(e.id).or_insert(false);
+            if let Some(root) = self.place_root(e) {
+                self.pchar_array_roots.insert(e.id, root);
+            }
+            if written {
+                self.mark_written(&[super::pchar::Src::Array(e.id)]);
+            }
+        }
+    }
+
+    /// The arrays in `srcs` are written through their `PChar`s.
+    fn mark_written(&mut self, srcs: &[super::pchar::Src]) {
+        for src in srcs {
+            match src {
+                super::pchar::Src::Array(id) => {
+                    self.a.pchar_arrays.insert(*id, true);
+                    // The characters are copied back into the variable.
+                    if let Some(&root) = self.pchar_array_roots.get(id) {
+                        self.use_var(root, true);
+                    }
+                }
+                super::pchar::Src::Ret(_, args) => {
+                    for arg in args {
+                        self.mark_written(arg);
+                    }
+                }
+                super::pchar::Src::Var(_) => {}
+            }
+        }
+    }
+
+    /// Where the `PChar` value `e` (already checked) comes from.
+    fn pchar_sources(&self, e: &Expr) -> Vec<super::pchar::Src> {
+        use super::pchar::Src;
+        if self.a.types.get(&e.id).is_some_and(Type::is_char_array0) {
+            return vec![Src::Array(e.id)];
+        }
+        let pointer = |t: &Type| matches!(t, Type::PChar | Type::AnyPointer | Type::Pointer(_));
+        match &e.kind {
+            ExprKind::Name(_) => match self.a.refs.get(&e.id) {
+                Some(&sym) if matches!(&self.a.symbols[sym].kind, SymKind::Var(v) if pointer(&v.ty)) => {
+                    vec![Src::Var(sym)]
+                }
+                _ => Vec::new(),
+            },
+            // `P + 1`: where `P` points.
+            ExprKind::Binary { lhs, rhs, .. } => {
+                let mut srcs = Vec::new();
+                for side in [lhs, rhs] {
+                    if self.a.types.get(&side.id).is_some_and(Type::is_pcharish) {
+                        srcs.extend(self.pchar_sources(side));
+                    }
+                }
+                srcs
+            }
+            ExprKind::Call { callee, args } => match self.a.refs.get(&callee.id).map(|&s| &self.a.symbols[s].kind) {
+                // The `Strings` functions return a pointer into their first
+                // argument, except `StrNew`, which makes a new string.
+                Some(SymKind::UnitRoutine(r)) if r.name != "strnew" => {
+                    args.first().map(|arg| self.pchar_sources(arg)).unwrap_or_default()
+                }
+                Some(SymKind::Proc(p)) => vec![Src::Ret(*p, args.iter().map(|arg| self.pchar_sources(arg)).collect())],
+                // `PChar(p)`.
+                Some(SymKind::TypeName(_)) => args.first().map(|arg| self.pchar_sources(arg)).unwrap_or_default(),
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        }
+    }
+
+    /// Where an assignment to `target` puts a `PChar`.
+    fn pchar_sink(&self, target: &Expr) -> super::pchar::Sink {
+        use super::pchar::Sink;
+        let cur = &self.a.procs[self.cur()];
+        if let ExprKind::Name(_) = &target.kind
+            && let Some(&sym) = self.a.refs.get(&target.id)
+            && let SymKind::Var(v) = &self.a.symbols[sym].kind
+        {
+            return match v.role {
+                VarRole::Result if cur.result == Some(sym) => Sink::Result,
+                VarRole::Local if cur.locals.contains(&sym) => Sink::Local(sym),
+                VarRole::Param(mode) if mode != ParamMode::Var && cur.params.contains(&sym) => Sink::Local(sym),
+                _ => Sink::Kept,
+            };
+        }
+        Sink::Kept
+    }
+
     fn check_assignable(&mut self, target: &Type, value: &Type, span: Span) {
         if *value == Type::Untyped {
             self.error(span, UNTYPED_USE);
@@ -1818,6 +1944,11 @@ impl Checker {
             ExprKind::Binary { op, lhs, rhs } => {
                 let l = self.expr(lhs);
                 let r = self.expr(rhs);
+                // A `Char` array in `P - A` or `A = P` is lent a `PChar`.
+                if l == Type::PChar || r == Type::PChar || (l.is_char_array0() && r.is_integer()) {
+                    self.note_pchar_array(lhs, &Type::PChar, false);
+                    self.note_pchar_array(rhs, &Type::PChar, false);
+                }
                 self.binary_type(e, *op, &l, &r)
             }
             ExprKind::Format { value, .. } => {
@@ -1896,6 +2027,14 @@ impl Checker {
             return Type::IntLit(v);
         }
         let result = match (op, l, r) {
+            // `PChar` arithmetic (TP 7's extended syntax): `P + I`, `I + P`
+            // and `P - I` move the pointer; `P - Q` is how far apart they
+            // are, a `Word`.
+            (Add, p, i) | (Add, i, p) if p.is_pcharish() && i.is_integer() => Some(Type::PChar),
+            (Sub, p, i) if p.is_pcharish() && i.is_integer() => Some(Type::PChar),
+            (Sub, p, q) if p.is_pcharish() && q.is_pcharish() && (*p == Type::PChar || *q == Type::PChar) => {
+                Some(Type::Int(IntKind::Word))
+            }
             // Union, difference and intersection.
             (Add | Sub | Mul, Type::Set(a), Type::Set(_)) => {
                 if **a == Type::Void {
@@ -1992,6 +2131,12 @@ impl Checker {
                 let base_ty = self.place(base, write);
                 self.select_field(base_ty, field)
             }
+            // `P[i] := C` writes the characters, not `P`: like `p^`, the
+            // pointer is only read.
+            ExprKind::Index(base, indexes) if self.is_pchar_base(base) => {
+                let base_ty = self.expr(base);
+                self.select_index(base_ty, indexes, e.span)
+            }
             ExprKind::Index(base, indexes) => {
                 let base_ty = self.place(base, write);
                 self.select_index(base_ty, indexes, e.span)
@@ -2078,6 +2223,7 @@ impl Checker {
             Type::Pointer(p) => p.target(),
             // `p^` of a `Pointer`: untyped memory (`BlockRead(f, p^, n)`).
             Type::AnyPointer => Type::Untyped,
+            Type::PChar => Type::Char,
             Type::Error => Type::Error,
             other => {
                 self.error(span, format!("`^` needs a pointer, found {other}"));
@@ -2122,7 +2268,7 @@ impl Checker {
                     }
                     a.elem.clone()
                 }
-                Type::Str { .. } => {
+                Type::Str { .. } | Type::PChar => {
                     if !index_ty.is_integer() && index_ty != Type::Error {
                         self.error(index.span, format!("a string index must be an integer, not {index_ty}"));
                     }
@@ -2136,6 +2282,21 @@ impl Checker {
             };
         }
         ty
+    }
+
+    /// Could `e`, the base of `e[i] := ...`, be a `PChar`: a `PChar` variable,
+    /// or a function's result (`StrEnd(A)[0]`), not a typecast? (Looked up
+    /// without checking it.)
+    fn is_pchar_base(&self, e: &Expr) -> bool {
+        let kind = |id: &Ident| self.lookup(&id.key()).map(|s| &self.a.symbols[s].kind);
+        match &e.kind {
+            ExprKind::Name(id) => matches!(kind(id), Some(SymKind::Var(v)) if v.ty == Type::PChar),
+            ExprKind::Call { callee, .. } => match &callee.kind {
+                ExprKind::Name(id) => matches!(kind(id), Some(SymKind::UnitRoutine(_) | SymKind::Proc(_))),
+                _ => false,
+            },
+            _ => false,
+        }
     }
 
     /// The variable at the root of a place expression, e.g. `a` in `a[i].x`.
@@ -2223,7 +2384,10 @@ impl Checker {
                 // typed pointer.
                 if matches!(
                     (&from, &target),
-                    (Type::AnyPointer, Type::Pointer(_)) | (Type::Pointer(_), Type::AnyPointer)
+                    (Type::AnyPointer, Type::Pointer(_))
+                        | (Type::Pointer(_), Type::AnyPointer)
+                        | (Type::AnyPointer, Type::PChar)
+                        | (Type::PChar, Type::AnyPointer)
                 ) {
                     return target;
                 }
@@ -2266,6 +2430,24 @@ impl Checker {
                     let ty = self.expr(arg);
                     if ty != Type::Bool && ty != Type::Error {
                         self.error(arg.span, format!("expected a Boolean, found {ty}"));
+                    }
+                }
+                Param::PChar | Param::PCharDest => {
+                    let ty = self.expr(arg);
+                    if !Type::PChar.accepts(&ty) {
+                        self.error(arg.span, format!("expected a PChar, found {ty}"));
+                    }
+                    let written = *param == Param::PCharDest;
+                    self.note_pchar_array(arg, &Type::PChar, written);
+                    if written {
+                        let srcs = self.pchar_sources(arg);
+                        self.mark_written(&srcs);
+                    }
+                }
+                Param::Char => {
+                    let ty = self.expr(arg);
+                    if !Type::Char.accepts(&ty) {
+                        self.error(arg.span, format!("expected a Char, found {ty}"));
                     }
                 }
                 Param::VarWord => {
@@ -2458,7 +2640,7 @@ impl Checker {
             return self.a.procs[p].ret.clone().unwrap_or(Type::Void);
         }
         let mut var_args: Vec<VarArg> = receiver.into_iter().collect();
-        for (&param, arg) in params.iter().zip(args) {
+        for (index, (&param, arg)) in params.iter().zip(args).enumerate() {
             let Var { ty, role, .. } = self.a.var(param).clone();
             if role == VarRole::Param(ParamMode::Var) && ty == Type::Untyped {
                 self.untyped_arg(arg);
@@ -2492,6 +2674,14 @@ impl Checker {
                 let arg_ty = self.expr(arg);
                 if !ty.accepts(&arg_ty) {
                     self.error(arg.span, format!("expected a {ty} argument, found {arg_ty}"));
+                }
+                // The routine may write through a `PChar`, or keep it.
+                if matches!(ty, Type::PChar | Type::AnyPointer) {
+                    self.note_pchar_array(arg, &ty, true);
+                    let srcs = self.pchar_sources(arg);
+                    self.mark_written(&srcs);
+                    let flow = super::pchar::ArgFlow { caller: cur, callee: p, param: index, srcs, span: arg.span };
+                    self.pchar_arg_flows.push(flow);
                 }
             }
         }
@@ -2588,6 +2778,7 @@ impl Checker {
                     let writable = (ty.is_ordinal() && !matches!(ty, Type::Enum(_)))
                         || ty.is_numeric()
                         || ty.is_stringish()
+                        || ty == Type::PChar
                         || ty == Type::Error;
                     if !writable {
                         let message = if ty == Type::Untyped {
@@ -2968,14 +3159,14 @@ impl Checker {
                 span,
                 args,
                 &name,
-                |t| matches!(t, Type::Pointer(_) | Type::AnyPointer),
+                |t| matches!(t, Type::Pointer(_) | Type::AnyPointer | Type::PChar),
                 |_| Type::Bool,
             ),
             // `GetMem(p, Size)` and `FreeMem(p, Size)`.
             GetMem | FreeMem => {
                 if arity(&mut self.errors, span, args.len(), 2..=2, &name) {
                     let ty = self.place(&args[0], true);
-                    if !matches!(ty, Type::Pointer(_) | Type::AnyPointer | Type::Error) {
+                    if !matches!(ty, Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Error) {
                         self.error(args[0].span, format!("`{name}` needs a pointer, found {ty}"));
                     }
                     self.int_arg(&args[1]);
@@ -3017,7 +3208,8 @@ impl Checker {
             Inc | Dec => {
                 if arity(&mut self.errors, span, args.len(), 1..=2, &name) {
                     let ty = self.place(&args[0], true);
-                    if !ty.is_ordinal() && ty != Type::Error {
+                    // `Inc(P)` moves a `PChar` on, as `P := P + 1` does.
+                    if !ty.is_ordinal() && !matches!(ty, Type::Error | Type::PChar) {
                         self.error(args[0].span, format!("`{name}` needs an ordinal variable, found {ty}"));
                     }
                     if let Some(n) = args.get(1) {
@@ -3257,8 +3449,9 @@ fn comparable(l: &Type, r: &Type) -> bool {
     (l.is_numeric() && r.is_numeric())
         || (l.is_stringish() && r.is_stringish())
         || (l == r && (l.is_ordinal() || matches!(l, Type::Pointer(_))))
-        || (matches!(l, Type::Pointer(_) | Type::AnyPointer | Type::Nil)
-            && matches!(r, Type::Pointer(_) | Type::AnyPointer | Type::Nil))
+        || (matches!(l, Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Nil)
+            && matches!(r, Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Nil))
+        || (l.is_pcharish() && r.is_pcharish() && (*l == Type::PChar || *r == Type::PChar))
         || (*l == Type::TypeInfo && *r == Type::TypeInfo)
 }
 

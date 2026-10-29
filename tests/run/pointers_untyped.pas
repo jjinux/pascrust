@@ -27,6 +27,8 @@ begin
    WriteLn(n^.x);
    list[1] := n;
    list[2] := nil;
+   q := p;
+   WriteLn(q = p, ' ', p = list[1]);
    WriteLn(list[1] = p, ' ', list[2] = nil);
    GetMem(a, 10 * SizeOf(Integer));
    for i := 0 to 9 do a^[i] := i * i;

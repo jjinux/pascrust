@@ -55,6 +55,8 @@ fn pascal_main() {
     pwriteln!(n.get().x);
     list[1] = AnyPtr::from_ptr(&n);
     list[2] = AnyPtr::nil();
+    q = p.clone();
+    pwriteln!(q == p, " ", p == list[1]);
     pwriteln!(list[1] == p, " ", list[2].is_nil());
     a = Ptr::alloc();
     // `i` is also used outside this loop (Pascal leaves it holding the

@@ -10,6 +10,7 @@ pub use crate::bytes::{ByteView, Bytes, bytes_from, fill_bytes, move_bytes, stri
 pub use crate::io::{FileRecord, PBlockFile, PFile, PText, PasWrite, eof, eoln, seek_eof, seek_eoln, w, wd};
 pub use crate::ordinal::{Enumerated, Ordinal, enum_range};
 pub use crate::overlay::*;
+pub use crate::pchar::*;
 pub use crate::printer::Lst;
 pub use crate::ptr::{AnyPtr, Ptr};
 pub use crate::run::{halt, io_result, io_unchecked, rte, run_error};

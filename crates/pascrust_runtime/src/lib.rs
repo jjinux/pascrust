@@ -21,6 +21,7 @@ pub mod graph;
 pub mod io;
 pub mod ordinal;
 pub mod overlay;
+pub mod pchar;
 pub mod prelude;
 pub mod printer;
 pub mod ptr;

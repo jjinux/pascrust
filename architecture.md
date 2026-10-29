@@ -400,7 +400,36 @@ pub struct Ptr<T>(Option<Rc<RefCell<T>>>);
   `&mut p.bytes()`. Comparisons go through `AnyPtr` (identity of the
   `Rc`). `GetMem` on a typed pointer allocates the whole type (Fable's
   point 4: the dynamic-array idiom), so it is `New`.
-- Pointer
+- `PChar` (step 5) is the runtime's `PChar`: a shared byte buffer, the same
+  `Rc<RefCell<Vec<u8>>>` that `GetMem` gives a `Pointer`, and a signed
+  offset into it, so `P + 1`, `P - Q` and `P[i]` are offset arithmetic, and
+  past the end of the buffer is runtime error 201. The `Strings` routines
+  take `&PChar`. A string literal becomes `PChar::literal("...")`, a fresh
+  `#0`-ended buffer.
+
+  A zero-based `Char` array can't be pointed into (it's an ordinary
+  `PArray` value), so where it's used as a `PChar` the statement is lent a
+  copy: `let buf_chars = PChar::copy_of(buf.as_slice());` before it and,
+  if the statement may write through it (a `Strings` destination, a
+  routine of the program, `P[i] :=`), `buf_chars.copy_to(buf.as_mut_slice());`
+  after it. Each array gets one copy per statement (so `StrEnd(A) - A`
+  works), and a condition or a `for`/`case` header that needs the copy
+  back computes its value in a block first (`{ let value = ...; copy back;
+  value }`). That's only right if no `PChar` into the copy outlives the
+  statement, which `sema/pchar.rs` proves: the checker records each place
+  a `PChar` is stored or passed to the program's own routines, and a fixed
+  point over the routines works out which keep a `PChar` parameter (store
+  it in a global, a field, a `var` parameter, or pass it to a routine that
+  keeps it) and which return one (the `Strings` functions return a pointer
+  into their first argument, except `StrNew`). An array that reaches a
+  kept place, `P := A` included, is an error. Rejected alternatives (the
+  user's choice, 2026-10-29): every `Char` array in a `PChar` program as a
+  shared buffer of `Cell<u8>`, so `P := A` aliases as in TP, at the cost of
+  a second path for every way of using an array (TODO.md); and one big
+  byte array standing for the program's memory, with pointers as indexes,
+  which still wouldn't let a pointer reach an ordinary variable and would
+  lose the per-allocation bounds checks.
+- Other pointer
   arithmetic, `Addr`/`@` on variables, `Seg`/`Ofs`/`Ptr(...)` and `Mem[]`
   are out of scope for now.
 

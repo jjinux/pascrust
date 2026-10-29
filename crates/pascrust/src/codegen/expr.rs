@@ -98,6 +98,15 @@ impl<'a> Codegen<'a> {
             ExprKind::Binary { op, lhs, rhs } => self.binary(e, *op, lhs, rhs),
             ExprKind::Format { value, .. } => self.expr(value),
             ExprKind::Field(..) if self.a.method_calls.contains_key(&e.id) => (self.call(e, &[]), prec::POSTFIX),
+            // `P^` and `P[i]`: a character through a `PChar`.
+            ExprKind::Deref(base) | ExprKind::Index(base, _) if *self.a.type_of(base.id) == Type::PChar => {
+                let receiver = self.pchar_operand(base);
+                let index = match &e.kind {
+                    ExprKind::Index(_, indexes) => self.expr(&indexes[0]).0,
+                    _ => "0".to_string(),
+                };
+                (format!("{receiver}.get({index})"), prec::POSTFIX)
+            }
             // A whole record through a pointer: copy it out of the cell.
             ExprKind::Deref(_) => {
                 let code = self.selector(e);
@@ -293,6 +302,23 @@ impl<'a> Codegen<'a> {
         {
             return ("PString::new()".to_string(), prec::POSTFIX);
         }
+        // `PChar`s from string constants, arrays and `Pointer`s.
+        match (to, &from) {
+            (Type::PChar, Type::StrLit(_)) => {
+                return (format!("PChar::literal({})", self.expr(e).0), prec::POSTFIX);
+            }
+            (Type::PChar, Type::Nil) => return ("PChar::nil()".to_string(), prec::POSTFIX),
+            (Type::PChar, Type::AnyPointer) => {
+                return (format!("PChar::from_any(&{})", self.selector_base(e)), prec::POSTFIX);
+            }
+            (Type::AnyPointer, Type::PChar) => {
+                return (format!("{}.to_any()", self.pchar_operand(e)), prec::POSTFIX);
+            }
+            (Type::PChar, t) if t.is_char_array0() => {
+                return (format!("{}.clone()", self.lent_pchar(e)), prec::POSTFIX);
+            }
+            _ => {}
+        }
         // `p := Node1` and `Node1 := p` between `Pointer` and a typed pointer.
         match (to, &from) {
             (Type::AnyPointer, Type::Pointer(_)) => {
@@ -372,10 +398,72 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// A `PChar` value to call a method on or compare: a variable as it is
+    /// (no `.clone()` just to look at it), anything else converted.
+    pub(super) fn pchar_operand(&mut self, e: &Expr) -> String {
+        self.pointer_operand(e, &Type::PChar)
+    }
+
+    /// A `PChar` or `Pointer` (`to`) value to look at: a variable of that
+    /// type as it is, a `Char` array's lent copy, anything else converted.
+    fn pointer_operand(&mut self, e: &Expr, to: &Type) -> String {
+        let ty = self.a.type_of(e.id).clone();
+        if *to == Type::PChar && ty.is_char_array0() {
+            self.lent_pchar(e)
+        } else if ty == *to && is_place(e) {
+            self.selector_base(e)
+        } else {
+            paren(self.coerce(e, to), prec::POSTFIX)
+        }
+    }
+
+    /// A zero-based `Char` array used as a `PChar`. PascRust can't point
+    /// into an array, so it lends the statement a copy of the characters,
+    /// made before it, and (if the statement may write through the `PChar`)
+    /// copies them back after it. Each array gets one copy per statement, so
+    /// `StrEnd(A) - A` compares pointers into the same copy. (Sema made sure
+    /// no `PChar` into the copy outlives the statement.)
+    fn lent_pchar(&mut self, e: &Expr) -> String {
+        let array = self.selector_base(e);
+        if let Some((_, name)) = self.lent.iter().find(|(code, _)| *code == array) {
+            return name.clone();
+        }
+        let base = match array.rsplit(['.', '*']).next() {
+            Some(last) if !last.is_empty() && last.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => last,
+            _ => "array",
+        };
+        let name = self.temp_name(&format!("{base}_chars"));
+        let written = self.a.pchar_arrays.get(&e.id).copied().unwrap_or(false);
+        if self.first_time("lent_pchar") {
+            self.pending.push("// A Char array used as a PChar: Rust can't point into the array, so".to_string());
+            self.pending.push("// the statement gets a copy of its characters, copied back after it".to_string());
+            self.pending.push("// if it may change them.".to_string());
+        }
+        self.pending.push(format!("let {name} = PChar::copy_of({array}.as_slice());"));
+        if written {
+            let place = self.place(e);
+            let place = place.strip_prefix('*').unwrap_or(&place).to_string();
+            self.after.push(format!("{name}.copy_to({place}.as_mut_slice());"));
+        }
+        self.lent.push((array, name.clone()));
+        name
+    }
+
     fn binary(&mut self, e: &Expr, op: BinaryOp, lhs: &Expr, rhs: &Expr) -> Code {
         use BinaryOp::*;
         let ty = self.a.type_of(e.id).clone();
         let (lt, rt) = (self.a.type_of(lhs.id).clone(), self.a.type_of(rhs.id).clone());
+        // `PChar` arithmetic: `P + 1`, `1 + P`, `P - 1`, and `P - Q`.
+        if ty == Type::PChar {
+            let (pointer, n) = if lt.is_pcharish() { (lhs, rhs) } else { (rhs, lhs) };
+            let method = if op == Add { "plus" } else { "minus" };
+            let (pointer, n) = (self.pchar_operand(pointer), self.expr(n).0);
+            return (format!("{pointer}.{method}({n})"), prec::POSTFIX);
+        }
+        if op == Sub && lt.is_pcharish() && rt.is_pcharish() {
+            let (p, q) = (self.pchar_operand(lhs), self.pchar_operand(rhs));
+            return (format!("{p}.diff(&{q})"), prec::POSTFIX);
+        }
         if op == In || matches!(lt, Type::Set(_)) {
             return self.set_binary(op, lhs, rhs);
         }
@@ -426,6 +514,10 @@ impl<'a> Codegen<'a> {
         // Comparing two pointers only looks at them, so neither side needs
         // the `.clone()` that `coerce` gives a pointer it copies.
         let compare_pointers = matches!(op, Eq | NotEq) && matches!(operand_ty, Type::Pointer(_));
+        if matches!(operand_ty, Type::PChar | Type::AnyPointer) {
+            let (l, r) = (self.pointer_operand(lhs, &operand_ty), self.pointer_operand(rhs, &operand_ty));
+            return (format!("{l} {rust_op} {r}"), p);
+        }
         let left = if compare_pointers { self.expr(lhs) } else { self.coerce(lhs, &operand_ty) };
         // The right side of `and`/`or` only runs if it has to: in
         // `(p <> nil) and (Show(p^.value) > 0)`, `p^.value` mustn't be read
@@ -805,6 +897,9 @@ impl<'a> Codegen<'a> {
                         Param::Real => self.coerce(arg, &Type::Real).0,
                         Param::Str => self.string_arg(arg),
                         Param::Bool => self.expr(arg).0,
+                        Param::Char => self.coerce(arg, &Type::Char).0,
+                        // The `Strings` functions borrow their `PChar`s.
+                        Param::PChar | Param::PCharDest => format!("&{}", self.pchar_operand(arg)),
                         Param::FillPattern => self.coerce(arg, &crate::sema::units::fill_pattern_type()).0,
                         Param::VarWord
                         | Param::VarInteger
@@ -1272,6 +1367,7 @@ fn comparison_type(l: &Type, r: &Type) -> Type {
         _ if l.is_stringish() && r.is_stringish() => Type::Str { cap: 255 },
         // A `Pointer` and a typed pointer are compared as `Pointer`s.
         (Type::AnyPointer, _) | (_, Type::AnyPointer) => Type::AnyPointer,
+        (Type::PChar, _) | (_, Type::PChar) => Type::PChar,
         _ => l.concrete(),
     }
 }

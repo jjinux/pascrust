@@ -47,6 +47,12 @@ impl<T, const LO: i64, const N: usize> PArray<T, LO, N> {
     pub fn as_slice(&self) -> &[T] {
         &self.0
     }
+
+    /// The elements as a mutable slice: where a `PChar` lent to a `Char`
+    /// array writes its characters back.
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        &mut self.0
+    }
 }
 
 impl<T: Copy, const LO: i64, const N: usize> PArray<T, LO, N> {

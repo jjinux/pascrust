@@ -133,6 +133,9 @@ pub enum Type {
     /// The untyped `Pointer`: `nil`, a block from `GetMem`, or any typed
     /// pointer with its type forgotten.
     AnyPointer,
+    /// `PChar`, TP 7's `^Char` for C-style strings ending in `#0`, with
+    /// pointer arithmetic (`P + 1`) and indexing (`P[i]`).
+    PChar,
     /// An untyped `var` parameter (`var Data`): some variable, seen as its
     /// bytes. It can only be passed on or typecast (`TBytes(Data)`).
     Untyped,
@@ -333,9 +336,21 @@ impl Type {
             Type::TypeInfo => "&'static str".to_string(),
             Type::Untyped => "&mut dyn ByteView".to_string(),
             Type::AnyPointer => "AnyPtr".to_string(),
+            Type::PChar => "PChar".to_string(),
             Type::Set(elem) => format!("PSet<{}>", elem.concrete().rust()),
             Type::Nil | Type::Void | Type::Error => "()".to_string(),
         }
+    }
+
+    /// A zero-based `array[0..N] of Char`, which TP 7 lets a program use as a
+    /// `PChar`.
+    pub fn is_char_array0(&self) -> bool {
+        matches!(self, Type::Array(a) if a.lo == 0 && a.elem == Type::Char)
+    }
+
+    /// `PChar`, or something that can be used as one in an expression.
+    pub fn is_pcharish(&self) -> bool {
+        *self == Type::PChar || self.is_char_array0()
     }
 
     /// Does the Rust type implement `Copy`? Decides whether codegen needs
@@ -346,7 +361,7 @@ impl Type {
             Type::Record(r) => r.fields.iter().all(|f| f.ty.is_copy()),
             Type::Object(o) => o.is_copy(),
             // Copying a pointer means cloning its `Rc` handle.
-            Type::Pointer(_) => false,
+            Type::Pointer(_) | Type::AnyPointer | Type::PChar => false,
             Type::Text | Type::File(_) => false,
             _ => true,
         }
@@ -364,6 +379,12 @@ impl Type {
             (Type::Pointer(_) | Type::AnyPointer, Type::Nil) => true,
             // `Pointer` and the typed pointers can be assigned to each other.
             (Type::AnyPointer, Type::Pointer(_)) | (Type::Pointer(_), Type::AnyPointer) => true,
+            // TP 7's extended syntax: a string constant or a zero-based
+            // `array[0..N] of Char` can be used as a `PChar`. And `PChar` is
+            // a pointer type, so it goes with `Pointer` and `nil`.
+            (Type::PChar, Type::Nil | Type::StrLit(_) | Type::AnyPointer) => true,
+            (Type::PChar, t) if t.is_char_array0() => true,
+            (Type::AnyPointer, Type::PChar) => true,
             (Type::Set(a), Type::Set(b)) => **b == Type::Void || same_ordinal_kind(a, b),
             // An object may be assigned to (or passed as) one of its
             // ancestors: its ancestor part is copied.
@@ -409,6 +430,7 @@ impl fmt::Display for Type {
             Type::Nil | Type::TypeInfo => write!(f, "Pointer"),
             Type::Untyped => write!(f, "untyped"),
             Type::AnyPointer => write!(f, "Pointer"),
+            Type::PChar => write!(f, "PChar"),
             Type::Set(elem) if **elem == Type::Void => write!(f, "empty set"),
             Type::Set(elem) => write!(f, "set of {elem}"),
             Type::Void => write!(f, "no value"),
@@ -442,7 +464,7 @@ pub fn tp_size(ty: &Type) -> Option<i64> {
             let own = o.fields.iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()?;
             own + o.parent.as_ref().map_or(Some(0), |p| tp_size(&Type::Object(p.clone())))?
         }
-        Type::Pointer(_) | Type::AnyPointer => 4,
+        Type::Pointer(_) | Type::AnyPointer | Type::PChar => 4,
         // A set has a bit per value, up to 256 values (32 bytes).
         Type::Set(elem) => match &**elem {
             Type::Bool => 1,

@@ -42,7 +42,7 @@ impl Generated {
 
 /// The units Turbo Pascal provides itself; everything else in a `uses`
 /// clause must be a `.pas` file next to the program.
-const STANDARD_UNITS: &[&str] = &["system", "crt", "dos", "graph", "printer", "overlay"];
+const STANDARD_UNITS: &[&str] = &["system", "crt", "dos", "graph", "printer", "overlay", "strings"];
 
 /// Transpile the Pascal program at `path`, together with every unit it uses.
 /// Errors come back already rendered for printing, with file names, line

@@ -49,6 +49,12 @@ pub enum Param {
     /// writes them (`Untyped`) or `PutImage` reads them (`UntypedIn`).
     Untyped,
     UntypedIn,
+    /// A `PChar` that's only read: a `PChar`, `nil`, a string constant, or
+    /// a zero-based `Char` array (lent a `PChar` for the statement).
+    PChar,
+    /// A `PChar` the routine writes through (`StrCopy`'s `Dest`).
+    PCharDest,
+    Char,
     /// `DrawPoly`'s points: TP's untyped `var PolyPoints`, here an array of
     /// `PointType`.
     Points,
@@ -167,6 +173,7 @@ pub enum Ret {
     Integer,
     LongInt,
     Str,
+    PChar,
 }
 
 impl Ret {
@@ -179,6 +186,7 @@ impl Ret {
             Ret::Integer => Type::Int(IntKind::Integer),
             Ret::LongInt => Type::Int(IntKind::LongInt),
             Ret::Str => Type::Str { cap: 255 },
+            Ret::PChar => Type::PChar,
         }
     }
 }
@@ -479,6 +487,33 @@ pub static GRAPH_CONSTS: &[UnitConst] = &[
     ("usercharsize", "USER_CHAR_SIZE", 0),
 ];
 
+/// The `Strings` unit (TP 7): C-style strings through `PChar`. The
+/// functions that return a `PChar` return one into their first argument,
+/// except `StrNew` (`Checker::pchar_sources` counts on that).
+pub static STRINGS: &[UnitRoutine] = &[
+    routine!("strlen" => "str_len"(PChar) -> Word),
+    routine!("strend" => "str_end"(PChar) -> PChar),
+    routine!("strmove" => "str_move"(PCharDest, PChar, Int) -> PChar),
+    routine!("strcopy" => "str_copy"(PCharDest, PChar) -> PChar),
+    routine!("strecopy" => "str_e_copy"(PCharDest, PChar) -> PChar),
+    routine!("strlcopy" => "str_l_copy"(PCharDest, PChar, Int) -> PChar),
+    routine!("strpcopy" => "str_p_copy"(PCharDest, Str) -> PChar),
+    routine!("strcat" => "str_cat"(PCharDest, PChar) -> PChar),
+    routine!("strlcat" => "str_l_cat"(PCharDest, PChar, Int) -> PChar),
+    routine!("strcomp" => "str_comp"(PChar, PChar) -> Integer),
+    routine!("stricomp" => "str_i_comp"(PChar, PChar) -> Integer),
+    routine!("strlcomp" => "str_l_comp"(PChar, PChar, Int) -> Integer),
+    routine!("strlicomp" => "str_l_i_comp"(PChar, PChar, Int) -> Integer),
+    routine!("strscan" => "str_scan"(PChar, Char) -> PChar),
+    routine!("strrscan" => "str_r_scan"(PChar, Char) -> PChar),
+    routine!("strpos" => "str_pos"(PChar, PChar) -> PChar),
+    routine!("strupper" => "str_upper"(PCharDest) -> PChar),
+    routine!("strlower" => "str_lower"(PCharDest) -> PChar),
+    routine!("strpas" => "str_pas"(PChar) -> Str),
+    routine!("strnew" => "str_new"(PChar) -> PChar),
+    routine!("strdispose" => "str_dispose"(PChar)),
+];
+
 /// The `Overlay` unit, faked (see the runtime's `overlay` module): a
 /// Rust program has all its code in memory, so there's nothing to load.
 pub static OVERLAY: &[UnitRoutine] = &[
@@ -599,6 +634,7 @@ pub fn unit(name: &str) -> Option<(&'static [UnitRoutine], &'static [&'static [U
         // `Printer` only declares the `Lst` text file; nothing to add yet.
         "printer" => Some((&[], &[])),
         "overlay" => Some((OVERLAY, &[])),
+        "strings" => Some((STRINGS, &[])),
         _ => None,
     }
 }

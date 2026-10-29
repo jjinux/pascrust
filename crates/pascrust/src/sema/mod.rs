@@ -23,6 +23,7 @@ mod check;
 pub use check::{int_common, numeric_common};
 mod lift;
 pub mod names;
+mod pchar;
 pub mod types;
 pub mod units;
 
@@ -259,6 +260,10 @@ pub struct Analysis {
     /// parameter typecast to them): codegen gives each a `file_record!`, so
     /// it has a byte view.
     pub view_types: Vec<Type>,
+    /// Zero-based `Char` arrays used as `PChar`s (by expression), and
+    /// whether the `PChar` may be written through, so the characters must
+    /// be copied back after the statement.
+    pub pchar_arrays: HashMap<NodeId, bool>,
     /// `Move` and `FillChar` calls (by callee) that work on the variables'
     /// bytes (`move_bytes`, `fill_bytes`) rather than on the values.
     pub byte_moves: HashSet<NodeId>,

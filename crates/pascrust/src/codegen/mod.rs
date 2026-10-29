@@ -49,6 +49,8 @@ pub fn generate(
         vis: "",
         mutable_place: false,
         pending: Vec::new(),
+        after: Vec::new(),
+        lent: Vec::new(),
         loops: Vec::new(),
         io_unchecked,
         self_expr: None,
@@ -98,6 +100,12 @@ struct Codegen<'a> {
     /// `let` statements to emit before the next line (see
     /// `expr::call_args`).
     pending: Vec<String>,
+    /// Statements to emit after the next line: a `Char` array lent a
+    /// `PChar` getting its characters back (see `expr::lent_pchar`).
+    after: Vec<String>,
+    /// The arrays lent a `PChar` for the next line, by their code, and the
+    /// copy's name, so each array has one copy per statement.
+    lent: Vec<(String, String)>,
     /// The loops we're inside, innermost last: the labels `Break` and
     /// `Continue` must use for a `repeat` that has a `Continue` in it (see
     /// `repeat_loop`), or `None` for a loop where plain `break` and
@@ -189,19 +197,28 @@ impl<'a> Codegen<'a> {
             self.line(comment);
             self.indent -= 1;
         }
-        // Temporaries that the code on this line needs come first.
-        for pending in std::mem::take(&mut self.pending) {
+        // Temporaries that the code on this line needs come first, and what
+        // must happen after it last.
+        self.lent.clear();
+        let after = std::mem::take(&mut self.after);
+        for line in std::mem::take(&mut self.pending).iter().chain([&text.as_ref().to_string()]).chain(&after) {
             for _ in 0..self.indent {
                 self.out.push_str("    ");
             }
-            self.out.push_str(&pending);
+            self.out.push_str(line);
             self.out.push('\n');
         }
-        for _ in 0..self.indent {
-            self.out.push_str("    ");
+    }
+
+    /// `code` for a line that opens a block (`if code {`): what must happen
+    /// after it can't go after the line, inside the block, so the value is
+    /// computed in a block expression first.
+    fn with_after(&mut self, code: String) -> String {
+        if self.after.is_empty() {
+            return code;
         }
-        self.out.push_str(text.as_ref());
-        self.out.push('\n');
+        let after = std::mem::take(&mut self.after).join(" ");
+        format!("{{ let value = {code}; {after} value }}")
     }
 
     fn blank(&mut self) {
@@ -1347,6 +1364,7 @@ impl<'a> Codegen<'a> {
     fn case(&mut self, span: Span, scrutinee: &Expr, arms: &[CaseArm], else_body: Option<&[Stmt]>) {
         let scrutinee_ty = self.a.type_of(scrutinee.id).concrete();
         let scrutinee_code = self.expr(scrutinee).0;
+        let scrutinee_code = self.with_after(scrutinee_code);
         self.line(format!("match {scrutinee_code} {{"));
         self.indent += 1;
         // Turbo Pascal doesn't object to a label appearing twice; the first
@@ -1573,10 +1591,15 @@ impl<'a> Codegen<'a> {
     fn condition(&mut self, cond: &Expr) -> String {
         let code = self.expr(cond).0;
         if self.pending.is_empty() {
-            return code;
+            return self.with_after(code);
         }
+        self.lent.clear();
         let lets = std::mem::take(&mut self.pending).join(" ");
-        format!("{{ {lets} {code} }}")
+        if self.after.is_empty() {
+            return format!("{{ {lets} {code} }}");
+        }
+        let after = std::mem::take(&mut self.after).join(" ");
+        format!("{{ {lets} let value = {code}; {after} value }}")
     }
 
     /// `if`, with `else if` chains flattened the way a person would write
@@ -1586,7 +1609,12 @@ impl<'a> Codegen<'a> {
         // Unlike a loop's condition, an `if` condition is evaluated once, so
         // `line` can put its temporaries on the lines before it. (Except in
         // an `else if`, where there's no line before it to put them on.)
-        let cond = if prefix.is_empty() { self.expr(cond).0 } else { self.condition(cond) };
+        let cond = if prefix.is_empty() {
+            let code = self.expr(cond).0;
+            self.with_after(code)
+        } else {
+            self.condition(cond)
+        };
         self.line(format!("{prefix}if {cond} {{"));
         if !prefix.is_empty() {
             // Comments before `else if`: there's no line for them between
@@ -1636,6 +1664,7 @@ impl<'a> Codegen<'a> {
             }
         };
         let range = lo_hi(self);
+        let range = self.with_after(range);
         let name = self.a.sym(sym).rust_name.clone();
         if scoped {
             // Pascal's `for i := 1 to n` evaluates both bounds once and does
@@ -1730,6 +1759,17 @@ impl<'a> Codegen<'a> {
         // `TRec(Data) := r`: an untyped parameter's bytes, set from a `TRec`.
         if let Some(bytes) = self.view_cast_guard(target) {
             return format!("{bytes}.write(&{});", self.coerce(value, &target_ty).0);
+        }
+        // `P[i] := C` and `P^ := C` set a character through a `PChar`.
+        if let ExprKind::Index(base, _) | ExprKind::Deref(base) = &target.kind
+            && *self.a.type_of(base.id) == Type::PChar
+        {
+            let receiver = self.pchar_operand(base);
+            let index = match &target.kind {
+                ExprKind::Index(_, indexes) => self.expr(&indexes[0]).0,
+                _ => "0".to_string(),
+            };
+            return format!("{receiver}.set({index}, {});", self.coerce(value, &Type::Char).0);
         }
         // `RandSeed := 42` → `set_rand_seed(42);`.
         if let Some(&sym) = self.a.refs.get(&target.id)
@@ -2056,6 +2096,7 @@ fn default_value(ty: &Type) -> String {
         Type::Array(_) | Type::Record(_) | Type::Object(_) => format!("{}::default()", ty.rust()),
         Type::Pointer(_) => "Ptr::nil()".to_string(),
         Type::AnyPointer => "AnyPtr::nil()".to_string(),
+        Type::PChar => "PChar::nil()".to_string(),
         Type::Text => "PText::default()".to_string(),
         Type::File(elem) if **elem == Type::Untyped => "PBlockFile::default()".to_string(),
         Type::File(_) => "PFile::default()".to_string(),

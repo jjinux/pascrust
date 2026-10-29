@@ -134,6 +134,24 @@ Built-ins (System unit)
   whole type, which covers the dynamic-array idiom (`GetMem(a, n *
   SizeOf(Integer))` with `a: ^array[0..999] of Integer`). `FreeMem(p,
   Size)` frees either
+- `PChar` and the `Strings` unit (TP 7's extended syntax, `{$X+}`, on as in
+  TP 7): string literals and zero-based `array[0..N] of Char` where a
+  `PChar` is wanted; `P^`, `P[i]` (read and written); `P + I`, `I + P`,
+  `P - I`, `P - Q` (a `Word`), `Inc(P)`/`Dec(P, N)`; `=`/`<>`/`<`/`>` and
+  `nil`; `Write(P)`; `GetMem`/`FreeMem`, `Assigned`, and casts to and from
+  `Pointer`. All 21 routines of `Strings`: `StrLen`, `StrEnd`, `StrMove`,
+  `StrCopy`, `StrECopy`, `StrLCopy`, `StrPCopy`, `StrCat`, `StrLCat`,
+  `StrComp`, `StrIComp`, `StrLComp`, `StrLIComp`, `StrScan`, `StrRScan`,
+  `StrPos`, `StrUpper`, `StrLower`, `StrPas`, `StrNew`, `StrDispose`.
+  Reading or writing past the end of a string's memory is runtime error
+  201 (TP did no check). A `Char` array used as a `PChar` is lent a copy
+  of its characters for the statement (see architecture.md), so a `PChar`
+  into an array can't outlive the statement: `P := A`, `P := StrScan(A,
+  '.')`, returning one, or passing the array to a routine that keeps its
+  `PChar` parameter is an error at compile time (a routine that only
+  reads or writes the characters, or keeps them in a local, is fine).
+  Not yet: `Read`, `Str`, `Val`, `Assign` and `Rename` on `Char` arrays
+  and `PChar`s, the `WinDos` unit
 - Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
   routine sees the caller's variable as TP's bytes, through a typecast
   (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a
@@ -387,8 +405,9 @@ Later (real TP features, not in the examples, worth doing in order)
    the place-descriptor representation from `architecture.md` §15)
 7. (Untyped files are done, in tier 2.) `TextRec`/`FileRec`
 8. (Done, now in tier 2: TP-exact binary layout for `file of Rec`.)
-9. `const` parameters, open array parameters, `string` as `PChar` with
-   `{$X+}`, `Assigned`, `Include`/`Exclude` (TP 7 additions)
+9. `const` parameters, open array parameters, `Include`/`Exclude` (TP 7
+   additions). (`PChar` and `Assigned` are done, in tier 2.) A `PChar` kept
+   into a `Char` array (`P := A`), and `WinDos`
 10. Vector (stroked) BGI fonts, `RegisterBGIfont`, custom drivers
 11. `Overlay` unit: parse and ignore
 12. `absolute` variables when both are scalars of the same size

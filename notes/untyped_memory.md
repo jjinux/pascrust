@@ -126,3 +126,16 @@ Build order: (0) TP-exact layout; (1) byte views, untyped `var`,
 `Move`/`FillChar` between types; (2) untyped files and `BlockRead`/
 `BlockWrite`; (3) `Pointer`, `GetMem`/`FreeMem`; (4) `GetImage`/
 `PutImage`; (5) `PChar` and `Strings`.
+
+## Step 5 as built (2026-10-29)
+
+`PChar` is a byte buffer plus an offset, as planned. The open question was
+TP 7's `P := A`, a `PChar` kept into a zero-based `Char` array, which
+needs a pointer into an ordinary variable. The user chose "copy at the
+call" first: the statement that uses an array as a `PChar` gets a copy of
+its characters, written back after it, and `sema/pchar.rs` refuses any
+`PChar` into an array that would outlive the statement (`P := A`,
+returning it, a routine that keeps its parameter). Making the arrays
+shared buffers (so `P := A` aliases) is in TODO.md for when a real
+program needs it. The rules come from the TP 7 Language Guide, chapter 16
+and table 6.7.

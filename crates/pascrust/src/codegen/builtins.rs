@@ -188,6 +188,13 @@ impl<'a> Codegen<'a> {
                 let op = if b == Succ { "+" } else { "-" };
                 format!("{} {op} 1", paren(self.coerce(&args[0], &t), prec::ADD))
             }
+            // `Inc(P, 2)` moves a `PChar` on: `p += 2;`.
+            Inc | Dec if ty(self, &args[0]) == Type::PChar => {
+                let place = self.place(&args[0]);
+                let amount = args.get(1).map_or("1".to_string(), |n| self.expr(n).0);
+                let op = if b == Inc { "+=" } else { "-=" };
+                format!("{place} {op} {amount};")
+            }
             Inc | Dec => {
                 let target_ty = ty(self, &args[0]);
                 let place = self.place(&args[0]);
@@ -297,10 +304,11 @@ impl<'a> Codegen<'a> {
             // as needed; past `n` is then a range error, not corruption.
             GetMem => match self.a.type_of(args[0].id).clone() {
                 Type::AnyPointer => format!("{} = AnyPtr::alloc({});", self.place(&args[0]), self.expr(&args[1]).0),
+                Type::PChar => format!("{} = PChar::alloc({});", self.place(&args[0]), self.expr(&args[1]).0),
                 ty => format!("{} = {};", self.place(&args[0]), self.alloc(&ty)),
             },
             FreeMem => match self.a.type_of(args[0].id) {
-                Type::AnyPointer => format!("{}.free();", self.place_receiver(&args[0])),
+                Type::AnyPointer | Type::PChar => format!("{}.free();", self.place_receiver(&args[0])),
                 _ => format!("{}.dispose();", self.place_receiver(&args[0])),
             },
             Dispose => {
