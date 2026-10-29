@@ -566,7 +566,7 @@ impl<'a> Codegen<'a> {
                         Param::VarWord
                         | Param::VarInteger
                         | Param::VarText
-                        | Param::VarStr
+                        | Param::VarStr(_)
                         | Param::VarBool
                         | Param::VarSearchRec
                         | Param::VarFillPattern => self.place_mut(arg),

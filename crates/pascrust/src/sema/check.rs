@@ -2029,7 +2029,7 @@ impl Checker {
         match self.a.symbols[sym].kind.clone() {
             SymKind::Proc(p) => self.user_call(e, p, args),
             SymKind::Builtin(b) => self.builtin_call(e, b, args),
-            SymKind::UnitRoutine(r) => self.unit_call(e, r, args),
+            SymKind::UnitRoutine(r) => self.unit_call(e, r, &ident.name, args),
             SymKind::TypeName(target) => {
                 // `Integer(c)` and friends: a Turbo Pascal value typecast.
                 if args.len() != 1 {
@@ -2052,17 +2052,15 @@ impl Checker {
         }
     }
 
-    fn unit_call(&mut self, e: &Expr, r: &'static super::units::UnitRoutine, args: &[Expr]) -> Type {
+    /// `name` is the routine's name as the program spells it, for messages.
+    fn unit_call(&mut self, e: &Expr, r: &'static super::units::UnitRoutine, name: &str, args: &[Expr]) -> Type {
         use super::units::Param;
         if let Some(why) = r.refused {
-            self.error(e.span, format!("pascrust can't run `{}`: {why}", r.name));
+            self.error(e.span, format!("pascrust can't run `{name}`: {why}"));
             return Type::Error;
         }
         if r.params.len() != args.len() {
-            self.error(
-                e.span,
-                format!("`{}` takes {} argument(s) but {} were given", r.name, r.params.len(), args.len()),
-            );
+            self.error(e.span, format!("`{name}` takes {} argument(s) but {} were given", r.params.len(), args.len()));
         }
         for (param, arg) in r.params.iter().zip(args) {
             match param {
@@ -2092,10 +2090,15 @@ impl Checker {
                         self.error(arg.span, format!("expected a FillPatternType, found {ty}"));
                     }
                 }
-                Param::VarStr => {
+                Param::VarStr(min) => {
                     let ty = self.place(arg, true);
-                    if !matches!(ty, Type::Str { .. } | Type::Error) {
-                        self.error(arg.span, format!("expected a string variable, found {ty}"));
+                    match ty {
+                        Type::Str { cap } if cap < *min => self.error(
+                            arg.span,
+                            format!("`{name}` needs a string variable that holds {min} characters here; this one holds {cap}"),
+                        ),
+                        Type::Str { .. } | Type::Error => {}
+                        _ => self.error(arg.span, format!("expected a string variable, found {ty}")),
                     }
                 }
                 Param::VarSearchRec => {

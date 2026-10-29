@@ -10,5 +10,6 @@ ok: DiskFree is half of DiskSize
 ok: DiskSize of an invalid drive
 ok: SetCBreak and GetCBreak
 ok: SetVerify and GetVerify
+ok: a Registers record can be declared and used
 ok: DosError is a variable
-13 of 13 checks passed
+14 of 14 checks passed

@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/fsplit_short.pas
+---
+fsplit_short.pas:9:34: error: `FSplit` needs a string variable that holds 8 characters here; this one holds 3
+  FSplit('C:\X\ABCDEFGH.TXT', d, n, e);
+                                 ^

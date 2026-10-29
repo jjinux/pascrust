@@ -41,6 +41,7 @@ fn pascal_main() {
     let mut e: PString = PString::new();
     let mut b: bool = false;
     let mut v: u16 = 0;
+    let mut r: Registers = Registers::default();
     checks = 0;
     failures = 0;
     f_split("C:\\GAMES\\SCORES.DAT", &mut d, &mut n, &mut e);
@@ -86,6 +87,8 @@ fn pascal_main() {
     set_date(1997, 3, 11);
     set_time(7, 0, 0, 0);
     swap_vectors();
+    r.ax = 4660;
+    check(&mut checks, &mut failures, r.ax == 4660, pstr("a Registers record can be declared and used"));
     set_dos_error(5);
     check(&mut checks, &mut failures, dos_error() == 5, pstr("DosError is a variable"));
     pwriteln!(checks - failures, " of ", checks, " checks passed");

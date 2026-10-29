@@ -12,6 +12,7 @@ var
   e: ExtStr;
   b: Boolean;
   v: Word;
+  r: Registers;
 
 procedure Check(ok: Boolean; what: string);
 begin
@@ -51,6 +52,8 @@ begin
   SetDate(1997, 3, 11);
   SetTime(7, 0, 0, 0);
   SwapVectors;
+  r.AX := $1234;
+  Check(r.AX = $1234, 'a Registers record can be declared and used');
   DosError := 5;
   Check(DosError = 5, 'DosError is a variable');
   WriteLn(checks - failures, ' of ', checks, ' checks passed');

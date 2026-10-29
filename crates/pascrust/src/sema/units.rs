@@ -24,8 +24,10 @@ pub enum Param {
     VarInteger,
     /// A `var` parameter of type `Text`.
     VarText,
-    /// A `var` parameter of any string type.
-    VarStr,
+    /// A `var` parameter of a string type at least this long (`FSplit`'s
+    /// `var Name: NameStr` is `VarStr(8)`): TP wants the exact type, and a
+    /// shorter string couldn't hold the result.
+    VarStr(u8),
     /// A `var` parameter of type `Boolean`.
     VarBool,
     /// A `var` parameter of the `Dos` unit's `SearchRec`.
@@ -58,6 +60,20 @@ pub fn search_rec_type() -> Type {
             field("Name", Type::Str { cap: 255 }),
         ],
     }))
+}
+
+/// The `Dos` unit's `Registers`, for `Intr` and `MsDos`, which pascrust
+/// refuses: declared so a program that uses them gets that error and not
+/// "unknown type". Only the `Word` registers (TP's is a variant record that
+/// also has the `Byte` halves, `AL`, `AH`, ...).
+pub fn registers_type() -> Type {
+    use super::types::{Field, RecordType};
+    let names = ["AX", "BX", "CX", "DX", "BP", "SI", "DI", "DS", "ES", "Flags"];
+    let fields = names
+        .iter()
+        .map(|n| Field { name: n.to_string(), rust_name: n.to_ascii_lowercase(), ty: Type::Int(IntKind::Word) })
+        .collect();
+    Type::Record(std::rc::Rc::new(RecordType { rust_name: "Registers".to_string(), fields }))
 }
 
 /// `Graph`'s `FillPatternType = array[1..8] of Byte`: an 8x8 bit pattern.
@@ -111,8 +127,16 @@ pub struct UnitRoutine {
 /// A shorthand for building the tables below. `$($p),*` repeats for each
 /// parameter kind listed in the brackets.
 macro_rules! routine {
-    ($name:literal => $rust:literal ($($p:ident),*) $(-> $ret:ident)?) => {
-        UnitRoutine { name: $name, refused: None, rust: $rust, params: &[$(Param::$p),*], ret: routine!(@ret $($ret)?) }
+    // `$p:ident $(($arg:expr))?` takes a parameter kind with an optional
+    // argument, like `VarStr(8)`.
+    ($name:literal => $rust:literal ($($p:ident $(($arg:expr))?),*) $(-> $ret:ident)?) => {
+        UnitRoutine {
+            name: $name,
+            refused: None,
+            rust: $rust,
+            params: &[$(Param::$p $(($arg))?),*],
+            ret: routine!(@ret $($ret)?),
+        }
     };
     // A routine that needs real DOS: declared, so calling it gives a clear
     // error rather than "unknown identifier".
@@ -170,7 +194,7 @@ pub static DOS: &[UnitRoutine] = &[
     routine!("fsearch" => "f_search"(Str, Str) -> Str),
     routine!("fexpand" => "f_expand"(Str) -> Str),
     routine!("getenv" => "get_env"(Str) -> Str),
-    routine!("fsplit" => "f_split"(Str, VarStr, VarStr, VarStr)),
+    routine!("fsplit" => "f_split"(Str, VarStr(67), VarStr(8), VarStr(4))),
     routine!("findfirst" => "find_first"(Str, Int, VarSearchRec)),
     routine!("findnext" => "find_next"(VarSearchRec)),
     routine!("envcount" => "env_count"() -> Integer),
@@ -427,6 +451,7 @@ pub fn unit_types(name: &str) -> Vec<(&'static str, Type)> {
             ("namestr", Type::Str { cap: 8 }),
             ("extstr", Type::Str { cap: 4 }),
             ("searchrec", search_rec_type()),
+            ("registers", registers_type()),
         ],
         "graph" => vec![("fillpatterntype", fill_pattern_type())],
         _ => Vec::new(),

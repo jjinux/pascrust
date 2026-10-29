@@ -210,6 +210,22 @@ mod tests {
     }
 }
 
+/// The `Registers` record of `Intr` and `MsDos`, which pascrust can't run.
+/// It exists so programs that declare one still compile up to those calls.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Registers {
+    pub ax: u16,
+    pub bx: u16,
+    pub cx: u16,
+    pub dx: u16,
+    pub bp: u16,
+    pub si: u16,
+    pub di: u16,
+    pub ds: u16,
+    pub es: u16,
+    pub flags: u16,
+}
+
 // ----- FindFirst / FindNext ---------------------------------------------------
 
 /// File attributes, for `FindFirst` and `SearchRec.Attr`.

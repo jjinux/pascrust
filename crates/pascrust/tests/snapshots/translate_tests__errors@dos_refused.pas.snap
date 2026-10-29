@@ -3,14 +3,10 @@ source: crates/pascrust/tests/translate_tests.rs
 expression: error
 input_file: tests/errors/dos_refused.pas
 ---
-dos_refused.pas:4:8: error: unknown type `Registers`
-var r: Registers;
-       ^^^^^^^^^
-
-dos_refused.pas:6:3: error: pascrust can't run `intr`: it calls a DOS or BIOS interrupt, which needs real DOS
+dos_refused.pas:6:3: error: pascrust can't run `Intr`: it calls a DOS or BIOS interrupt, which needs real DOS
   Intr($10, r);
   ^^^^^^^^^^^^
 
-dos_refused.pas:7:3: error: pascrust can't run `keep`: it leaves the program resident in DOS memory, which needs real DOS
+dos_refused.pas:7:3: error: pascrust can't run `Keep`: it leaves the program resident in DOS memory, which needs real DOS
   Keep(0);
   ^^^^^^^

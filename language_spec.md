@@ -108,7 +108,9 @@ Built-ins (System unit)
   part of a string or byte array (`FillChar(s[1], n, ' ')`); `Move` between
   two whole variables of the same type. Other uses are an error, since
   pascrust can't copy raw bytes between unrelated types
-- System variables `ExitCode` (the exit code when the program ends),
+- System variables (and the units' `TextAttr`, `DosError`, ...; these can be
+  read and set with `:=`, but not passed as `var` arguments or to `Inc`):
+  `ExitCode` (the exit code when the program ends),
   `RandSeed`, `FileMode` (how `Reset` opens typed files), and `Input` and
   `Output` as file arguments (`Writeln(Output, x)`), also passed to a
   `var f: Text` parameter (`Report(Output)`); they're always the console,
@@ -229,7 +231,8 @@ Overlay unit (faked: a Rust program has all its code in memory)
 Dos unit
 
 - `GetDate`, `GetTime`, `FExpand`, `FSearch`, `FSplit` (parts cut to
-  `DirStr`/`NameStr`/`ExtStr`), `PathStr`/`DirStr`/`NameStr`/`ExtStr`,
+  `DirStr`/`NameStr`/`ExtStr`; a shorter string variable is an error, as
+  TP wants those types), `PathStr`/`DirStr`/`NameStr`/`ExtStr`,
   `Exec`, `DosExitCode`, `DosError` (a variable), `GetEnv`, `EnvCount`,
   `EnvStr`; `ChDir`/`MkDir`/`RmDir`/`GetDir` are in System
 - `FindFirst`/`FindNext` with `SearchRec` and the attribute constants
@@ -244,7 +247,8 @@ Dos unit
   `GetCBreak`/`SetCBreak` and `GetVerify`/`SetVerify` (remembered),
   `SwapVectors` (does nothing)
 - Refused with a clear error, since they need real DOS: `Intr`, `MsDos`,
-  `Keep`, `GetIntVec`, `SetIntVec`
+  `Keep`, `GetIntVec`, `SetIntVec` (`Registers` is declared, with its
+  `Word` registers, so a program using it gets that error)
 - Not yet: `GetFTime`/`SetFTime`,
   `PackTime`/`UnpackTime`, `GetFAttr`/`SetFAttr`
 - DOS path translation (`a:\tictac` → a configured directory)
