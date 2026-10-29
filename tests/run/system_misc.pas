@@ -42,6 +42,10 @@ begin
   Check(short = 'C:\G', 'GetDir into a string[4]');
   ChDir('..');
   RmDir('gd_tmp');
+  ChDir('..');
+  GetDir(0, dir);
+  Check(dir = 'C:\', 'GetDir above drive C: is C:\');
+  ChDir('C:\');
   GetDir(1, dir);
   Check(dir = 'A:\', 'GetDir of drive A:');
   Check(MemAvail > 100000, 'MemAvail');

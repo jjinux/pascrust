@@ -224,8 +224,16 @@ pub fn get_dir(drive: impl Into<i32>) -> PString {
     }
     let base = dos_path("C:\\");
     let cwd = std::env::current_dir().unwrap_or_default();
-    let rest = cwd.strip_prefix(&base).map(|p| p.to_path_buf()).unwrap_or(cwd);
-    let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_uppercase()).collect();
+    // Above drive C:'s directory (after `ChDir('..')` from its root), DOS
+    // would still be at `C:\`: it can't go higher.
+    let Ok(rest) = cwd.strip_prefix(&base) else { return PString::from("C:\\") };
+    let parts: Vec<String> = rest
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(part) => Some(part.to_string_lossy().to_uppercase()),
+            _ => None,
+        })
+        .collect();
     PString::from(format!("C:\\{}", parts.join("\\")).as_str())
 }
 

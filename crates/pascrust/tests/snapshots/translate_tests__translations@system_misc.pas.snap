@@ -62,6 +62,10 @@ fn pascal_main() {
     check(&mut checks, &mut failures, short == "C:\\G", pstr("GetDir into a string[4]"));
     ch_dir("..");
     rm_dir("gd_tmp");
+    ch_dir("..");
+    dir = get_dir(0);
+    check(&mut checks, &mut failures, dir == "C:\\", pstr("GetDir above drive C: is C:\\"));
+    ch_dir("C:\\");
     dir = get_dir(1);
     check(&mut checks, &mut failures, dir == "A:\\", pstr("GetDir of drive A:"));
     check(&mut checks, &mut failures, mem_avail() > 100000, pstr("MemAvail"));
