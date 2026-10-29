@@ -22,10 +22,12 @@ mod screen;
 pub(crate) mod window;
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicI16, Ordering};
 
-use screen::{HEIGHT, Screen, WIDTH, WriteMode};
+use screen::{HEIGHT, Screen, WIDTH, WriteMode, image_bytes};
 
 use crate::array::PArray;
+use crate::bytes::ByteView;
 use crate::string::PString;
 
 /// `FillPatternType = array[1..8] of Byte`: eight rows of eight pixels, bit 7
@@ -122,6 +124,7 @@ pub const VGA_LO: u8 = 0;
 pub const VGA_MED: u8 = 1;
 pub const VGA_HI: u8 = 2;
 pub const GR_OK: u8 = 0;
+pub const GR_ERROR: i8 = -11;
 // Line styles and widths.
 pub const SOLID_LN: u8 = 0;
 pub const DOTTED_LN: u8 = 1;
@@ -160,6 +163,12 @@ pub const VERT_DIR: u8 = 1;
 // Write modes.
 pub const COPY_PUT: u8 = 0;
 pub const XOR_PUT: u8 = 1;
+// `PutImage`'s ways to combine an image with the screen (`CopyPut` and
+// `XORPut` too).
+pub const NORMAL_PUT: u8 = 0;
+pub const OR_PUT: u8 = 2;
+pub const AND_PUT: u8 = 3;
+pub const NOT_PUT: u8 = 4;
 pub const MAX_COLORS: u8 = 15;
 pub const USER_CHAR_SIZE: u8 = 0;
 pub const CLIP_ON: bool = true;
@@ -209,8 +218,14 @@ pub fn get_graph_mode() -> i16 {
     VGA_HI.into()
 }
 
+/// The error the last failing Graph routine set, for `GraphResult`: only
+/// `ImageSize` fails (`grError`, -11, for 64K or more). An atomic is a
+/// number that can be shared between threads without a `Mutex`.
+static RESULT: AtomicI16 = AtomicI16::new(0);
+
+/// `GraphResult`: the last error, which reading resets to `grOk`.
 pub fn graph_result() -> i16 {
-    0
+    RESULT.swap(0, Ordering::Relaxed)
 }
 
 pub fn graph_error_msg(code: impl Into<i32>) -> PString {
@@ -702,6 +717,62 @@ pub fn set_visual_page(page: impl Into<i32>) {
 }
 
 // The screen and viewports.
+
+// Images.
+
+/// `ImageSize(X1, Y1, X2, Y2)`: the bytes `GetImage` needs. TP's buffers
+/// were at most 64K: anything bigger gives 0 and `GraphResult` `grError`.
+pub fn image_size(x1: impl Into<i32>, y1: impl Into<i32>, x2: impl Into<i32>, y2: impl Into<i32>) -> u16 {
+    let size = image_bytes((i(x2) - i(x1)).abs() + 1, (i(y2) - i(y1)).abs() + 1);
+    u16::try_from(size).unwrap_or_else(|_| {
+        RESULT.store(-11, Ordering::Relaxed);
+        0
+    })
+}
+
+/// `GetImage(X1, Y1, X2, Y2, BitMap)`: copy the rectangle into `BitMap`
+/// (any variable, usually `p^` after `GetMem(p, ImageSize(...))`). A
+/// buffer too small for it is runtime error 201, where TP overwrote
+/// whatever came next.
+pub fn get_image(
+    x1: impl Into<i32>,
+    y1: impl Into<i32>,
+    x2: impl Into<i32>,
+    y2: impl Into<i32>,
+    bitmap: &mut dyn ByteView,
+) {
+    // The corners in either order.
+    let (x1, y1, x2, y2) = (i(x1), i(y1), i(x2), i(y2));
+    let (x1, x2) = (x1.min(x2), x1.max(x2));
+    let (y1, y2) = (y1.min(y2), y1.max(y2));
+    let image = with(|s| s.get_image(x1, y1, x2, y2));
+    if image.is_empty() {
+        return; // not in graphics mode
+    }
+    let mut bytes = bitmap.to_bytes();
+    if image.len() > bytes.len() {
+        crate::rte(201, format!("Range check error: GetImage of {} bytes into {}", image.len(), bytes.len()));
+    }
+    bytes[..image.len()].copy_from_slice(&image);
+    bitmap.set_bytes(&bytes);
+}
+
+/// `PutImage(X, Y, BitMap, BitBlt)`: draw an image `GetImage` saved, with
+/// `NormalPut`, `XORPut`, `OrPut`, `AndPut` or `NotPut`.
+pub fn put_image(x: impl Into<i32>, y: impl Into<i32>, bitmap: &[u8], bit_blt: impl Into<i32>) {
+    let (x, y, bit_blt) = (i(x), i(y), i(bit_blt));
+    let header_ok = bitmap.len() >= 6;
+    let needed = if header_ok {
+        let word = |i: usize| i32::from(u16::from_le_bytes([bitmap[i], bitmap[i + 1]]));
+        image_bytes(word(0) + 1, word(2) + 1)
+    } else {
+        6
+    };
+    if needed > bitmap.len() {
+        crate::rte(201, format!("Range check error: PutImage of {needed} bytes from {}", bitmap.len()));
+    }
+    with(|s| s.put_image(x, y, bitmap, bit_blt));
+}
 
 pub fn clear_device() {
     with(|s| {

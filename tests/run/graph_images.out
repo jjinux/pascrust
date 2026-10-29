@@ -1,0 +1,16 @@
+ok: ImageSize: 6 + 16 rows of 4 planes of 2 bytes
+ok: ImageSize rounds a row up to 8 pixels
+ok: ImageSize of 64K or more is 0
+ok: with GraphResult grError
+ok: reading GraphResult resets it
+ok: the header: width - 1, height - 1
+ok: PutImage NormalPut
+ok: XORPut twice erases
+ok: OrPut
+ok: AndPut
+ok: NotPut
+ok: row 0: planes 3 down to 0
+ok: the last row
+ok: an image from a file
+ok: PutImage ignores the viewport's clipping
+15 of 15 checks passed

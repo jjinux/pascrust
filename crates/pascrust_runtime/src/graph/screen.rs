@@ -110,6 +110,13 @@ pub struct Screen {
     pub write_mode: WriteMode,
 }
 
+/// The bytes `GetImage` needs for a `width` by `height` rectangle: the
+/// 6-byte header, then four planes of `width / 8` bytes (rounded up) for
+/// each row.
+pub fn image_bytes(width: i32, height: i32) -> usize {
+    6 + (width.max(0) as usize).div_ceil(8) * 4 * height.max(0) as usize
+}
+
 impl Screen {
     pub fn new() -> Screen {
         Screen {
@@ -199,6 +206,69 @@ impl Screen {
             0
         } else {
             self.pixels[ay as usize * WIDTH + ax as usize]
+        }
+    }
+
+    /// `GetImage`: the rectangle's pixels in the layout TP's EGA/VGA driver
+    /// used, so a buffer sized by hand, a program that reads the header and
+    /// an image saved to a file by the original program all still work.
+    /// Three `Word`s (the width and height, each minus one, and one TP
+    /// left reserved), then each row as the four bit planes from plane 3
+    /// (intensity) down to plane 0 (blue), each one bit per pixel, eight
+    /// pixels to a byte with the leftmost in bit 7.
+    pub fn get_image(&self, x1: i32, y1: i32, x2: i32, y2: i32) -> Vec<u8> {
+        let (width, height) = (x2 - x1 + 1, y2 - y1 + 1);
+        let row_bytes = (width as usize).div_ceil(8);
+        let mut image = Vec::with_capacity(image_bytes(width, height));
+        for word in [width - 1, height - 1, 0] {
+            image.extend_from_slice(&(word as u16).to_le_bytes());
+        }
+        for y in y1..=y2 {
+            for plane in (0..4).rev() {
+                let mut bits = vec![0u8; row_bytes];
+                for x in 0..width {
+                    if self.get_pixel(x1 + x, y) & (1 << plane) != 0 {
+                        bits[x as usize / 8] |= 0x80 >> (x % 8);
+                    }
+                }
+                image.extend(bits);
+            }
+        }
+        image
+    }
+
+    /// `PutImage(X, Y, BitMap, BitBlt)`: draw an image from `GetImage` with
+    /// its top left corner at `(x, y)`, combining each pixel with the
+    /// screen's as `BitBlt` says. Pixels off the screen are dropped; the
+    /// viewport doesn't clip (TP's didn't either).
+    pub fn put_image(&mut self, x: i32, y: i32, image: &[u8], bit_blt: i32) {
+        let word = |i: usize| i32::from(u16::from_le_bytes([image[i], image[i + 1]]));
+        let (width, height) = (word(0) + 1, word(2) + 1);
+        let row_bytes = (width as usize).div_ceil(8);
+        for row in 0..height {
+            let start = 6 + row as usize * 4 * row_bytes;
+            for col in 0..width {
+                let (byte, bit) = (col as usize / 8, 0x80 >> (col % 8));
+                let mut color = 0;
+                for plane in 0..4 {
+                    // Plane 3 comes first in the row.
+                    if image[start + (3 - plane) * row_bytes + byte] & bit != 0 {
+                        color |= 1 << plane;
+                    }
+                }
+                let (ax, ay) = (x + col + self.view.0, y + row + self.view.1);
+                if ax < 0 || ay < 0 || ax >= WIDTH as i32 || ay >= HEIGHT as i32 {
+                    continue;
+                }
+                let pixel = &mut self.pixels[ay as usize * WIDTH + ax as usize];
+                *pixel = match bit_blt {
+                    1 => *pixel ^ color, // XORPut
+                    2 => *pixel | color, // OrPut
+                    3 => *pixel & color, // AndPut
+                    4 => !color & 15,    // NotPut
+                    _ => color,          // NormalPut
+                };
+            }
         }
     }
 
@@ -524,6 +594,26 @@ mod tests {
         assert_eq!(ega_rgb(DEFAULT_PALETTE[6]), 0xAA5500); // brown
         assert_eq!(ega_rgb(DEFAULT_PALETTE[14]), 0xFFFF55);
         assert_eq!(ega_rgb(DEFAULT_PALETTE[15]), 0xFFFFFF);
+    }
+
+    #[test]
+    fn images_in_tp_layout() {
+        let mut s = Screen::new();
+        s.put_pixel(0, 0, 9); // 1001: planes 3 and 0
+        s.put_pixel(9, 1, 6); // 0110: planes 2 and 1
+        let image = s.get_image(0, 0, 9, 1);
+        assert_eq!(image.len(), image_bytes(10, 2));
+        assert_eq!(image[..6], [9, 0, 1, 0, 0, 0]);
+        // Row 0: planes 3, 2, 1, 0, two bytes each; pixel 0 is bit 7.
+        assert_eq!(image[6..14], [0x80, 0, 0, 0, 0, 0, 0x80, 0]);
+        // Row 1: pixel 9 is bit 6 of the second byte.
+        assert_eq!(image[14..22], [0, 0, 0, 0x40, 0, 0x40, 0, 0]);
+        s.put_image(20, 20, &image, 0);
+        assert_eq!((s.get_pixel(20, 20), s.get_pixel(29, 21)), (9, 6));
+        s.put_image(20, 20, &image, 1); // XORPut twice clears it
+        assert_eq!((s.get_pixel(20, 20), s.get_pixel(29, 21)), (0, 0));
+        s.put_image(20, 20, &image, 4); // NotPut
+        assert_eq!((s.get_pixel(20, 20), s.get_pixel(21, 20)), (6, 15));
     }
 
     #[test]

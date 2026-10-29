@@ -360,8 +360,14 @@ Graph unit (BGI, as used in the examples)
   code; PascRust's one driver is built in, so the calls can go
 - `SetActivePage`/`SetVisualPage`: two pages in every mode (VGA had two
   only at 640x350), for flicker-free animation
-- Not yet: `GetImage`/`PutImage`/`ImageSize` (they need `GetMem` and
-  untyped pointers; see TODO.md, Phase 7)
+- `GetImage`/`PutImage`/`ImageSize`, with `NormalPut`/`CopyPut`,
+  `XORPut`, `OrPut`, `AndPut` and `NotPut`. The buffer (`p^` after
+  `GetMem(p, ImageSize(...))`, or any variable) holds the image in TP's
+  EGA/VGA layout: three `Word`s (width - 1, height - 1, reserved), then
+  each row as bit planes 3 down to 0, 8 pixels a byte. So sprites saved by
+  the original programs still draw. `ImageSize` of 64K or more is 0 with
+  `GraphResult` `grError`. A buffer too small is runtime error 201.
+  `PutImage` isn't clipped to the viewport
 
 ## Tier 3: later, or never
 

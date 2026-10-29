@@ -45,6 +45,10 @@ pub enum Param {
     /// A `var` parameter of one of the unit's record types, by its
     /// (lowercase) name: `VarRecord("linesettingstype")`.
     VarRecord(&'static str),
+    /// TP's untyped `var` parameter: any variable's bytes, as `GetImage`
+    /// writes them (`Untyped`) or `PutImage` reads them (`UntypedIn`).
+    Untyped,
+    UntypedIn,
     /// `DrawPoly`'s points: TP's untyped `var PolyPoints`, here an array of
     /// `PointType`.
     Points,
@@ -398,6 +402,9 @@ pub static GRAPH: &[UnitRoutine] = &[
     routine!("getpalettesize" => "get_palette_size"() -> Integer),
     routine!("setrgbpalette" => "set_rgb_palette"(Int, Int, Int, Int)),
     routine!("graphdefaults" => "graph_defaults"()),
+    routine!("imagesize" => "image_size"(Int, Int, Int, Int) -> Word),
+    routine!("getimage" => "get_image"(Int, Int, Int, Int, Untyped)),
+    routine!("putimage" => "put_image"(Int, Int, UntypedIn, Int)),
     routine!("setaspectratio" => "set_aspect_ratio"(Int, Int)),
     routine!("setusercharsize" => "set_user_char_size"(Int, Int, Int, Int)),
     routine!("getdrivername" => "get_driver_name"() -> Str),
@@ -429,6 +436,7 @@ pub static GRAPH_CONSTS: &[UnitConst] = &[
     ("vgamed", "VGA_MED", 1),
     ("vgahi", "VGA_HI", 2),
     ("grok", "GR_OK", 0),
+    ("grerror", "GR_ERROR", -11),
     ("solidln", "SOLID_LN", 0),
     ("dottedln", "DOTTED_LN", 1),
     ("centerln", "CENTER_LN", 2),
@@ -463,6 +471,10 @@ pub static GRAPH_CONSTS: &[UnitConst] = &[
     ("vertdir", "VERT_DIR", 1),
     ("copyput", "COPY_PUT", 0),
     ("xorput", "XOR_PUT", 1),
+    ("normalput", "NORMAL_PUT", 0),
+    ("orput", "OR_PUT", 2),
+    ("andput", "AND_PUT", 3),
+    ("notput", "NOT_PUT", 4),
     ("maxcolors", "MAX_COLORS", 15),
     ("usercharsize", "USER_CHAR_SIZE", 0),
 ];

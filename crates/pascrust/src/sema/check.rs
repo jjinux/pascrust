@@ -311,7 +311,8 @@ impl Checker {
             self.scopes[0].insert(routine.name.to_string(), sym);
         }
         for &(name, rust, value) in consts {
-            let ty = Type::Int(IntKind::Byte);
+            // The error codes (`grError`) are the only negative ones.
+            let ty = Type::Int(if value < 0 { IntKind::ShortInt } else { IntKind::Byte });
             let sym = self.add_symbol(name, rust.to_string(), SymKind::Const { value: ConstVal::Int(value), ty });
             self.scopes[0].insert(name.to_string(), sym);
         }
@@ -2314,6 +2315,11 @@ impl Checker {
                     if ty != wanted && ty != Type::Error {
                         self.error(arg.span, format!("expected a {wanted} variable, found {ty}"));
                     }
+                }
+                Param::Untyped => self.untyped_arg(arg),
+                Param::UntypedIn => {
+                    let ty = self.place(arg, false);
+                    self.view_arg(arg, &ty);
                 }
                 Param::Points => {
                     // A variable (TP's untyped `var`), but only read.

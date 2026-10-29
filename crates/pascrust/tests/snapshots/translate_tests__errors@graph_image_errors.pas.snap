@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/graph_image_errors.pas
+---
+graph_image_errors.pas:7:24: error: this can't be assigned to or passed by `var`
+  GetImage(0, 0, 9, 9, 42);
+                       ^^
+
+graph_image_errors.pas:8:18: error: a Text can't be passed as untyped bytes
+  PutImage(0, 0, t, NormalPut);
+                 ^
+
+graph_image_errors.pas:9:18: error: this can't be assigned to or passed by `var`
+  PutImage(0, 0, ImageSize(0, 0, 1, 1), NormalPut);
+                 ^^^^^^^^^^^^^^^^^^^^^

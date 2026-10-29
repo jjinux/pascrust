@@ -818,6 +818,16 @@ window meanwhile (§19).
   repository, no image dependency). `PASCRUST_GRAPH_SAVE=file.bmp` saves the
   screen (BMP needs no compression code) for looking at by eye.
 
+  `GetImage`/`PutImage` (step 4 of `notes/untyped_memory.md`) keep the image
+  in TP's EGA/VGA layout, not one of PascRust's own (Fable's review): a
+  6-byte header, then each row as bit planes 3 down to 0. The header is from
+  TP's Programmer's Reference ("the first two words store the width and
+  height; the third is reserved") and the row size from the BGI's
+  `ImageSize`. The plane order isn't documented anywhere we found; 3 first
+  is what the BGI's 16-colour drivers are reported to do. The buffer is an
+  untyped `var` (`Param::Untyped` for `GetImage`, `Param::UntypedIn` for
+  `PutImage`), so it goes through the byte views.
+
 Rejected for Graph: `pixels` + `winit` (more code and an event-loop
 inversion that fights Pascal's synchronous style), terminal-based pseudo
 graphics (loses the point), and stubs (the clock and tic-tac-toe examples are

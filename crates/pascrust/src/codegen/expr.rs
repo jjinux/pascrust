@@ -817,6 +817,8 @@ impl<'a> Codegen<'a> {
                         | Param::VarFile
                         | Param::VarFillPattern
                         | Param::VarRecord(_) => self.place_mut(arg),
+                        Param::Untyped => self.view_arg(arg),
+                        Param::UntypedIn => self.view_bytes(arg),
                         // The points as a `&[PointType]` slice. A method
                         // call dereferences by itself, so a `var` parameter
                         // `*points` is just `points.as_slice()`.
