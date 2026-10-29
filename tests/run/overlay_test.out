@@ -1,0 +1,9 @@
+ok: OvrInit succeeds without a .OVR file
+ok: OvrInitEMS succeeds
+ok: OvrSetBuf and OvrGetBuf
+ok: OvrSetRetry and OvrGetRetry
+ok: calling into an overlaid unit
+ok: nothing is ever loaded
+ok: OvrResult can be set
+ok: OvrFileMode can be set
+8 of 8 checks passed

@@ -19,6 +19,7 @@ pub mod dos;
 pub mod graph;
 pub mod io;
 pub mod ordinal;
+pub mod overlay;
 pub mod prelude;
 pub mod printer;
 pub mod ptr;

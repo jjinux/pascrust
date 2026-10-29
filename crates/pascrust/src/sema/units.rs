@@ -273,6 +273,35 @@ pub static GRAPH_CONSTS: &[UnitConst] = &[
     ("maxcolors", "MAX_COLORS", 15),
 ];
 
+/// The `Overlay` unit, faked (see the runtime's `overlay` module): a
+/// Rust program has all its code in memory, so there's nothing to load.
+pub static OVERLAY: &[UnitRoutine] = &[
+    routine!("ovrinit" => "ovr_init"(Str)),
+    routine!("ovrinitems" => "ovr_init_ems"()),
+    routine!("ovrsetbuf" => "ovr_set_buf"(Int)),
+    routine!("ovrgetbuf" => "ovr_get_buf"() -> LongInt),
+    routine!("ovrclearbuf" => "ovr_clear_buf"()),
+    routine!("ovrsetretry" => "ovr_set_retry"(Int)),
+    routine!("ovrgetretry" => "ovr_get_retry"() -> LongInt),
+];
+
+/// Integer constants a unit exports (unlike the `Byte`-sized ones above,
+/// these may be negative): Pascal name, Rust name, value.
+pub fn unit_integers(name: &str) -> &'static [UnitConst] {
+    match name {
+        "overlay" => &[
+            ("ovrok", "OVR_OK", 0),
+            ("ovrerror", "OVR_ERROR", -1),
+            ("ovrnotfound", "OVR_NOT_FOUND", -2),
+            ("ovrnomemory", "OVR_NO_MEMORY", -3),
+            ("ovrioerror", "OVR_IO_ERROR", -4),
+            ("ovrnoemsdriver", "OVR_NO_EMS_DRIVER", -5),
+            ("ovrnoemsmemory", "OVR_NO_EMS_MEMORY", -6),
+        ],
+        _ => &[],
+    }
+}
+
 /// A variable a unit exports that lives in the runtime, read through `get`
 /// and assigned through `set` (`TextAttr := $1F` is `set_text_attr(0x1F)`).
 pub struct UnitVar {
@@ -293,6 +322,12 @@ pub fn unit_vars(name: &str) -> &'static [UnitVar] {
             UnitVar { name: "checkeof", ty: Ret::Bool, get: "check_eof", set: "set_check_eof" },
             UnitVar { name: "checksnow", ty: Ret::Bool, get: "check_snow", set: "set_check_snow" },
             UnitVar { name: "directvideo", ty: Ret::Bool, get: "direct_video", set: "set_direct_video" },
+        ],
+        "overlay" => &[
+            UnitVar { name: "ovrresult", ty: Ret::Integer, get: "ovr_result", set: "set_ovr_result" },
+            UnitVar { name: "ovrfilemode", ty: Ret::Byte, get: "ovr_file_mode", set: "set_ovr_file_mode" },
+            UnitVar { name: "ovrloadcount", ty: Ret::Word, get: "ovr_load_count", set: "set_ovr_load_count" },
+            UnitVar { name: "ovrtrapcount", ty: Ret::Word, get: "ovr_trap_count", set: "set_ovr_trap_count" },
         ],
         _ => &[],
     }
@@ -339,6 +374,7 @@ pub fn unit(name: &str) -> Option<(&'static [UnitRoutine], &'static [&'static [U
         "graph" => Some((GRAPH, GRAPH_GROUPS)),
         // `Printer` only declares the `Lst` text file; nothing to add yet.
         "printer" => Some((&[], &[])),
+        "overlay" => Some((OVERLAY, &[])),
         _ => None,
     }
 }

@@ -335,6 +335,11 @@ impl Checker {
                     let sym = self.add_symbol(name, rust.to_string(), kind);
                     self.scopes[0].insert(name.to_string(), sym);
                 }
+                for &(name, rust, value) in super::units::unit_integers(&unit.key()) {
+                    let kind = SymKind::Const { value: ConstVal::Int(value), ty: Type::Int(IntKind::Integer) };
+                    let sym = self.add_symbol(name, rust.to_string(), kind);
+                    self.scopes[0].insert(name.to_string(), sym);
+                }
                 if unit.key() == "printer" {
                     let sym = self.add_symbol("Lst", "Lst".to_string(), SymKind::StdText(StdFile::Printer));
                     self.scopes[0].insert("lst".to_string(), sym);

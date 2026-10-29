@@ -687,7 +687,7 @@ window meanwhile (§19).
   `'x'` is skipped but `IOResult` clears the error and the rest prints. We
   wrap the whole `Writeln`, so all of it is skipped.
 
-## 19. Crt, Dos and Graph
+## 19. Crt, Dos, Graph, and the units we fake
 
 - **Crt** (`feature = "crt"`): implemented over the `crossterm` crate (raw
   mode, cursor movement, 16 colours, key polling). The runtime keeps TP's
@@ -734,6 +734,47 @@ Rejected for Graph: `pixels` + `winit` (more code and an event-loop
 inversion that fights Pascal's synchronous style), terminal-based pseudo
 graphics (loses the point), and stubs (the clock and tic-tac-toe examples are
 graphics programs; stubs would make them meaningless).
+
+### Faking what a modern machine doesn't have
+
+Some of TP's standard library exists because of DOS hardware and limits
+that are gone: a printer port, 640 KB of memory, a CGA card. The rule for
+those is to **fake it**: accept the call and do something harmless and
+plausible, so an old program runs unchanged, and say so (a doc comment in
+the runtime, the language spec, and a comment in the generated code where
+a call becomes nothing). A real implementation is used wherever one makes
+sense; only what can't be real is faked.
+
+- **Printer** (`runtime/src/printer.rs`): `Lst` is a standard file like
+  `Output` (`SymKind::StdText(StdFile::Printer)`), and `Writeln(Lst, ...)`
+  is `fwriteln!(Lst, ...)` with the runtime's `Lst`. Where it prints is the
+  `PASCRUST_PRINTER` setting: appended to `printer.txt` where the program
+  started (the default) or another file, or `|command` to pipe it to a
+  command run by `sh`, such as `|lp` for a real printer. The destination
+  opens on the first print, so a program that never prints creates
+  nothing, and is closed by `io::shutdown` on every way out of the program,
+  waiting for a command to finish so the whole job is sent. It's a
+  `Mutex`, since the program prints on its worker thread but may end on
+  the main one.
+- **Overlay** (`runtime/src/overlay.rs`): TP's overlays loaded units from a
+  `.OVR` file into a small buffer on demand, so programs bigger than 640 KB
+  could run. A Rust program has all its code in memory, so there's
+  nothing to load. `OvrInit` and `OvrInitEMS` set `OvrResult` to `ovrOk`
+  (no `.OVR` file is looked for, so the usual `if OvrResult <> ovrOk then
+  Halt` check passes); `OvrSetBuf`/`OvrGetBuf` and `OvrSetRetry`/
+  `OvrGetRetry` remember and return a size (`OvrGetBuf` starts at 64 KB,
+  so `OvrSetBuf(OvrGetBuf + n)` works); `OvrClearBuf` does nothing;
+  `OvrLoadCount` and `OvrTrapCount` stay 0. The `{$O+}`, `{$O UnitName}`
+  and `{$F+}` directives are ignored silently: they only told the compiler
+  what to put in the `.OVR` file. The calls stay ordinary function calls
+  in the generated code (`ovr_init("GAME.OVR")`), so a reader sees what
+  the program asked for.
+- **System and Crt** (`MemAvail`/`MaxAvail` report 512,000 bytes,
+  `Mark`/`Release` and `SetTextBuf` become comments, `Test8087` is 3,
+  `DirectVideo`/`CheckSnow`/`CheckEOF` are remembered and ignored): see
+  `language_spec.md`.
+- Not faked, but refused with a clear error: what needs real DOS or raw
+  memory (`Intr`, `MsDos`, `Mem`, `Port`, `GetIntVec`, `Keep`).
 
 ## 20. Naming and readability of generated code
 

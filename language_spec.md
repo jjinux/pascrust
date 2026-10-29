@@ -42,8 +42,9 @@ Program structure
 - `forward` declarations
 - Compiler directives `{$...}`: `{$I-}`/`{$I+}` switch I/O checking (see
   Files). The others are parsed and ignored, with a warning for ones that
-  change semantics (`{$B+}`, `{$R+}`, `{$Q+}`); `{$M}` and `{$N+}` are
-  ignored silently; include files (`{$I name}`) are an error
+  change semantics (`{$B+}`, `{$R+}`, `{$Q+}`); `{$M}`, `{$N+}` and the
+  overlay ones (`{$O+}`, `{$O UnitName}`, `{$F+}`) are ignored silently;
+  include files (`{$I name}`) are an error
 - Comments `{ }` and `(* *)`, including the examples' `{t ... }` headers
 - Main block `begin ... end.`
 
@@ -204,6 +205,15 @@ Printer unit
   `Writeln(Lst, ...)`, `Flush(Lst)`. Faked: it appends to `printer.txt`,
   another file, or a command such as `lp`, as `PASCRUST_PRINTER` says (see
   the README). Reading from `Lst`, or reopening it, is an error
+
+Overlay unit (faked: a Rust program has all its code in memory)
+
+- `OvrInit`, `OvrInitEMS` (both succeed; no `.OVR` file is needed),
+  `OvrSetBuf`/`OvrGetBuf`, `OvrSetRetry`/`OvrGetRetry` (remembered),
+  `OvrClearBuf` (does nothing); `OvrResult` (read and assign),
+  `OvrFileMode`, `OvrLoadCount` and `OvrTrapCount` (always 0); the
+  `ovrOk`...`ovrNoEMSMemory` constants. `{$O+}`, `{$O UnitName}` and
+  `{$F+}` are ignored silently
 
 Dos unit (as used in the examples)
 
