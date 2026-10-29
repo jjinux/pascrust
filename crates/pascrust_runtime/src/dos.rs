@@ -261,21 +261,36 @@ struct Found {
 }
 
 /// How many searches stay open at once. DOS kept a search's state in the
-/// `SearchRec` itself, so a program never closes one: one that stops early
-/// (`FindFirst` to see if a file exists) leaves it open, and the oldest are
-/// closed past this many.
+/// `SearchRec` itself, so a program never closes one (and a copy of a
+/// `SearchRec` can carry on with it any time). So pascrust keeps every
+/// search, up to this many, and then forgets the one used longest ago: a
+/// search a program is still walking is used all the time.
 const OPEN_SEARCHES: usize = 100;
 
+/// One `FindFirst`'s matches, and when it was last used.
+struct Search {
+    last_used: u64,
+    matches: std::rc::Rc<Vec<Found>>,
+}
+
 thread_local! {
-    /// The matches of each open search, by the handle in bytes 1-4 of its
-    /// `SearchRec.Fill`; bytes 5-8 hold how many it has returned. So a copy
-    /// of a `SearchRec` goes on from the same place on its own, as in DOS.
-    /// Handles only grow, so a `BTreeMap`'s first entry is the oldest
-    /// search. (`Rc` because the copies share the list; `RefCell` because
-    /// searches open and close.)
-    static SEARCHES: std::cell::RefCell<std::collections::BTreeMap<u32, std::rc::Rc<Vec<Found>>>> =
-        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
-    static NEXT_SEARCH: Cell<u32> = const { Cell::new(1) };
+    /// The open searches, by the handle in bytes 1-4 of a `SearchRec.Fill`;
+    /// bytes 5-8 hold how many it has returned. So a copy of a `SearchRec`
+    /// goes on from the same place on its own, as in DOS. (`Rc` because
+    /// `find_next` holds on to the list while it fills in the `SearchRec`.)
+    static SEARCHES: std::cell::RefCell<std::collections::HashMap<u32, Search>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Counts `FindFirst` and `FindNext` calls: new handles, and the
+    /// `last_used` times.
+    static CLOCK: Cell<u64> = const { Cell::new(1) };
+}
+
+fn tick() -> u64 {
+    CLOCK.with(|clock| {
+        let now = clock.get();
+        clock.set(now + 1);
+        now
+    })
 }
 
 /// The handle and position kept in a `SearchRec`'s `Fill`.
@@ -303,9 +318,7 @@ fn set_search_state(s: &mut SearchRec, handle: u32, position: u32) {
 pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut SearchRec) {
     let path = path.into().to_string();
     let attr = attr.into() as u8;
-    // A new search replaces the one this `SearchRec` held, as it did in DOS.
-    let (old, _) = search_state(s);
-    SEARCHES.with_borrow_mut(|searches| searches.remove(&old));
+    // A new search replaces the one this `SearchRec` held, even if it fails.
     set_search_state(s, 0, 0);
     let split = path.rfind(['\\', '/', ':']).map_or(0, |i| i + 1);
     let (dir, pattern) = path.split_at(split);
@@ -317,7 +330,11 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
     let mut found: Vec<Found> = Vec::new();
     // DOS listed `.` and `..` in every directory but a root; `read_dir`
     // doesn't list them.
-    let is_root = dir_path.canonicalize().is_ok_and(|p| p.parent().is_none());
+    // `\`, `A:` and `A:\` are roots whatever directory a drive maps to.
+    let drive_or_root = dir.trim_end_matches(['\\', '/']);
+    let is_root = (!dir.is_empty() && drive_or_root.is_empty())
+        || (drive_or_root.len() == 2 && drive_or_root.ends_with(':'))
+        || dir_path.canonicalize().is_ok_and(|p| p.parent().is_none());
     if attr & DIRECTORY != 0 && !is_root {
         for name in [".", ".."] {
             if dos_match(pattern, name) {
@@ -349,15 +366,14 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
         }
     }
     found.sort_by_key(|f| f.name.to_ascii_lowercase());
-    let id = NEXT_SEARCH.with(|n| {
-        let id = n.get();
-        n.set(id + 1);
-        id
-    });
+    let now = tick();
+    // Handles are 32 bits, in `Fill`; four billion searches is plenty.
+    let id = now as u32;
     SEARCHES.with_borrow_mut(|searches| {
-        searches.insert(id, std::rc::Rc::new(found));
+        searches.insert(id, Search { last_used: now, matches: std::rc::Rc::new(found) });
         if searches.len() > OPEN_SEARCHES {
-            searches.pop_first();
+            let oldest = searches.iter().min_by_key(|(_, search)| search.last_used).map(|(&id, _)| id);
+            searches.remove(&oldest.unwrap_or_default());
         }
     });
     set_search_state(s, id, 0);
@@ -368,10 +384,12 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
 /// 18 when there are no more.
 pub fn find_next(s: &mut SearchRec) {
     let (id, position) = search_state(s);
-    let matches = SEARCHES.with_borrow(|searches| searches.get(&id).cloned());
+    let matches = SEARCHES.with_borrow_mut(|searches| {
+        let search = searches.get_mut(&id)?;
+        search.last_used = tick();
+        Some(search.matches.clone())
+    });
     let Some(found) = matches.as_ref().and_then(|m| m.get(position as usize)) else {
-        // Past the end: the search is over.
-        SEARCHES.with_borrow_mut(|searches| searches.remove(&id));
         set_dos_error(18);
         return;
     };
@@ -720,19 +738,19 @@ mod find_tests {
         let dir = scratch("searches");
         std::fs::write(dir.join("one.txt"), "1").unwrap();
         let pattern = format!("{}/*.txt", dir.display());
-        // Searches that stop early, each in a new SearchRec: only the
-        // newest stay open.
+        std::fs::write(dir.join("two.txt"), "2").unwrap();
+        // A search still in use survives many that stop early, each in a
+        // new SearchRec, and only so many stay open.
+        let mut outer = SearchRec::default();
+        find_first(pattern.as_str(), ARCHIVE, &mut outer);
         for _ in 0..OPEN_SEARCHES + 50 {
             find_first(pattern.as_str(), ARCHIVE, &mut SearchRec::default());
+            // Walking the outer search (here, past its end) uses it.
+            find_next(&mut outer);
         }
         assert_eq!(SEARCHES.with_borrow(|s| s.len()), OPEN_SEARCHES);
-        // A search that runs out is closed.
-        let mut s = SearchRec::default();
-        find_first(pattern.as_str(), ARCHIVE, &mut s);
-        let (id, _) = search_state(&s);
-        find_next(&mut s);
-        assert_eq!(dos_error(), 18);
-        assert!(SEARCHES.with_borrow(|searches| !searches.contains_key(&id)));
+        let (handle, _) = search_state(&outer);
+        assert!(SEARCHES.with_borrow(|searches| searches.contains_key(&handle)));
     }
 
     #[cfg(unix)]

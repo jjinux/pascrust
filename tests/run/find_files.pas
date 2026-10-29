@@ -8,7 +8,8 @@ var
   s, t: SearchRec;
   f: Text;
   found: string;
-  count: Integer;
+  count, i, existing: Integer;
+  number: string;
 
 procedure Check(ok: Boolean; what: string);
 begin
@@ -28,6 +29,14 @@ begin
   Rewrite(f);
   Write(f, text);
   Close(f);
+end;
+
+function Exists(name: string): Boolean;
+var
+  t: SearchRec;
+begin
+  FindFirst(name, AnyFile, t);
+  Exists := DosError = 0;
 end;
 
 begin
@@ -82,6 +91,37 @@ begin
   FindNext(t);
   FindNext(s);
   Check((t.Name = 'b.txt') and (s.Name = 'b.txt'), 'a copy of a SearchRec goes on by itself');
+  FindFirst('*.TXT', AnyFile, s);
+  t := s;
+  FindFirst('b.txt', AnyFile, t);
+  FindNext(s);
+  Check((DosError = 0) and (s.Name = 'b.txt'), 'FindFirst on a copy leaves the original''s search alone');
+  FindFirst('A:*.*', Directory, s);
+  Check(s.Name <> '.', 'no . in the root of a drive');
+  MkDir('many');
+  for i := 1 to 120 do
+  begin
+    Str(i, number);
+    Make('many\f' + number + '.txt', 'x');
+  end;
+  count := 0;
+  existing := 0;
+  FindFirst('many\*.txt', AnyFile, s);
+  while DosError = 0 do
+  begin
+    count := count + 1;
+    if Exists('many\' + s.Name) then
+      existing := existing + 1;
+    FindNext(s);
+  end;
+  Check((count = 120) and (existing = 120), 'a search goes on while 120 others start and stop');
+  for i := 1 to 120 do
+  begin
+    Str(i, number);
+    Assign(f, 'many\f' + number + '.txt');
+    Erase(f);
+  end;
+  RmDir('many');
   FindFirst('B?.TXT', AnyFile, s);
   Check((DosError = 0) and (s.Name = 'b.txt'), '? matches nothing at the end of a name');
   FindFirst('????????.???', Archive, s);

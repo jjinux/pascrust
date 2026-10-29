@@ -40,6 +40,15 @@ fn make(f: &mut PText, name: PString, text: PString) {
     f.close();
 }
 
+/// Pascal: `function Exists(name: string): Boolean;`
+fn exists(name: PString) -> bool {
+    let mut result: bool = false;
+    let mut t: SearchRec = SearchRec::default();
+    find_first(name, ANY_FILE, &mut t);
+    result = dos_error() == 0;
+    result
+}
+
 /// The main program: the `begin ... end.` block of `FindFiles`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
@@ -50,6 +59,8 @@ fn pascal_main() {
     let mut f: PText = PText::default();
     let mut found: PString = PString::new();
     let mut count: i16 = 0;
+    let mut existing: i16 = 0;
+    let mut number: PString = PString::new();
     checks = 0;
     failures = 0;
     make(&mut f, pstr("b.txt"), pstr("bee"));
@@ -110,6 +121,45 @@ fn pascal_main() {
         t.name == "b.txt" && s.name == "b.txt",
         pstr("a copy of a SearchRec goes on by itself"),
     );
+    find_first("*.TXT", ANY_FILE, &mut s);
+    t = s;
+    find_first("b.txt", ANY_FILE, &mut t);
+    find_next(&mut s);
+    check(
+        &mut checks,
+        &mut failures,
+        dos_error() == 0 && s.name == "b.txt",
+        pstr("FindFirst on a copy leaves the original's search alone"),
+    );
+    find_first("A:*.*", DIRECTORY, &mut s);
+    check(&mut checks, &mut failures, s.name != ".", pstr("no . in the root of a drive"));
+    mk_dir("many");
+    for i in 1_i16..=120 {
+        number = pas_str(i);
+        make(&mut f, pstr("many\\f") + number + ".txt", pstr("x"));
+    }
+    count = 0;
+    existing = 0;
+    find_first("many\\*.txt", ANY_FILE, &mut s);
+    while dos_error() == 0 {
+        count += 1;
+        if exists(pstr("many\\") + s.name) {
+            existing += 1;
+        }
+        find_next(&mut s);
+    }
+    check(
+        &mut checks,
+        &mut failures,
+        count == 120 && existing == 120,
+        pstr("a search goes on while 120 others start and stop"),
+    );
+    for i in 1_i16..=120 {
+        number = pas_str(i);
+        f.assign(pstr("many\\f") + number + ".txt");
+        f.erase();
+    }
+    rm_dir("many");
     find_first("B?.TXT", ANY_FILE, &mut s);
     check(
         &mut checks,

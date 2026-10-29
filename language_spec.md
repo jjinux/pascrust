@@ -241,11 +241,11 @@ Dos unit
   in name order, `DosError` 18 when there are no more and 3 for a missing
   directory. `?` also matches nothing at the end of a name (`DATA?.DAT`
   finds `DATA.DAT`), `.` and `..` are listed in every directory but a
-  root, a link to a directory counts as a directory, and `VolumeID` alone
+  root (`\`, or a drive's `A:\` wherever it's mapped), a link to a directory counts as a directory, and `VolumeID` alone
   finds nothing (there's no volume label). A copy of a `SearchRec` goes on
   from the same place by itself. `SearchRec.Name` is a full string (TP's
-  was `string[12]`), so long names fit. A search that stops early stays
-  open, as nothing tells pascrust it's done; the newest 100 are kept
+  was `string[12]`), so long names fit. Nothing tells pascrust when a
+  program is done with a search, so it keeps the 100 used most recently
 - Faked: `DosVersion` (DOS 6.22), `DiskFree`/`DiskSize` (512 MB free of a
   1 GB disk on every drive: real disks are too big for a `LongInt`),
   `SetDate`/`SetTime` (don't change the computer's clock),
