@@ -204,6 +204,23 @@ impl<'a> Codegen<'a> {
         {
             return ("PString::new()".to_string(), prec::POSTFIX);
         }
+        // A descendant object where an ancestor is expected: its ancestor
+        // part, `circle.base` (cloned unless it's `Copy`). TP copied its
+        // table of virtual methods too, so the copy would still act as a
+        // circle there; here it's the ancestor it now is.
+        if let (Type::Object(to_object), Type::Object(from_object)) = (to, &from)
+            && let Some(depth) = from_object.lineage().iter().position(|(o, _)| o == to_object)
+            && depth > 0
+        {
+            let base = match &e.kind {
+                ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => {
+                    self.selector_base(e)
+                }
+                _ => paren(self.expr(e), prec::POSTFIX),
+            };
+            let part = format!("{base}{}", ".base".repeat(depth));
+            return if to.is_copy() { (part, prec::POSTFIX) } else { (format!("{part}.clone()"), prec::POSTFIX) };
+        }
         let code = self.expr(e);
         // Pascal copies records and pointers on assignment. For types that
         // aren't `Copy` in Rust (anything holding a `Ptr`), that copy has to

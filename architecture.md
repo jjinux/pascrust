@@ -554,7 +554,11 @@ methods are supported too (below).
   `struct Child { base: Parent, own_fields }`. Inherited field and method
   access resolve to `self.base.x` / `self.base.m()`; passing a `Child` where a
   `Parent` is expected passes `&mut child.base` (or `child.base.clone()`).
-  Sema knows the hierarchy, so the rewriting is mechanical.
+  Sema knows the hierarchy, so the rewriting is mechanical. (By value, the
+  copy is the ancestor part only. TP copied the hidden virtual method
+  table pointer along with the fields, so its copy kept calling the
+  descendant's virtual methods on fields it didn't have; ours acts as the
+  ancestor it now is.)
 - Objects declared as variables and never "created" (`var Board: BoardType;
   Board.Create;`) are `let mut board = BoardType::default();` followed by
   `board.create();`, which is exactly what TP does.

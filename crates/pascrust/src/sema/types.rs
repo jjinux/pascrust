@@ -323,6 +323,9 @@ impl Type {
             (Type::Str { .. }, t) if t.is_stringish() => true,
             (Type::Pointer(_), Type::Nil) => true,
             (Type::Set(a), Type::Set(b)) => **b == Type::Void || same_ordinal_kind(a, b),
+            // An object may be assigned to (or passed as) one of its
+            // ancestors: its ancestor part is copied.
+            (Type::Object(to), Type::Object(from)) => from.lineage().iter().any(|(o, _)| o == to),
             // A pointer to an object may point to any object descended from it.
             (Type::Pointer(to), Type::Pointer(from)) if to != from => match (to.target(), from.target()) {
                 (Type::Object(to), Type::Object(from)) => from.lineage().iter().any(|(o, _)| *o == to),

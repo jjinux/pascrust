@@ -135,7 +135,9 @@ Objects (TP 5.5 OOP)
   method implementations `procedure T.M(...)`, nested procedures inside
   methods that use `Self` fields
 - Single inheritance `object(Parent)`, inherited field and method access,
-  passing a descendant where an ancestor is expected
+  passing a descendant where an ancestor is expected (by `var`, or by value
+  and in assignments, which copy the ancestor part: unlike TP, the copy
+  then acts as the ancestor, since TP also copied the virtual method table)
 - `private` keyword accepted and ignored
 - `virtual` methods: dispatch through `Self`, through `var` parameters of an
   ancestor type, and through pointers (a pointer to an object may point to a
