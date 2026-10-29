@@ -87,7 +87,8 @@ Statements
 - Procedure calls; `Exit`; `Halt` / `Halt(n)`
 - Value and `var` parameters; passing arrays, records and strings both ways.
   Different fields of one record may be passed as two `var` arguments
-  (`Init(p.x, p.y)`, also through a pointer, `q^.x, q^.y`); the same place
+  (`Init(p.x, p.y)`, also through a pointer: `q^.x, q^.y`,
+  `arr[i]^.x, arr[i]^.y`, `q^.a[1], q^.y`); the same place
   twice, a record and its field, a pointer and a field behind it
   (`F(q, q^.x)`), or two elements of one array may not
 

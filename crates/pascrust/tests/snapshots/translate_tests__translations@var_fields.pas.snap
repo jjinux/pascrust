@@ -40,6 +40,16 @@ struct Shape {
 /// record is a runtime error instead of undefined behaviour.
 type PPoint = Ptr<Point>;
 
+/// Pascal: `record a: array[1..2] of Integer; y: Integer; end`
+#[derive(Clone, Copy, Debug, Default)]
+struct TPair {
+    a: PArray<i16, 1, 2>,
+    y: i16,
+}
+
+/// Pascal: `^TPair`
+type PPair = Ptr<TPair>;
+
 /// Pascal: `procedure SetTwo(var a, b: Integer);`
 fn set_two(a: &mut i16, b: &mut i16) {
     *a = 1;
@@ -85,6 +95,9 @@ fn pascal_main() {
     let mut c: Circle = Circle::default();
     let mut s: Shape = Shape::default();
     let mut q: PPoint = Ptr::nil();
+    let mut points: PArray<PPoint, 1, 3> = PArray::default();
+    let mut pair: PPair = Ptr::nil();
+    let mut k: i16 = 0;
     set_two(&mut p.x, &mut p.y);
     pwriteln!(p.x, " ", p.y);
     set_two(&mut c.center.x, &mut c.radius);
@@ -102,6 +115,19 @@ fn pascal_main() {
         pwriteln!(q.get().x, " ", q.get().y);
     }
     q.dispose();
+    // `k` is also used outside this loop (Pascal leaves it holding the
+    // last value), so the loop updates it on every pass instead of declaring
+    // a fresh loop variable.
+    for k_value in 1..=3 {
+        k = k_value;
+        points[k] = Ptr::alloc();
+    }
+    k = 2;
+    points[k].with_mut(|point| set_two(&mut point.x, &mut point.y));
+    pwriteln!(points[2].get().x, " ", points[2].get().y);
+    pair = Ptr::alloc();
+    pair.with_mut(|rec| set_two(&mut rec.a[1], &mut rec.y));
+    pwriteln!(pair.get().a[1], " ", pair.get().y);
 }
 
 fn main() {

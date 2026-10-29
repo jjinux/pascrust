@@ -14,12 +14,20 @@ type
     procedure Init;
   end;
   PPoint = ^Point;
+  TPair = record
+    a: array[1..2] of Integer;
+    y: Integer;
+  end;
+  PPair = ^TPair;
 
 var
   p: Point;
   c: Circle;
   s: Shape;
   q: PPoint;
+  points: array[1..3] of PPoint;
+  pair: PPair;
+  k: Integer;
 
 procedure SetTwo(var a, b: Integer);
 begin
@@ -72,4 +80,12 @@ begin
   if Swapped(q^.x, q^.y) then
     WriteLn(q^.x, ' ', q^.y);
   Dispose(q);
+  for k := 1 to 3 do
+    New(points[k]);
+  k := 2;
+  SetTwo(points[k]^.x, points[k]^.y);
+  WriteLn(points[2]^.x, ' ', points[2]^.y);
+  New(pair);
+  SetTwo(pair^.a[1], pair^.y);
+  WriteLn(pair^.a[1], ' ', pair^.y);
 end.

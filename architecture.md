@@ -449,7 +449,9 @@ of the common cases:
 - Heap fields: `&mut p.get_mut().before` (see the hazard note in §12). Two
   fields of the same heap record, `SetTwo(q^.x, q^.y)`, would be two
   `get_mut()` borrows of one `RefCell`, so the call borrows the record once:
-  `q.with_mut(|point| set_two(&mut point.x, &mut point.y))`.
+  `q.with_mut(|point| set_two(&mut point.x, &mut point.y))`. The pointer
+  may be indexed by a variable or a number (`arr[i]^.x, arr[i]^.y`), and
+  a path behind it stops at an array index, as for ordinary variables.
 
 Sema compares field paths, so only arguments that really overlap are
 rejected: `p.x` and `p.y` are fine, `p` and `p.x` are not. A path stops at an

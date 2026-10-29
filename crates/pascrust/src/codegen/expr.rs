@@ -711,7 +711,7 @@ impl<'a> Codegen<'a> {
         let heap: Vec<Option<String>> = params
             .iter()
             .zip(args)
-            .map(|(p, arg)| if is_var(p) { crate::sema::heap_field(arg).map(|(pointer, _)| pointer) } else { None })
+            .map(|(p, arg)| if is_var(p) { crate::sema::heap_field(arg).map(|(pointer, ..)| pointer) } else { None })
             .collect();
         let shared = |key: &Option<String>| key.is_some() && heap.iter().filter(|k| *k == key).count() > 1;
         let mut records: Vec<(String, String, String)> = Vec::new(); // (key, pointer, name)

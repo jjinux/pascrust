@@ -2246,15 +2246,20 @@ impl Checker {
             .filter(|(param, _)| self.a.var(**param).role == VarRole::Param(ParamMode::Var))
             .filter_map(|(_, arg)| Some((super::heap_field(arg)?, arg.span)))
             .collect();
-        for (i, ((pointer, fields), span)) in heap.iter().enumerate() {
-            let overlaps =
-                heap[..i].iter().any(|((earlier, f), _)| earlier == pointer && super::fields_overlap(f, fields));
-            if overlaps {
+        for (i, ((pointer, fields, indexed), span)) in heap.iter().enumerate() {
+            let earlier =
+                heap[..i].iter().find(|((earlier, f, _), _)| earlier == pointer && super::fields_overlap(f, fields));
+            if let Some(((_, earlier_fields, earlier_indexed), _)) = earlier {
                 let name = self.a.procs[p].name.clone();
+                let why = if *indexed && *earlier_indexed && earlier_fields == fields {
+                    " (Rust can't tell that two elements of one array are different)"
+                } else {
+                    ""
+                };
                 self.error(
                     *span,
                     format!(
-                        "the record `{pointer}^` is passed by `var` more than once in this call to `{name}`; Rust doesn't allow two mutable references to the same variable"
+                        "the record `{pointer}^` is passed by `var` more than once in this call to `{name}`; Rust doesn't allow two mutable references to the same variable{why}"
                     ),
                 );
             }

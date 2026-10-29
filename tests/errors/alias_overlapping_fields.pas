@@ -25,4 +25,5 @@ begin
   Whole(p, p.x);
   SetTwo(p.v[1], p.v[2]);
   SetTwo(q^.x, q^.x);
+  SetTwo(q^.v[1], q^.v[2]);
 end.

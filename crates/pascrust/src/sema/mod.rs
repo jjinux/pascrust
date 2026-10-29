@@ -462,30 +462,50 @@ pub struct VarArg {
     pub span: Span,
 }
 
-/// A place that is a field of a heap record, like `q^.x` or `list^.head^.c.x`:
-/// the pointer expression as a key (`q`, `list^.head`) and the fields after
-/// its last `^`. `None` for any other place, or if the pointer expression has
-/// an array index (we can't tell statically whether two indexes are equal).
+/// A place that is a field of a heap record, like `q^.x`, `arr[i]^.x` or
+/// `list^.head^.c.x`: the pointer expression as a key (`q`, `arr[i]`,
+/// `list^.head`), the fields after its last `^`, and whether an array index
+/// follows them (`q^.a[1]` is `["a"]`, indexed: Rust can't tell two
+/// elements of one array apart, as for `VarArg::indexed`). `None` for any
+/// other place, or if the pointer expression has an index other than a
+/// variable or a number (we can't tell statically whether two are equal).
 ///
 /// Two `var` arguments into the same heap record must share one borrow of
 /// it (one `get_mut()`), so sema checks they don't overlap and codegen
 /// borrows the record once for the call.
-pub fn heap_field(e: &crate::ast::Expr) -> Option<(String, Vec<String>)> {
+pub fn heap_field(e: &crate::ast::Expr) -> Option<(String, Vec<String>, bool)> {
     use crate::ast::ExprKind;
     fn key(e: &crate::ast::Expr) -> Option<String> {
         match &e.kind {
             ExprKind::Name(id) => Some(id.key()),
+            ExprKind::Int(n) => Some(n.to_string()),
             ExprKind::Field(base, field) => Some(format!("{}.{}", key(base)?, field.key())),
             ExprKind::Deref(base) => Some(format!("{}^", key(base)?)),
+            ExprKind::Index(base, indexes) => {
+                let indexes: Option<Vec<String>> = indexes
+                    .iter()
+                    .map(|i| match &i.kind {
+                        ExprKind::Name(_) | ExprKind::Int(_) => key(i),
+                        _ => None,
+                    })
+                    .collect();
+                Some(format!("{}[{}]", key(base)?, indexes?.join(",")))
+            }
             _ => None,
         }
     }
     match &e.kind {
-        ExprKind::Deref(base) => Some((key(base)?, Vec::new())),
+        ExprKind::Deref(base) => Some((key(base)?, Vec::new(), false)),
         ExprKind::Field(base, field) => {
-            let (pointer, mut fields) = heap_field(base)?;
-            fields.push(field.key());
-            Some((pointer, fields))
+            let (pointer, mut fields, indexed) = heap_field(base)?;
+            if !indexed {
+                fields.push(field.key());
+            }
+            Some((pointer, fields, indexed))
+        }
+        ExprKind::Index(base, _) => {
+            let (pointer, fields, _) = heap_field(base)?;
+            Some((pointer, fields, true))
         }
         _ => None,
     }

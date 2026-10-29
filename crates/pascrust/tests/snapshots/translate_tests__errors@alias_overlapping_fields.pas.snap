@@ -7,6 +7,10 @@ alias_overlapping_fields.pas:27:16: error: the record `q^` is passed by `var` mo
   SetTwo(q^.x, q^.x);
                ^^^^
 
+alias_overlapping_fields.pas:28:19: error: the record `q^` is passed by `var` more than once in this call to `SetTwo`; Rust doesn't allow two mutable references to the same variable (Rust can't tell that two elements of one array are different)
+  SetTwo(q^.v[1], q^.v[2]);
+                  ^^^^^^^
+
 alias_overlapping_fields.pas:25:12: error: `p` is passed by `var` more than once in this call to `Whole`; Rust doesn't allow two mutable references to the same variable
   Whole(p, p.x);
            ^^^
