@@ -416,9 +416,10 @@ TP's 32-byte sets) with a phantom element type. `+`, `*` and `-` are
 `|`, `&` and `-` (`BitOr`/`BitAnd`/`Sub`); `=`/`<>` compare the bits;
 `<=`/`>=` are `is_subset`/`is_superset`; `Include`/`Exclude` are methods.
 `s := s + [x]` is `s |= pset![x]` (and `&=`, `-=`), except when the
-right side reads the same variable: `s[i] |= s[1]` would borrow `s` for
-the place first (the operator is a trait method), so it stays
-`s[i] = s[i] | s[1]`. A backwards range (`[Fri..Mon]`) is empty, as in TP.
+right side reads the same variable or calls anything: `s[i] |= s[1]` would
+borrow `s` for the place first (the operator is a trait method), and a
+call may be passed the variable without naming it (a global the function
+uses, or `self`), so those stay `s[i] = s[i] | s[1]`. A backwards range (`[Fri..Mon]`) is empty, as in TP.
 The element methods take any `Ordinal`, so `300 in s` is simply false
 rather than wrapping to a byte. Set literals `[1, 3..5, x]` become
 `pset![1, 3..=5, x]` (each item is a value or a `RangeInclusive`, through

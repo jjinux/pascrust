@@ -1459,6 +1459,33 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// Does `e` call a function or method anywhere (with or without
+    /// parentheses)?
+    fn has_call(&self, e: &Expr) -> bool {
+        if self.a.method_calls.contains_key(&e.id) {
+            return true;
+        }
+        let item = |elem: &SetElem| match elem {
+            SetElem::Single(x) => self.has_call(x),
+            SetElem::Range(lo, hi) => self.has_call(lo) || self.has_call(hi),
+        };
+        match &e.kind {
+            ExprKind::Call { .. } => true,
+            // A function named without arguments (`Second`) is a call too.
+            ExprKind::Name(_) => self
+                .a
+                .refs
+                .get(&e.id)
+                .is_some_and(|&sym| matches!(self.a.sym(sym).kind, SymKind::Proc(_) | SymKind::UnitRoutine(_))),
+            ExprKind::Field(base, _) | ExprKind::Deref(base) => self.has_call(base),
+            ExprKind::Index(base, indexes) => self.has_call(base) || indexes.iter().any(|i| self.has_call(i)),
+            ExprKind::Unary { operand, .. } => self.has_call(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.has_call(lhs) || self.has_call(rhs),
+            ExprKind::Set(elems) => elems.iter().any(item),
+            _ => false,
+        }
+    }
+
     /// A case label's ordinal value, for spotting duplicates.
     fn label_ord(&self, e: &Expr) -> i64 {
         match &self.a.case_labels[&e.id] {
@@ -1588,8 +1615,10 @@ impl<'a> Codegen<'a> {
             && self.same_as_place(lhs, &place)
             // `s[i] |= s[1]` borrows `s` mutably for the place before reading
             // `s[1]` (the operator is a trait method, unlike `+=` on
-            // numbers), which the borrow checker rejects.
-            && !(matches!(target_ty, Type::Set(_)) && mentions(rhs, &root_name(target)))
+            // numbers), which the borrow checker rejects. A call can reach
+            // the target too, without naming it (a global the function uses,
+            // or `self`), so sets only take the short form without calls.
+            && !(matches!(target_ty, Type::Set(_)) && (mentions(rhs, &root_name(target)) || self.has_call(rhs)))
         {
             // For sets, Pascal's `+` and `*` are Rust's `|` and `&`.
             let set = matches!(target_ty, Type::Set(_));

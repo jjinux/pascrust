@@ -29,6 +29,13 @@ var
   flags: set of Boolean;
   charSets: array[1..2] of CharSet;
 
+{ Reads a global, which Rust passes in: `s[i] := s[i] + Second` can't
+  borrow it twice. }
+function Second: CharSet;
+begin
+  Second := charSets[2];
+end;
+
 procedure Show(s: CharSet);
 var
   ch: Char;
@@ -109,6 +116,8 @@ begin
   i := 2;
   charSets[i] := charSets[i] + charSets[1];
   Show(charSets[2]);
+  charSets[1] := charSets[1] + Second;
+  Show(charSets[1]);
   { backwards ranges are empty }
   WriteLn(hue in [Yellow..Red], ' ', True in [True..False], ' ', i in [5..1, 2], ' ', 'm' in ['z'..'a']);
 end.

@@ -2755,9 +2755,9 @@ impl Checker {
             // `Swap(A)` with `const A = $FF00`: such a constant is typed
             // LongInt, but TP's Swap takes it as the Word it fits.
             Swap if args.len() == 1
-                && matches!(self.eval_const(&args[0]), Some(ConstVal::Int(n)) if (-32768..=65535).contains(&n)) =>
+                && matches!(self.eval_const(&args[0]), Some(ConstVal::Int(n)) if (-32768..=65535).contains(&n))
+                && self.expr(&args[0]).is_integer() =>
             {
-                self.expr(&args[0]);
                 let kind = if self.is_word_constant(&args[0]) { IntKind::Word } else { IntKind::Integer };
                 let ty = Type::Int(kind);
                 self.fold(e, &ty);

@@ -47,6 +47,18 @@ struct Palette {
     colors: PSet<Color>,
 }
 
+// Reads a global, which Rust passes in: `s[i] := s[i] + Second` can't
+// borrow it twice.
+/// Pascal: `function Second: CharSet;`
+///
+/// The global variables this procedure uses are passed in as parameters,
+/// because the globals are local variables of `pascal_main`.
+fn second(char_sets: PArray<PSet<u8>, 1, 2>) -> PSet<u8> {
+    let mut result: PSet<u8> = PSet::new();
+    result = char_sets[2];
+    result
+}
+
 /// Pascal: `procedure Show(s: CharSet);`
 fn show(s: PSet<u8>) {
     pwrite!("[");
@@ -180,6 +192,8 @@ fn pascal_main() {
     i = 2;
     char_sets[i] = char_sets[i] | char_sets[1];
     show(char_sets[2]);
+    char_sets[1] = char_sets[1] | second(char_sets);
+    show(char_sets[1]);
     // backwards ranges are empty
     pwriteln!(false, " ", false, " ", matches!(i, 2), " ", false);
 }
