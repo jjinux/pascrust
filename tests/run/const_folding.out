@@ -1,5 +1,8 @@
 ok: Swap(-1) folded as at run time
-ok: Swap(255) folded as at run time
+ok: Swap(255) works on a Word, as in Free Pascal
+ok: Swap of an Integer variable stays an Integer
+ok: a Byte swaps as a Word, a ShortInt as an Integer
+ok: Swap of a LongInt trades its halves
 ok: Swap($FF00) is a Word
 ok: Swap of a Word stays a Word
 ok: Swap of a named Word constant
@@ -13,4 +16,4 @@ ok: Pred of an enum constant
 ok: an enum range in a set test
 ok: and one ending in a constant
 ok: a Boolean range
-15 of 15 checks passed
+18 of 18 checks passed

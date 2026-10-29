@@ -1020,17 +1020,6 @@ impl Checker {
         }
     }
 
-    /// Is the constant expression `e` a Word, for `Swap`: a number above
-    /// 32767 (`$FF00`, or a constant naming one), or `Swap` of a Word?
-    fn is_word_constant(&self, e: &Expr) -> bool {
-        match &e.kind {
-            ExprKind::Call { callee, args } if args.len() == 1 => {
-                matches!(&callee.kind, ExprKind::Name(id) if id.key() == "swap") && self.is_word_constant(&args[0])
-            }
-            _ => matches!(self.eval_const(e), Some(ConstVal::Int(n)) if n > 32767),
-        }
-    }
-
     /// If the call `e` has constant arguments, record its value for codegen
     /// to write instead (`Hi(-1)` is just `255`).
     fn fold(&mut self, e: &Expr, ty: &Type) {
@@ -1153,13 +1142,7 @@ impl Checker {
                     ("pred", Bool(true)) => Some(Bool(false)),
                     ("hi", Int(n)) => Some(Int((n >> 8) & 0xFF)),
                     ("lo", Int(n)) => Some(Int(n & 0xFF)),
-                    // As the run-time `Swap`: on a Word if the argument is one,
-                    // otherwise on an Integer, so `Swap(255)` is -256.
-                    ("swap", Int(n)) => {
-                        let swapped = (n as u16).swap_bytes();
-                        let word = self.is_word_constant(&args[0]);
-                        Some(Int(if word { i64::from(swapped) } else { i64::from(swapped as i16) }))
-                    }
+                    ("swap", Int(n)) => Some(Int(IntKind::swap_value(n))),
                     ("length", Str(s)) => Some(Int(s.len() as i64)),
                     ("odd", Int(n)) => Some(Bool(n % 2 != 0)),
                     ("round", Real(x)) => Some(Int(x.round() as i64)),
@@ -2752,40 +2735,17 @@ impl Checker {
                 }
                 Type::Void
             }
-            // `Swap(A)` with `const A = $FF00`: such a constant is typed
-            // LongInt, but TP's Swap takes it as the Word it fits.
-            Swap if args.len() == 1
-                && matches!(self.eval_const(&args[0]), Some(ConstVal::Int(n)) if (-32768..=65535).contains(&n)) =>
-            {
-                let arg_ty = self.expr(&args[0]);
-                if arg_ty == Type::Error {
-                    return Type::Error;
-                }
-                // An enum constant has an ordinal, but isn't a number.
-                if !arg_ty.is_integer() {
-                    self.error(args[0].span, format!("`{name}` can't be applied to a {arg_ty} value"));
-                    return Type::Error;
-                }
-                let kind = if self.is_word_constant(&args[0]) { IntKind::Word } else { IntKind::Integer };
-                let ty = Type::Int(kind);
-                self.fold(e, &ty);
-                ty
-            }
+            // As Free Pascal: the type it works in comes from the argument's
+            // type, or for a constant from its value (see `IntKind::for_swap`).
             Swap => {
-                let ty = self.unary_builtin(
-                    span,
-                    args,
-                    &name,
-                    // TP's `Swap(X: Word)` also takes literals up to $FFFF.
-                    |t| {
-                        matches!(t, Type::IntLit(n) if (0..=65535).contains(n))
-                            || matches!(t.concrete(), Type::Int(IntKind::Integer | IntKind::Word))
-                    },
-                    |t| match t {
-                        Type::IntLit(n) if *n > 32767 => Type::Int(IntKind::Word),
-                        t => t.concrete(),
-                    },
-                );
+                let arg_ty = self.unary_builtin(span, args, &name, |t| t.is_integer(), |t| t.clone());
+                let kind = match (&arg_ty, self.eval_const(&args[0])) {
+                    (Type::Error, _) => return Type::Error,
+                    (_, Some(ConstVal::Int(n))) => IntKind::for_swap_value(n),
+                    (Type::Int(kind), _) => kind.for_swap(),
+                    _ => IntKind::Integer,
+                };
+                let ty = Type::Int(kind);
                 self.fold(e, &ty);
                 ty
             }

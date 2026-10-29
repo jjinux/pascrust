@@ -15,7 +15,7 @@ use pascrust_runtime::prelude::*;
 const LAST: Day = Day::Sun;
 const BEFORE_LAST: Day = Day::Sat;
 const SWAP_NEG: i16 = -1;
-const SWAP255: i16 = -256;
+const SWAP255: i32 = 65280;
 const SWAP_WORD: i16 = 255;
 const HI_NEG: i16 = 255;
 const LO_NEG: i16 = 255;
@@ -26,7 +26,8 @@ const HIGH_WORD: i32 = 65280;
 const SWAP_NAMED: i16 = 255;
 
 // TP 7's constant functions, worked out when the program is translated,
-// agree with the same calls at run time; and enum ranges in set tests.
+// agree with the same calls at run time; Swap works in the type Free
+// Pascal chooses; and enum ranges in set tests.
 // Self-checking. (Free Pascal can't evaluate some of these constants, so
 // this .out is built from the checks, by hand.)
 /// Pascal: `(Mon, Tue, Wed, Thu, Fri, Sat, Sun)`
@@ -75,13 +76,34 @@ fn pascal_main() {
     let mut checks: i16 = 0;
     let mut failures: i16 = 0;
     let mut i: i16 = 0;
+    let mut w_: u16 = 0;
+    let mut b: u8 = 0;
+    let mut sh: i8 = 0;
+    let mut l: i32 = 0;
     let mut d: Day = Day::Mon;
     checks = 0;
     failures = 0;
     i = -1;
     check(&mut checks, &mut failures, SWAP_NEG == i.swap_bytes(), pstr("Swap(-1) folded as at run time"));
+    w_ = 255;
+    check(
+        &mut checks,
+        &mut failures,
+        SWAP255 == i32::from(w_.swap_bytes()),
+        pstr("Swap(255) works on a Word, as in Free Pascal"),
+    );
     i = 255;
-    check(&mut checks, &mut failures, SWAP255 == i.swap_bytes(), pstr("Swap(255) folded as at run time"));
+    check(&mut checks, &mut failures, i.swap_bytes() == -256, pstr("Swap of an Integer variable stays an Integer"));
+    b = 1;
+    sh = -1;
+    check(
+        &mut checks,
+        &mut failures,
+        u16::from(b).swap_bytes() == 256 && i16::from(sh).swap_bytes() == -1,
+        pstr("a Byte swaps as a Word, a ShortInt as an Integer"),
+    );
+    l = 305419896;
+    check(&mut checks, &mut failures, l.rotate_left(16) == 1450709556, pstr("Swap of a LongInt trades its halves"));
     check(&mut checks, &mut failures, SWAP_WORD == 255, pstr("Swap($FF00) is a Word"));
     check(&mut checks, &mut failures, SWAP_TWICE == 65280 && 65280_u16 == 65280, pstr("Swap of a Word stays a Word"));
     check(&mut checks, &mut failures, SWAP_NAMED == 255 && 255_u16 == 255, pstr("Swap of a named Word constant"));

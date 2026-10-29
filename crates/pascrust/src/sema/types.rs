@@ -34,6 +34,36 @@ impl IntKind {
         }
     }
 
+    /// The type `Swap` works in for an argument of this type, as Free
+    /// Pascal does: a Byte is swapped as a Word (`Swap(b)` with `b = 1` is
+    /// 256), a ShortInt as an Integer, and a LongInt's two halves swap.
+    pub fn for_swap(self) -> IntKind {
+        match self {
+            IntKind::Byte | IntKind::Word => IntKind::Word,
+            IntKind::ShortInt | IntKind::Integer => IntKind::Integer,
+            IntKind::LongInt => IntKind::LongInt,
+        }
+    }
+
+    /// The same for a constant, by its value: 0 to 255 (a Byte) and 32768
+    /// to 65535 are Words, other values up to 32767 Integers.
+    pub fn for_swap_value(n: i64) -> IntKind {
+        match n {
+            0..=255 | 32768..=65535 => IntKind::Word,
+            -32768..=32767 => IntKind::Integer,
+            _ => IntKind::LongInt,
+        }
+    }
+
+    /// `Swap(n)` worked out for a constant.
+    pub fn swap_value(n: i64) -> i64 {
+        match IntKind::for_swap_value(n) {
+            IntKind::Word => i64::from((n as u16).swap_bytes()),
+            IntKind::Integer => i64::from((n as u16).swap_bytes() as i16),
+            _ => i64::from((n as u32).rotate_left(16) as i32),
+        }
+    }
+
     pub fn contains(self, value: i64) -> bool {
         let (lo, hi) = self.range();
         lo <= value && value <= hi

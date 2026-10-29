@@ -180,12 +180,19 @@ impl<'a> Codegen<'a> {
                 format!("({} >> 8) as u8", paren(self.coerce(&args[0], &t), prec::SHIFT + 1))
             }
             Swap => {
-                // A literal above 32767 is a `Word` here, as TP's `Swap(X: Word)`.
+                // The type it works in, as sema chose it (a Byte as a Word,
+                // ...); a constant argument was folded already.
                 let t = match ty(self, &args[0]) {
-                    Type::IntLit(n) if n > 32767 => Type::Int(IntKind::Word),
-                    t => t.concrete(),
+                    Type::Int(kind) => Type::Int(kind.for_swap()),
+                    Type::IntLit(n) => Type::Int(IntKind::for_swap_value(n)),
+                    other => other.concrete(),
                 };
-                format!("{}.swap_bytes()", self.postfix(&args[0], &t))
+                let x = paren(self.coerce(&args[0], &t), prec::POSTFIX);
+                match t {
+                    // A LongInt's two 16-bit halves trade places.
+                    Type::Int(IntKind::LongInt) => format!("{x}.rotate_left(16)"),
+                    _ => format!("{x}.swap_bytes()"),
+                }
             }
             Assigned => format!("!{}.is_nil()", self.selector_base(&args[0])),
             RunError => match args.first() {

@@ -110,7 +110,10 @@ Built-ins (System unit)
   References), `MaxInt`, `MaxLongInt`
 - `SizeOf` (TP's sizes: `Real` is 6 bytes, `string[n]` n+1, records
   unpadded), `High`/`Low` (arrays, strings, ordinal types), all three
-  constants; `Swap`, `Assigned`, `RunError`
+  constants; `Swap` (as Free Pascal: a Byte, or a constant from 0 to 255
+  or 32768 to 65535, swaps as a Word; a ShortInt, other constants and
+  Integers as an Integer; a LongInt trades its 16-bit halves. TP 7
+  documented only Integer and Word), `Assigned`, `RunError`
 - `FillChar` on a whole variable (`FillChar(x, SizeOf(x), 0)` resets it;
   strings and arrays of bytes or chars may be filled with any value) or on
   part of a string or byte array (`FillChar(s[1], n, ' ')`); `Move` between
