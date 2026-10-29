@@ -255,6 +255,9 @@ pub struct Analysis {
     /// Variables that need no `let` declaration because they're only used as
     /// scoped loop variables.
     pub elided_vars: HashSet<SymId>,
+    /// A captured variable's name inside one procedure, where its own name
+    /// is taken by a local (`global_count`). See `var_name`.
+    pub capture_names: HashMap<(ProcId, SymId), String>,
     /// Variables that are modified somewhere and so need `let mut` (or a
     /// `mut` parameter).
     pub mutated: HashSet<SymId>,
@@ -304,6 +307,9 @@ impl Analysis {
     /// aliasing `var` parameter (see [`Analysis::capture_aliases`]).
     pub fn var_name(&self, proc: ProcId, sym: SymId) -> &str {
         let sym = self.alias_param(proc, sym).unwrap_or(sym);
+        if let Some(name) = self.capture_names.get(&(proc, sym)) {
+            return name;
+        }
         // A method's `self` is called `this` when a nested procedure
         // receives it: only methods may have a parameter named `self`.
         if self.symbols[sym].rust_name == "self" && self.var(sym).owner != proc {

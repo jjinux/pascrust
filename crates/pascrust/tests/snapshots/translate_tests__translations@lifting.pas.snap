@@ -16,22 +16,22 @@ use pascrust_runtime::prelude::*;
 ///
 /// The global variables this procedure uses are passed in as parameters,
 /// because the globals are local variables of `pascal_main`.
-fn note(global_count: &mut i16, log: &mut PString, s: PString) {
+fn note(count: &mut i16, log: &mut PString, s: PString) {
     *log = *log + s;
-    *global_count += 1;
+    *count += 1;
 }
 
 /// Pascal: `procedure Outer(var total: integer; step: integer);`
 ///
 /// Uses globals, which are passed in as parameters.
-fn outer(global_count: &mut i16, log: &mut PString, total: &mut i16, step: i16) {
+fn outer(count: &mut i16, log: &mut PString, total: &mut i16, step: i16) {
     let mut i: i16 = 0;
     // `i` is also used outside this loop (Pascal leaves it holding the
     // last value), so the loop updates it on every pass instead of declaring
     // a fresh loop variable.
     for i_value in 1..=3 {
         i = i_value;
-        outer_middle(global_count, log, total, step, i);
+        outer_middle(count, log, total, step, i);
     }
 }
 
@@ -40,9 +40,9 @@ fn outer(global_count: &mut i16, log: &mut PString, total: &mut i16, step: i16) 
 /// Nested inside `Outer` in the Pascal source. Rust functions can't see
 /// their caller's local variables, so this one was "lifted" to the top level
 /// and any outer variables it uses are passed in as extra parameters.
-fn outer_middle(global_count: &mut i16, log: &mut PString, total: &mut i16, step: i16, i: i16) {
+fn outer_middle(count: &mut i16, log: &mut PString, total: &mut i16, step: i16, i: i16) {
     outer_middle_inner(total, step, i);
-    note(global_count, log, pstr("m"));
+    note(count, log, pstr("m"));
 }
 
 /// Pascal: `procedure Inner;`
@@ -68,16 +68,16 @@ fn hidden(global_count: &mut i16, log: &mut PString) {
 fn pascal_main() {
     // Nested procedures and globals, which PascRust "lifts" into top-level
     // Rust functions with extra parameters.
-    let mut global_count: i16 = 0;
+    let mut count: i16 = 0;
     let mut log: PString = PString::new();
     let mut sum: i16 = 0;
-    global_count = 0;
+    count = 0;
     log = PString::new();
     sum = 0;
-    outer(&mut global_count, &mut log, &mut sum, 2);
+    outer(&mut count, &mut log, &mut sum, 2);
     pwriteln!("sum ", sum);
-    hidden(&mut global_count, &mut log);
-    pwriteln!("count ", global_count, " log ", log);
+    hidden(&mut count, &mut log);
+    pwriteln!("count ", count, " log ", log);
 }
 
 fn main() {

@@ -135,7 +135,8 @@ pub(super) fn lift(a: &mut Analysis) {
 /// their Rust names must not clash with its own parameters and locals. In
 /// Pascal they can't clash (an inner declaration hides the outer one), but a
 /// procedure may still need to pass a hidden outer variable through to
-/// something it calls. Rename the captured variable everywhere if so.
+/// something it calls. Inside that procedure, the captured variable gets
+/// another name (`global_count`); everywhere else it keeps its own.
 fn rename_clashing_captures(a: &mut Analysis) {
     for p in 0..a.procs.len() {
         let own: HashSet<String> =
@@ -144,11 +145,12 @@ fn rename_clashing_captures(a: &mut Analysis) {
             let name = a.sym(cap.sym).rust_name.clone();
             if own.contains(&name) {
                 let owner = a.var(cap.sym).owner;
-                a.symbols[cap.sym].rust_name = if owner == MAIN {
+                let renamed = if owner == MAIN {
                     format!("global_{name}")
                 } else {
                     format!("{}_{name}", a.procs[owner].rust_name)
                 };
+                a.capture_names.insert((p, cap.sym), renamed);
             }
         }
     }
