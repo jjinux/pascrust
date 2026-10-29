@@ -33,3 +33,19 @@ fn errors() {
         insta::assert_snapshot!(error);
     });
 }
+
+/// Attaching comments once took time proportional to comments × statements
+/// × file size: a 700-line example took 20 seconds. This program has 3,000
+/// lines and 2,000 comments.
+#[test]
+fn many_comments_transpile_quickly() {
+    let mut source = String::from("program Long;\nvar n: Integer;\nbegin\n  n := 0;\n");
+    for i in 0..1000 {
+        source.push_str(&format!("  {{ step {i} }}\n  n := n + {i}; {{ add {i} }}\n  WriteLn(n);\n"));
+    }
+    source.push_str("end.\n");
+    let start = std::time::Instant::now();
+    let generated = pascrust::driver::transpile_source(source.as_bytes(), "long.pas").unwrap();
+    assert!(generated.combined().contains("// add 999"));
+    assert!(start.elapsed().as_secs() < 20, "took {:?}", start.elapsed());
+}

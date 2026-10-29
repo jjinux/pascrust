@@ -41,15 +41,22 @@ impl Comments {
         anchors.sort();
         anchors.dedup_by_key(|&mut (start, _)| start);
         let mut result = Comments { field_groups: walker.field_groups, ..Comments::default() };
-        let line = |offset: usize| {
-            let file = map.file(map.file_index(offset));
-            (map.file_index(offset), crate::diag::line_col(&file.text, offset - file.base).0)
-        };
+        // Finding an offset's line by counting newlines from the start of
+        // the file is slow when it's done for every comment and anchor, so
+        // the newlines' offsets are listed once and searched.
+        let lines = LineTable::new(map);
+        // The anchors by the line they end on.
+        let mut ending_on: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+        for &(start, end) in &anchors {
+            ending_on.entry(lines.line(end)).or_default().push((start, end));
+        }
         for comment in comments {
             // The latest anchor that ends on the comment's line, before it.
-            let before = anchors
-                .iter()
-                .filter(|&&(_, end)| end <= comment.span.start && line(end) == line(comment.span.start))
+            let before = ending_on
+                .get(&lines.line(comment.span.start))
+                .into_iter()
+                .flatten()
+                .filter(|&&(_, end)| end <= comment.span.start)
                 .max_by_key(|&&(start, _)| start);
             if let Some(&(start, _)) = before {
                 let text = one_line(&comment.text);
@@ -63,16 +70,16 @@ impl Comments {
                     .or_insert(text);
                 continue;
             }
-            // On the first line of a construct that continues past it, before
-            // anything nested in it: a comment on its header line.
             // (A comment ending the first line of a construct that goes on,
             // `for i := 1 to n do {each row}`, becomes a leading comment of
             // what's inside: rustfmt would move it after the `{` anyway.)
-            // Otherwise, the next anchor in the same file.
-            let file = map.file_index(comment.span.start);
-            let after = anchors.iter().find(|&&(start, _)| start >= comment.span.end && map.file_index(start) == file);
-            if let Some(&(start, _)) = after {
-                result.leading.entry(start).or_default().extend(lines(&comment.text));
+            // Otherwise, the next anchor in the same file. The anchors are
+            // sorted, so `partition_point` finds it by binary search.
+            let next = anchors.partition_point(|&(start, _)| start < comment.span.end);
+            if let Some(&(start, _)) = anchors.get(next)
+                && map.file_index(start) == map.file_index(comment.span.start)
+            {
+                result.leading.entry(start).or_default().extend(lines_of(&comment.text));
             }
         }
         result
@@ -86,6 +93,30 @@ impl Comments {
     /// The comment to write at the end of the anchor's line (once).
     pub(super) fn take_trailing(&mut self, at: usize) -> Option<String> {
         self.trailing.remove(&at)
+    }
+}
+
+/// Every line of every source file, numbered across the whole source map.
+struct LineTable {
+    /// Where each line starts, in order. A file's start also starts a line.
+    starts: Vec<usize>,
+}
+
+impl LineTable {
+    fn new(map: &SourceMap) -> LineTable {
+        let mut starts = Vec::new();
+        for i in 0..map.len() {
+            let file = map.file(i);
+            starts.push(file.base);
+            let newlines = file.text.iter().enumerate().filter(|&(_, &b)| b == b'\n');
+            starts.extend(newlines.map(|(at, _)| file.base + at + 1));
+        }
+        LineTable { starts }
+    }
+
+    /// The number of the line `offset` is on (unique across files).
+    fn line(&self, offset: usize) -> usize {
+        self.starts.partition_point(|&start| start <= offset)
     }
 }
 
@@ -203,7 +234,7 @@ pub(super) fn end_keyword(map: &SourceMap, span: Span) -> Option<usize> {
 
 /// A comment's text as `//` lines: indentation shared by its lines
 /// removed, and blank lines at the start and end dropped.
-fn lines(text: &str) -> Vec<String> {
+fn lines_of(text: &str) -> Vec<String> {
     let raw: Vec<&str> = text.lines().map(str::trim_end).collect();
     // The first line starts right after `{`, so its indentation doesn't
     // count; the others share the comment's indentation in the file.
@@ -236,9 +267,9 @@ mod tests {
 
     #[test]
     fn comment_text_becomes_rust_lines() {
-        assert_eq!(lines(" pos of ch "), ["// pos of ch"]);
+        assert_eq!(lines_of(" pos of ch "), ["// pos of ch"]);
         assert_eq!(
-            lines("t\n   Shannon\n     indented\n\n   end\n"),
+            lines_of("t\n   Shannon\n     indented\n\n   end\n"),
             ["// t", "// Shannon", "//   indented", "//", "// end"]
         );
         assert_eq!(one_line(" char for\n   encoding "), "// char for encoding");
