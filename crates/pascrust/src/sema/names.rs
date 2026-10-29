@@ -126,8 +126,17 @@ const RESERVED: &[&str] = &[
     "halt",
     "rte",
     "run",
+    // The runtime's types and traits, which every program imports.
     "PString",
     "Ordinal",
+    "PArray",
+    "PSet",
+    "Ptr",
+    "PText",
+    "PFile",
+    "FileRecord",
+    "PasWrite",
+    "Enumerated",
 ];
 
 fn escape(name: String) -> String {

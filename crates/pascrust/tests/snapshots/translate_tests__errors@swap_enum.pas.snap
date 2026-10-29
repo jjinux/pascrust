@@ -6,3 +6,7 @@ input_file: tests/errors/swap_enum.pas
 swap_enum.pas:8:16: error: `Swap` can't be applied to a Color value
   WriteLn(Swap(K));
                ^
+
+swap_enum.pas:10:16: error: operator can't combine Color and Integer values
+  WriteLn(Swap(K + 1));
+               ^^^^^

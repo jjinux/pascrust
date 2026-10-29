@@ -6,4 +6,6 @@ const
   K = Blue;
 begin
   WriteLn(Swap(K));
+  { one message, not two }
+  WriteLn(Swap(K + 1));
 end.

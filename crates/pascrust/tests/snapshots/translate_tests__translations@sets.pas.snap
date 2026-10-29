@@ -194,6 +194,11 @@ fn pascal_main() {
     show(char_sets[2]);
     char_sets[1] = char_sets[1] | second(char_sets);
     show(char_sets[1]);
+    // builtins and casts in the literal aren't calls that could reach it
+    letters = PSet::new();
+    c = b'a';
+    letters |= pset![c + 1, c.to_ascii_uppercase(), (i16::from(c) + 2) as u8];
+    show(letters);
     // backwards ranges are empty
     pwriteln!(false, " ", false, " ", matches!(i, 2), " ", false);
 }

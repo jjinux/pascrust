@@ -2755,9 +2755,17 @@ impl Checker {
             // `Swap(A)` with `const A = $FF00`: such a constant is typed
             // LongInt, but TP's Swap takes it as the Word it fits.
             Swap if args.len() == 1
-                && matches!(self.eval_const(&args[0]), Some(ConstVal::Int(n)) if (-32768..=65535).contains(&n))
-                && self.expr(&args[0]).is_integer() =>
+                && matches!(self.eval_const(&args[0]), Some(ConstVal::Int(n)) if (-32768..=65535).contains(&n)) =>
             {
+                let arg_ty = self.expr(&args[0]);
+                if arg_ty == Type::Error {
+                    return Type::Error;
+                }
+                // An enum constant has an ordinal, but isn't a number.
+                if !arg_ty.is_integer() {
+                    self.error(args[0].span, format!("`{name}` can't be applied to a {arg_ty} value"));
+                    return Type::Error;
+                }
                 let kind = if self.is_word_constant(&args[0]) { IntKind::Word } else { IntKind::Integer };
                 let ty = Type::Int(kind);
                 self.fold(e, &ty);

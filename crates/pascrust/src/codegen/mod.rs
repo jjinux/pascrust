@@ -1462,6 +1462,9 @@ impl<'a> Codegen<'a> {
     /// Does `e` call a function or method anywhere (with or without
     /// parentheses)?
     fn has_call(&self, e: &Expr) -> bool {
+        if self.a.folded.contains_key(&e.id) {
+            return false; // written as its value
+        }
         if self.a.method_calls.contains_key(&e.id) {
             return true;
         }
@@ -1470,6 +1473,17 @@ impl<'a> Codegen<'a> {
             SetElem::Range(lo, hi) => self.has_call(lo) || self.has_call(hi),
         };
         match &e.kind {
+            // Builtins (`Chr`, `Succ`) and casts (`Byte(c)`) only see their
+            // arguments.
+            ExprKind::Call { callee, args }
+                if self
+                    .a
+                    .refs
+                    .get(&callee.id)
+                    .is_some_and(|&sym| matches!(self.a.sym(sym).kind, SymKind::Builtin(_) | SymKind::TypeName(_))) =>
+            {
+                args.iter().any(|a| self.has_call(a))
+            }
             ExprKind::Call { .. } => true,
             // A function named without arguments (`Second`) is a call too.
             ExprKind::Name(_) => self

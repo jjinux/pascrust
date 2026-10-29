@@ -118,6 +118,11 @@ begin
   Show(charSets[2]);
   charSets[1] := charSets[1] + Second;
   Show(charSets[1]);
+  { builtins and casts in the literal aren't calls that could reach it }
+  letters := [];
+  c := 'a';
+  letters := letters + [Succ(c), UpCase(c), Chr(Ord(c) + 2)];
+  Show(letters);
   { backwards ranges are empty }
   WriteLn(hue in [Yellow..Red], ' ', True in [True..False], ' ', i in [5..1, 2], ' ', 'm' in ['z'..'a']);
 end.
