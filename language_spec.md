@@ -198,6 +198,13 @@ Crt unit (the whole examples set uses it)
   `CheckEOF`
 - A non-TTY "plain" mode so scripted tests can drive these programs
 
+Printer unit
+
+- `Lst`, a text file always open on the printer: `Write(Lst, ...)`,
+  `Writeln(Lst, ...)`, `Flush(Lst)`. Faked: it appends to `printer.txt`,
+  another file, or a command such as `lp`, as `PASCRUST_PRINTER` says (see
+  the README). Reading from `Lst`, or reopening it, is an error
+
 Dos unit (as used in the examples)
 
 - `GetDate`, `GetTime`, `SetDate`/`SetTime` (no-ops with a warning),

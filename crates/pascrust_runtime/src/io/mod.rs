@@ -64,6 +64,7 @@ pub(crate) fn raw_terminal() -> bool {
 /// every way out of the program.
 pub(crate) fn shutdown() {
     flush_stdout();
+    crate::printer::close();
     #[cfg(feature = "crt")]
     crate::crt::restore();
 }

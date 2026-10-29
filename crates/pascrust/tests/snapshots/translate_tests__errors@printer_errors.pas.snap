@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/printer_errors.pas
+---
+printer_errors.pas:8:10: error: `Lst` is the printer: `Readln` can't read from it
+  ReadLn(Lst, s);
+         ^^^
+
+printer_errors.pas:9:11: error: `Lst` is always open on the printer; `Rewrite` can't change it
+  Rewrite(Lst);
+          ^^^
+
+printer_errors.pas:10:11: error: `Input` is for reading: `Writeln` can't write to it
+  WriteLn(Input, 'x');
+          ^^^^^

@@ -8,6 +8,7 @@
 pub use crate::array::PArray;
 pub use crate::io::{FileRecord, PFile, PText, PasWrite, eof, eoln, seek_eof, seek_eoln, w, wd};
 pub use crate::ordinal::{Enumerated, Ordinal, enum_range};
+pub use crate::printer::Lst;
 pub use crate::ptr::Ptr;
 pub use crate::run::{halt, io_result, io_unchecked, rte, run_error};
 pub use crate::set::PSet;

@@ -207,7 +207,7 @@ Crt, the variables
 - [x] Fake: `DirectVideo`, `CheckSnow` and `CheckEOF` are accepted and ignored; `CheckBreak` decides whether Ctrl-Break ends the program (as now, by default).
 
 Printer and Overlay
-- [ ] Fake `Printer`: `Lst` is a `Text` file appended to `printer.txt` (or the file named by `PASCRUST_PRINTER`), so printed reports can be read.
+- [x] Fake `Printer`: `Lst` is a `Text` file appended to `printer.txt` (or the file named by `PASCRUST_PRINTER`), so printed reports can be read. `PASCRUST_PRINTER='|lp'` pipes it to a command instead, for a real printer.
 - [ ] Fake `Overlay`: `OvrInit`, `OvrInitEMS`, `OvrSetBuf`, `OvrGetBuf`, `OvrClearBuf` do nothing and `OvrResult` is 0 (`ovrOk`); `{$O+}` and `{$F+}` are ignored silently. Overlays only existed to fit in 640 KB.
 
 Sets (a language feature, but `Include`/`Exclude` and `in` are everywhere in old code)

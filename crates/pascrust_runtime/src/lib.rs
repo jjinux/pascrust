@@ -20,6 +20,7 @@ pub mod graph;
 pub mod io;
 pub mod ordinal;
 pub mod prelude;
+pub mod printer;
 pub mod ptr;
 pub mod run;
 pub mod set;

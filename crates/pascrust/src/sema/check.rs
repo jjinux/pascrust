@@ -281,8 +281,8 @@ impl Checker {
             let sym = self.add_symbol(name, get.to_string(), SymKind::RuntimeVar { ty, get, set });
             self.scopes[0].insert(name.to_string(), sym);
         }
-        for (name, output) in [("input", false), ("output", true)] {
-            let sym = self.add_symbol(name, name.to_string(), SymKind::StdText { output });
+        for (name, file) in [("input", StdFile::Input), ("output", StdFile::Output)] {
+            let sym = self.add_symbol(name, name.to_string(), SymKind::StdText(file));
             self.scopes[0].insert(name.to_string(), sym);
         }
         for &(name, builtin) in Builtin::ALL {
@@ -334,6 +334,10 @@ impl Checker {
                     let kind = SymKind::Const { value: ConstVal::Bool(value), ty: Type::Bool };
                     let sym = self.add_symbol(name, rust.to_string(), kind);
                     self.scopes[0].insert(name.to_string(), sym);
+                }
+                if unit.key() == "printer" {
+                    let sym = self.add_symbol("Lst", "Lst".to_string(), SymKind::StdText(StdFile::Printer));
+                    self.scopes[0].insert("lst".to_string(), sym);
                 }
                 for var in super::units::unit_vars(&unit.key()) {
                     let kind = SymKind::RuntimeVar { ty: var.ty.ty(), get: var.get, set: var.set };
@@ -1605,7 +1609,7 @@ impl Checker {
                         v.ty
                     }
                     SymKind::Const { ty, .. } | SymKind::RuntimeVar { ty, .. } => ty,
-                    SymKind::StdText { .. } => Type::Text,
+                    SymKind::StdText(_) => Type::Text,
                     // A bare function name is a call with no arguments.
                     SymKind::Proc(_) | SymKind::Builtin(_) | SymKind::UnitRoutine(_) => self.call(e, e, &[]),
                     SymKind::TypeName(_) => {
@@ -1789,7 +1793,7 @@ impl Checker {
                         v.ty
                     }
                     // `Writeln(Output, ...)`: the console.
-                    SymKind::StdText { .. } => {
+                    SymKind::StdText(_) => {
                         self.a.refs.insert(e.id, sym);
                         Type::Text
                     }
@@ -1968,7 +1972,7 @@ impl Checker {
                 }
                 target
             }
-            SymKind::Var(_) | SymKind::Const { .. } | SymKind::RuntimeVar { .. } | SymKind::StdText { .. } => {
+            SymKind::Var(_) | SymKind::Const { .. } | SymKind::RuntimeVar { .. } | SymKind::StdText(_) => {
                 if !args.is_empty() {
                     self.error(ident.span, format!("`{}` is not a procedure or function", ident.name));
                     return Type::Error;
@@ -2216,7 +2220,7 @@ impl Checker {
                 if let Some(first) = args.first()
                     && let Some(file_ty @ (Type::Text | Type::File(_))) = self.place_type(first)
                 {
-                    self.place(first, true);
+                    self.file_arg(first, &name, false);
                     args = &args[1..];
                     if let Type::File(elem) = file_ty {
                         if b == Writeln {
@@ -2261,7 +2265,7 @@ impl Checker {
                 if let Some(first) = args.first()
                     && let Some(file_ty @ (Type::Text | Type::File(_))) = self.place_type(first)
                 {
-                    self.place(first, true);
+                    self.file_arg(first, &name, false);
                     args = &args[1..];
                     if let Type::File(elem) = file_ty {
                         for arg in args {
@@ -2668,13 +2672,30 @@ impl Checker {
     /// state, so it's treated like a `var` argument.
     fn file_arg(&mut self, e: &Expr, name: &str, text_only: bool) {
         let ty = self.place(e, true);
-        // `Input` and `Output` are always open on the console.
+        // `Input`, `Output` and `Lst` are always open.
         if let Some(&sym) = self.a.refs.get(&e.id)
-            && let SymKind::StdText { output } = self.a.symbols[sym].kind
-            && !matches!(name, "Eof" | "Eoln" | "SeekEof" | "SeekEoln" | "Flush")
+            && let SymKind::StdText(file) = self.a.symbols[sym].kind
         {
-            let which = if output { "Output" } else { "Input" };
-            self.error(e.span, format!("pascrust's `{which}` is always the console; `{name}` can't change it"));
+            let reads = matches!(name, "Eof" | "Eoln" | "SeekEof" | "SeekEoln" | "Read" | "Readln");
+            match file {
+                StdFile::Printer if reads => {
+                    self.error(e.span, format!("`Lst` is the printer: `{name}` can't read from it"))
+                }
+                StdFile::Output if reads => {
+                    self.error(e.span, format!("`Output` is for writing: `{name}` can't read from it"))
+                }
+                StdFile::Input if matches!(name, "Write" | "Writeln") => {
+                    self.error(e.span, format!("`Input` is for reading: `{name}` can't write to it"))
+                }
+                _ if reads || matches!(name, "Write" | "Writeln" | "Flush") => {}
+                StdFile::Printer => {
+                    self.error(e.span, format!("`Lst` is always open on the printer; `{name}` can't change it"))
+                }
+                _ => {
+                    let which = if file == StdFile::Output { "Output" } else { "Input" };
+                    self.error(e.span, format!("pascrust's `{which}` is always the console; `{name}` can't change it"));
+                }
+            }
         }
         let ok = match ty {
             Type::Text | Type::Error => true,
@@ -2703,7 +2724,7 @@ impl Checker {
                 Resolved::Sym(sym) => match &self.a.symbols[sym].kind {
                     SymKind::Var(v) => Some(v.ty.clone()),
                     SymKind::RuntimeVar { ty, .. } => Some(ty.clone()),
-                    SymKind::StdText { .. } => Some(Type::Text),
+                    SymKind::StdText(_) => Some(Type::Text),
                     _ => None,
                 },
                 Resolved::SelfField { ty, .. } => Some(ty),

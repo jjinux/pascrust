@@ -68,11 +68,18 @@ pub enum SymKind {
         get: &'static str,
         set: &'static str,
     },
-    /// `Input` or `Output`, the standard text files: `Writeln(Output, x)`
-    /// is `Writeln(x)`.
-    StdText {
-        output: bool,
-    },
+    /// `Input`, `Output` or the `Printer` unit's `Lst`, standard text files
+    /// that are always open: `Writeln(Output, x)` is `Writeln(x)`.
+    StdText(StdFile),
+}
+
+/// A standard text file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StdFile {
+    Input,
+    Output,
+    /// The `Printer` unit's `Lst`, the runtime's `Lst`.
+    Printer,
 }
 
 #[derive(Debug, Clone)]

@@ -3,7 +3,7 @@
 use super::expr::{convert, paren, prec};
 use super::{Codegen, LoopLabels};
 use crate::ast::*;
-use crate::sema::{Builtin, IntKind, SymKind, Type};
+use crate::sema::{Builtin, IntKind, StdFile, SymKind, Type};
 
 impl<'a> Codegen<'a> {
     /// Translate a builtin call. Statement-like builtins (`Inc`, `Exit`, ...)
@@ -38,7 +38,7 @@ impl<'a> Codegen<'a> {
         let ty = |g: &Self, e: &Expr| g.a.type_of(e.id).clone();
         // `Writeln(Output, ...)` and `Readln(Input, ...)` are the console ones.
         if matches!(b, Write | Writeln | Read | Readln | Eof | Eoln | SeekEof | SeekEoln)
-            && args.first().is_some_and(|a| self.std_text(a))
+            && args.first().is_some_and(|a| matches!(self.std_text(a), Some(StdFile::Input | StdFile::Output)))
         {
             return self.builtin(b, &args[1..], call_id);
         }
@@ -88,7 +88,9 @@ impl<'a> Codegen<'a> {
                 format!("{file}.{method}({});", self.string_arg(&args[1]))
             }
             // `Flush(Output)`: the console.
-            Flush if self.std_text(&args[0]) => "pascrust_runtime::io::flush_stdout();".to_string(),
+            Flush if self.std_text(&args[0]) == Some(StdFile::Output) => {
+                "pascrust_runtime::io::flush_stdout();".to_string()
+            }
             Reset | Rewrite | Append | Close | Erase | Flush | Truncate => {
                 let method = format!("{b:?}").to_ascii_lowercase();
                 format!("{}.{method}();", self.place_receiver(&args[0]))
@@ -345,6 +347,10 @@ impl<'a> Codegen<'a> {
     /// A variable used as the receiver of a mutating method (`s.delete(..)`).
     /// Method calls auto-dereference, so references don't need a `*`.
     pub(super) fn place_receiver(&mut self, e: &Expr) -> String {
+        // The printer, `Lst`, is the runtime's `Lst`.
+        if self.std_text(e) == Some(StdFile::Printer) {
+            return "Lst".to_string();
+        }
         match &e.kind {
             ExprKind::Name(_) if !self.a.self_fields.contains_key(&e.id) => {
                 self.a.var_name(self.proc, self.a.refs[&e.id]).to_string()
@@ -492,9 +498,12 @@ impl Codegen<'_> {
 }
 
 impl Codegen<'_> {
-    /// Is `e` the standard file `Input` or `Output`?
-    fn std_text(&self, e: &Expr) -> bool {
-        self.a.refs.get(&e.id).is_some_and(|&sym| matches!(self.a.sym(sym).kind, SymKind::StdText { .. }))
+    /// Which standard file `e` is, if it's `Input`, `Output` or `Lst`.
+    fn std_text(&self, e: &Expr) -> Option<StdFile> {
+        match self.a.refs.get(&e.id).map(|&sym| &self.a.sym(sym).kind) {
+            Some(SymKind::StdText(file)) => Some(*file),
+            _ => None,
+        }
     }
 }
 

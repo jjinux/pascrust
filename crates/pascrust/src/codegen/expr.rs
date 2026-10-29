@@ -173,7 +173,9 @@ impl<'a> Codegen<'a> {
             },
             SymKind::Const { .. } => (symbol.rust_name.clone(), prec::ATOM),
             SymKind::RuntimeVar { get, .. } => (format!("{get}()"), prec::POSTFIX),
-            SymKind::StdText { .. } => unreachable!("Input and Output are only file arguments"),
+            // The printer: the runtime's `Lst`, as a file argument
+            // (`fwriteln!(Lst, ...)`). `Input` and `Output` never get here.
+            SymKind::StdText(_) => (symbol.rust_name.clone(), prec::ATOM),
             SymKind::Proc(_) | SymKind::Builtin(_) | SymKind::UnitRoutine(_) => (self.call(e, &[]), prec::POSTFIX),
             SymKind::TypeName(_) => unreachable!("sema rejects types used as values"),
         }
