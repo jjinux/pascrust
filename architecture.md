@@ -749,7 +749,10 @@ window meanwhile (§19).
   disk is `SizeOf`, and files written by TP programs read correctly (a
   runtime test reads `examples/database/mark.dat`). Reading is lenient: a
   string's length byte is clamped to its capacity, and an enum ordinal past
-  the last value reads as the last value.
+  the last value reads as the last value. An untyped `file` is a
+  `PBlockFile`, which has a record size instead of a record type;
+  `BlockRead`/`BlockWrite` move a number of records into and out of any
+  variable's byte view (see §12).
   `Assign`, `Reset`, `Rewrite`, `Append`, `Close`, `Seek`, `FilePos`,
   `FileSize`, `Eof`, `Eoln`, `Erase`, `Rename`, `Truncate`, `IOResult` are
   runtime methods. `{$I-}` is a compile-time switch, so the driver works
