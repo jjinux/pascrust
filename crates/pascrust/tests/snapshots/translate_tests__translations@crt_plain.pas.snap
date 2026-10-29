@@ -12,13 +12,14 @@ input_file: tests/translate/crt_plain.pas
 
 use pascrust_runtime::prelude::*;
 
+// Crt in plain mode (output is not a terminal): cursor and colour calls do
+// nothing, and ReadKey reads characters from standard input.
+// crt_plain.out is hand-written: Free Pascal's Crt emits escape codes even
+// when its output is piped.
+
 /// The main program: the `begin ... end.` block of `CrtPlain`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    // Crt in plain mode (output is not a terminal): cursor and colour calls do
-    // nothing, and ReadKey reads characters from standard input.
-    // crt_plain.out is hand-written: Free Pascal's Crt emits escape codes even
-    // when its output is piped.
     let mut c: u8 = 0;
     let mut n: i16 = 0;
     clr_scr();

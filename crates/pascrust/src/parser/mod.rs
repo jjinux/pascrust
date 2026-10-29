@@ -219,7 +219,7 @@ impl Parser {
         let start = self.expect_keyword(Keyword::Unit)?;
         let name = self.expect_ident()?;
         self.expect(&TokenKind::Semi)?;
-        self.expect_keyword(Keyword::Interface)?;
+        let interface_keyword = self.expect_keyword(Keyword::Interface)?;
         let interface_uses = self.uses_clause()?;
         let interface = self.declarations(true)?;
         self.expect_keyword(Keyword::Implementation)?;
@@ -230,6 +230,7 @@ impl Parser {
         self.expect(&TokenKind::Dot)?;
         Ok(Unit {
             name,
+            interface_keyword,
             interface_uses,
             interface,
             implementation_uses,

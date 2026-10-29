@@ -12,6 +12,11 @@ input_file: tests/translate/file_times.pas
 
 use pascrust_runtime::prelude::*;
 
+// File times and attributes: PackTime/UnpackTime, GetFTime/SetFTime and
+// GetFAttr/SetFAttr. Self-checking. (Free Pascal on Unix can't remember
+// Hidden or Archive, which pascrust does while the program runs, so this
+// .out is built from the checks, by hand.)
+
 /// Pascal: `procedure Check(ok: Boolean; what: string);`
 ///
 /// The global variables this procedure uses are passed in as parameters,
@@ -29,10 +34,6 @@ fn check(checks: &mut i16, failures: &mut i16, ok: bool, what: PString) {
 /// The main program: the `begin ... end.` block of `FileTimes`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    // File times and attributes: PackTime/UnpackTime, GetFTime/SetFTime and
-    // GetFAttr/SetFAttr. Self-checking. (Free Pascal on Unix can't remember
-    // Hidden or Archive, which pascrust does while the program runs, so this
-    // .out is built from the checks, by hand.)
     let mut checks: i16 = 0;
     let mut failures: i16 = 0;
     let mut dt: DateTime = DateTime::default();

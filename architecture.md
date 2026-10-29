@@ -822,7 +822,15 @@ sense; only what can't be real is faked.
   lines before the next anchor, wherever that's written. A comment at the
   end of a loop or `if` header (`for ... do {each row}`) becomes the first
   line inside the Rust block, since rustfmt puts comments after a `{` there
-  anyway. Comments inside an expression are dropped.
+  anyway. A comment inside a statement (`b := 2 + {why} 3;`) goes at the
+  end of that statement's line. The comment after an `end` goes after the
+  `}` that closes the block. Comments around `program`/`unit` and `uses`
+  head the Rust file. Declarations that make no Rust of their own still
+  pass their comments on: a `forward`, interface or object-method heading's
+  go with the body, a loop variable's where its `let` would have been, and
+  an alias's (`TInt = Integer`) on a `// Pascal:` line of its own.
+  Attaching is done with a table of line starts and binary searches, so it
+  takes a moment even for a long program.
 - Codegen emits teaching comments at the first use of each notable construct
   in a file (`Rc<RefCell>`, const generics, lifted parameters, `catch_unwind`),
   not at every use, to avoid noise.

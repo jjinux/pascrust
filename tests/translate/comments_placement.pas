@@ -1,12 +1,36 @@
+{ This program checks comment placement. }
 program CommentsPlacement;
 { Where comments land in the Rust: after an end, before an else if,
   before until, on loop variables, on declarations with no Rust of
   their own. }
-uses CmtUnit;
+uses CmtUnit; { for Ready }
+
+type
+  TCount = Integer;   { an alias makes no Rust }
+  Counter = object
+    total: Integer;
+    { adds one }
+    procedure Bump;
+  end;
 
 var
+  c: Counter;
+  t: TCount;
   x, y: Integer;   { both coordinates }
   n: Integer;
+
+procedure Later(k: Integer); forward; { body below }
+
+{ the real Later }
+procedure Later(k: Integer);
+begin
+  x := x + k;
+end;
+
+procedure Counter.Bump;
+begin
+  Inc(total);
+end;
 
 procedure Count;
 var {Counts to three.}
@@ -23,8 +47,9 @@ begin
 end; { of Foo }
 
 begin
-  n := 0;
+  n := 0; {}
   Foo;
+  Later(2 * { twice } 0);
   Count;
   if x > 0 then
   begin
@@ -50,5 +75,8 @@ begin
     Inc(n);
     { about to test }
   until n > 4; { loop done }
-  WriteLn(x, ' ', y, ' ', n, ' ', Ready);
+  c.total := 0;
+  c.Bump;
+  t := c.total;
+  WriteLn(x, ' ', y, ' ', n, ' ', Ready, ' ', t);
 end. { end of program }

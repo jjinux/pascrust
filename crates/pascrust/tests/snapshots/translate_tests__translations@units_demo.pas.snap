@@ -53,6 +53,7 @@ use crate::labels::*;
 use pascrust_runtime::prelude::*;
 
 // Used by units_demo.pas.
+
 pub const SIDES: i16 = 4;
 
 /// Pascal: `record x, y: integer; end`
@@ -102,6 +103,9 @@ pub fn geometry_init(created: &mut i16) {
 use crate::geometry::*;
 #[allow(unused_imports)]
 use pascrust_runtime::prelude::*;
+
+// Used by units_demo.pas. Declares `Name` too: the program uses both units,
+// and Turbo Pascal's rule is that the unit listed later wins.
 
 /// Pascal: `function Name: string;`
 pub fn labels_name() -> PString {

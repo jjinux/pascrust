@@ -43,6 +43,8 @@ pub struct Program {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Unit {
     pub name: Ident,
+    /// The `interface` keyword: comments before it describe the unit.
+    pub interface_keyword: Span,
     pub interface_uses: Vec<Ident>,
     /// Interface declarations. Procedures here are headings only; their
     /// bodies come in the implementation part.

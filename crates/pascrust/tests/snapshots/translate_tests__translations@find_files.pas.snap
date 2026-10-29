@@ -12,6 +12,10 @@ input_file: tests/translate/find_files.pas
 
 use pascrust_runtime::prelude::*;
 
+// FindFirst and FindNext with DOS wildcards and attributes. Self-checking.
+// (Free Pascal returns matches in directory order, so this .out is built
+// from the checks, by hand: pascrust sorts them by name.)
+
 /// Pascal: `procedure Check(ok: Boolean; what: string);`
 ///
 /// The global variables this procedure uses are passed in as parameters,
@@ -39,9 +43,6 @@ fn make(f: &mut PText, name: PString, text: PString) {
 /// The main program: the `begin ... end.` block of `FindFiles`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    // FindFirst and FindNext with DOS wildcards and attributes. Self-checking.
-    // (Free Pascal returns matches in directory order, so this .out is built
-    // from the checks, by hand: pascrust sorts them by name.)
     let mut checks: i16 = 0;
     let mut failures: i16 = 0;
     let mut s: SearchRec = SearchRec::default();

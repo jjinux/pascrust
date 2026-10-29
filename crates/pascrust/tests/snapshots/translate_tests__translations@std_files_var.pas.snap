@@ -12,6 +12,11 @@ input_file: tests/translate/std_files_var.pas
 
 use pascrust_runtime::prelude::*;
 
+// Output, Input and the printer's Lst passed where a var Text parameter is
+// expected: a common way to write a report once and send it anywhere.
+// Self-checking. (Free Pascal's Lst is a real printer device, so this .out
+// is built from the checks, by hand.)
+
 /// Pascal: `procedure Check(ok: Boolean; what: string);`
 ///
 /// The global variables this procedure uses are passed in as parameters,
@@ -39,10 +44,6 @@ fn read_number(src: &mut PText, value: &mut i16) {
 /// The main program: the `begin ... end.` block of `StdFilesVar`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    // Output, Input and the printer's Lst passed where a var Text parameter is
-    // expected: a common way to write a report once and send it anywhere.
-    // Self-checking. (Free Pascal's Lst is a real printer device, so this .out
-    // is built from the checks, by hand.)
     let mut checks: i16 = 0;
     let mut failures: i16 = 0;
     let mut f: PText = PText::default();

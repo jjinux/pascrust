@@ -30,13 +30,29 @@ pub(super) struct Comments {
     /// group's anchor, and whether it's the group's last variable, whose
     /// `let` gets the group's comment.
     var_names: HashMap<usize, (usize, bool)>,
+    /// Every type declaration: its anchor and the whole `Name = type` span.
+    /// An alias (`TInt = Integer`) makes no Rust item, so codegen writes
+    /// its comments on their own.
+    pub(super) type_decls: Vec<(usize, Span)>,
 }
 
 impl Comments {
     pub(super) fn new(map: &SourceMap, program: &Program, units: &[Unit], comments: &[Comment]) -> Comments {
-        let mut walker = Anchors { map, anchors: Vec::new(), field_groups: HashMap::new(), var_names: HashMap::new() };
+        let mut walker = Anchors {
+            map,
+            anchors: Vec::new(),
+            field_groups: HashMap::new(),
+            var_names: HashMap::new(),
+            type_decls: Vec::new(),
+            headings: Vec::new(),
+            bodies: Vec::new(),
+            headings_of_files: Vec::new(),
+        };
+        walker.heading(&program.name, program.uses.last().unwrap_or(&program.name).span.end);
         walker.block(&program.block);
         for unit in units {
+            let end = unit.interface_uses.last().map_or(unit.interface_keyword, |u| u.span).end;
+            walker.heading(&unit.name, end);
             walker.decls(&unit.interface);
             walker.decls(&unit.implementation);
             walker.stmts(&unit.init);
@@ -45,8 +61,12 @@ impl Comments {
         let mut anchors = walker.anchors;
         anchors.sort();
         anchors.dedup_by_key(|&mut (start, _)| start);
-        let mut result =
-            Comments { field_groups: walker.field_groups, var_names: walker.var_names, ..Comments::default() };
+        let mut result = Comments {
+            field_groups: walker.field_groups,
+            var_names: walker.var_names,
+            type_decls: walker.type_decls,
+            ..Comments::default()
+        };
         // Finding an offset's line by counting newlines from the start of
         // the file is slow when it's done for every comment and anchor, so
         // the newlines' offsets are listed once and searched.
@@ -57,6 +77,9 @@ impl Comments {
             ending_on.entry(lines.line(end)).or_default().push((start, end));
         }
         for comment in comments {
+            if comment.text.trim().is_empty() {
+                continue; // `{}`
+            }
             // The latest anchor that ends on the comment's line, before it.
             let before = ending_on
                 .get(&lines.line(comment.span.start))
@@ -65,15 +88,7 @@ impl Comments {
                 .filter(|&&(_, end)| end <= comment.span.start)
                 .max_by_key(|&&(start, _)| start);
             if let Some(&(start, _)) = before {
-                let text = one_line(&comment.text);
-                result
-                    .trailing
-                    .entry(start)
-                    .and_modify(|t| {
-                        t.push(' ');
-                        t.push_str(&text);
-                    })
-                    .or_insert(text);
+                result.add_trailing(start, one_line(&comment.text));
                 continue;
             }
             // (A comment ending the first line of a construct that goes on,
@@ -82,13 +97,59 @@ impl Comments {
             // Otherwise, the next anchor in the same file. The anchors are
             // sorted, so `partition_point` finds it by binary search.
             let next = anchors.partition_point(|&(start, _)| start < comment.span.end);
+            // But a comment inside a statement, with nothing after it there
+            // (`b := 2 + {why} 3;`), is about that statement: the innermost
+            // anchor around it. (Anchors nest, so it's the latest one that
+            // starts before the comment and ends after it.)
+            let around = anchors[..next].iter().rev().find(|&&(_, end)| end >= comment.span.end);
+            if let Some(&(start, end)) = around
+                && anchors.get(next).is_none_or(|&(next_start, _)| next_start >= end)
+            {
+                // Except that the file's heading keeps its comments whole.
+                if walker.headings_of_files.contains(&start) {
+                    result.leading.entry(start).or_default().extend(lines_of(&comment.text));
+                } else {
+                    result.add_trailing(start, one_line(&comment.text));
+                }
+                continue;
+            }
             if let Some(&(start, _)) = anchors.get(next)
                 && map.file_index(start) == map.file_index(comment.span.start)
             {
                 result.leading.entry(start).or_default().extend(lines_of(&comment.text));
             }
         }
+        // A heading (`forward`, in a unit's interface, or in an object type)
+        // makes no Rust of its own: its comments go with its body, the
+        // first one after it with the same name.
+        for (key, heading) in walker.headings {
+            let body = walker.bodies.iter().find(|(k, at)| *k == key && *at > heading);
+            let Some(&(_, body)) = body else { continue };
+            let mut lines = result.leading.remove(&heading).unwrap_or_default();
+            lines.extend(result.trailing.remove(&heading));
+            if !lines.is_empty() {
+                let body_lines = result.leading.entry(body).or_default();
+                lines.append(body_lines);
+                *body_lines = lines;
+            }
+        }
         result
+    }
+
+    /// Add a comment to the end of the anchor's line, after any already there.
+    fn add_trailing(&mut self, at: usize, text: String) {
+        self.trailing
+            .entry(at)
+            .and_modify(|t| {
+                t.push(' ');
+                t.push_str(&text);
+            })
+            .or_insert(text);
+    }
+
+    /// Whether the anchor at `at` has comments not yet written.
+    pub(super) fn has_any(&self, at: usize) -> bool {
+        self.leading.contains_key(&at) || self.trailing.contains_key(&at)
     }
 
     /// The comment lines to write before the anchor at `at` (each once).
@@ -142,9 +203,23 @@ struct Anchors<'a> {
     anchors: Vec<(usize, usize)>,
     field_groups: HashMap<usize, Vec<(Vec<String>, usize)>>,
     var_names: HashMap<usize, (usize, bool)>,
+    type_decls: Vec<(usize, Span)>,
+    /// Procedure headings with no body, by name (`shape.area` for a
+    /// method), and their anchors; and the procedures with bodies.
+    headings: Vec<(String, usize)>,
+    bodies: Vec<(String, usize)>,
+    /// The anchors of `program Name; uses ...;` and `unit Name; ...`.
+    headings_of_files: Vec<usize>,
 }
 
 impl Anchors<'_> {
+    /// `program Name; uses A, B;` (or a unit's): comments before it or on
+    /// its line describe the whole file.
+    fn heading(&mut self, name: &Ident, end: usize) {
+        self.anchors.push((name.span.start, end));
+        self.headings_of_files.push(name.span.start);
+    }
+
     fn block(&mut self, block: &Block) {
         self.decls(&block.decls);
         self.stmts(&block.body);
@@ -167,7 +242,8 @@ impl Anchors<'_> {
                     // The type is the anchor: that's where `type_defs` puts it.
                     let span = t.ty.span();
                     self.anchors.push((span.start, span.end));
-                    self.type_expr(&t.ty);
+                    self.type_decls.push((span.start, t.name.span.to(span)));
+                    self.type_expr(&t.ty, &t.name.key());
                 }
                 Decl::Var(v) => {
                     let at = v.names[0].span.start;
@@ -175,12 +251,19 @@ impl Anchors<'_> {
                     for (i, name) in v.names.iter().enumerate() {
                         self.var_names.insert(name.span.start, (at, i == v.names.len() - 1));
                     }
-                    self.type_expr(&v.ty);
+                    self.type_expr(&v.ty, "");
                 }
                 Decl::Proc(p) => {
                     self.anchors.push((p.span.start, p.header_span.end));
+                    let key = match &p.owner {
+                        Some(owner) => format!("{}.{}", owner.key(), p.name.key()),
+                        None => p.name.key(),
+                    };
                     if let ProcBody::Block(body) = &p.body {
+                        self.bodies.push((key, p.span.start));
                         self.block(body);
+                    } else {
+                        self.headings.push((key, p.span.start));
                     }
                 }
             }
@@ -188,11 +271,12 @@ impl Anchors<'_> {
     }
 
     /// The fields of a record or object type, written out in a declaration.
-    fn type_expr(&mut self, ty: &TypeExpr) {
+    /// `name` is the declared type's name, for an object's methods.
+    fn type_expr(&mut self, ty: &TypeExpr, name: &str) {
         let span = ty.span();
         let fields = match ty {
             TypeExpr::Record(fields, _) | TypeExpr::Object { fields, .. } => fields,
-            TypeExpr::Array { elem, .. } => return self.type_expr(elem),
+            TypeExpr::Array { elem, .. } => return self.type_expr(elem, ""),
             _ => return,
         };
         let mut groups = Vec::new();
@@ -200,12 +284,13 @@ impl Anchors<'_> {
             let at = group.names[0].span.start;
             self.anchors.push((at, group.ty.span().end));
             groups.push((group.names.iter().map(|n| n.key()).collect(), at));
-            self.type_expr(&group.ty);
+            self.type_expr(&group.ty, "");
         }
         self.field_groups.insert(span.start, groups);
         if let TypeExpr::Object { methods, .. } = ty {
             for method in methods {
                 self.anchors.push((method.span.start, method.header_span.end));
+                self.headings.push((format!("{name}.{}", method.name.key()), method.span.start));
             }
         }
     }
