@@ -783,12 +783,18 @@ sense; only what can't be real is faked.
   what to put in the `.OVR` file. The calls stay ordinary function calls
   in the generated code (`ovr_init("GAME.OVR")`), so a reader sees what
   the program asked for.
+- **Dos** (`runtime/src/dos.rs`): `DosVersion` is 6.22; `DiskFree`/
+  `DiskSize` report 512 MB free of 1 GB on every drive, because a real
+  disk's size overflows TP's `LongInt`; `SetDate`/`SetTime` don't touch
+  the computer's clock; the Ctrl-Break and verify switches are remembered.
 - **System and Crt** (`MemAvail`/`MaxAvail` report 512,000 bytes,
   `Mark`/`Release` and `SetTextBuf` become comments, `Test8087` is 3,
   `DirectVideo`/`CheckSnow`/`CheckEOF` are remembered and ignored): see
   `language_spec.md`.
 - Not faked, but refused with a clear error: what needs real DOS or raw
-  memory (`Intr`, `MsDos`, `Mem`, `Port`, `GetIntVec`, `Keep`).
+  memory (`Intr`, `MsDos`, `Mem`, `Port`, `GetIntVec`, `Keep`). A unit
+  routine can be declared `refused` in `units.rs`, so calling it says why
+  instead of "unknown identifier".
 
 ## 20. Naming and readability of generated code
 

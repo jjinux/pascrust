@@ -13,11 +13,102 @@ thread_local! {
     static EXIT_CODE: Cell<u16> = const { Cell::new(0) };
 }
 
-/// The `DosError` variable: the result of the last `Exec` (0 = success,
-/// 2 = file not found).
+/// The `DosError` variable: the result of the last `Exec`, `FindFirst` or
+/// `FindNext` (0 = success, 2 = file not found, 18 = no more files).
 pub fn dos_error() -> i16 {
     DOS_ERROR.with(Cell::get)
 }
+
+/// `DosError := n`.
+pub fn set_dos_error(n: impl Into<i32>) {
+    DOS_ERROR.with(|e| e.set(n.into() as i16));
+}
+
+/// `FSplit(path, dir, name, ext)`: split a path into its directory (up to
+/// and including the last `\` or `:`), its name, and its extension (from
+/// the last `.` of the name). The parts are cut to `DirStr`, `NameStr` and
+/// `ExtStr`'s lengths (67, 8 and 4), as in TP.
+pub fn f_split(path: impl Into<PString>, dir: &mut PString, name: &mut PString, ext: &mut PString) {
+    let path = path.into();
+    let bytes = path.as_bytes();
+    let name_start = bytes.iter().rposition(|&b| matches!(b, b'\\' | b':' | b'/')).map_or(0, |i| i + 1);
+    let (dir_part, file) = bytes.split_at(name_start);
+    let ext_start = file.iter().rposition(|&b| b == b'.').unwrap_or(file.len());
+    *dir = PString::from_bytes(dir_part).truncated(67);
+    *name = PString::from_bytes(&file[..ext_start]).truncated(8);
+    *ext = PString::from_bytes(&file[ext_start..]).truncated(4);
+}
+
+/// `EnvCount`: how many environment variables there are.
+pub fn env_count() -> i16 {
+    std::env::vars_os().count() as i16
+}
+
+/// `EnvStr(i)`: environment variable `i` (from 1) as `NAME=value`, or ''.
+pub fn env_str(i: impl Into<i32>) -> PString {
+    let i = i.into();
+    if i < 1 {
+        return PString::new();
+    }
+    std::env::vars_os().nth(i as usize - 1).map_or_else(PString::new, |(name, value)| {
+        PString::from(format!("{}={}", name.to_string_lossy(), value.to_string_lossy()).as_str())
+    })
+}
+
+/// `DosVersion` (faked): DOS 6.22, the last MS-DOS most of these programs
+/// knew. The low byte is the major version and the high byte the minor.
+pub fn dos_version() -> u16 {
+    22 << 8 | 6
+}
+
+/// `DiskSize(drive)` (faked): today's disks are far bigger than the 2 GB a
+/// `LongInt` holds, so every drive is a 1 GB disk. Drive 0 is the current
+/// one, 1 is A:, ...; a drive letter past Z: is -1, as TP's invalid drive.
+pub fn disk_size(drive: impl Into<i32>) -> i32 {
+    if (0..=26).contains(&drive.into()) { 1 << 30 } else { -1 }
+}
+
+/// `DiskFree(drive)` (faked): 512 MB free on every drive. See `disk_size`.
+/// (`DiskFree(0) div 1024` works; `DiskFree(0) * 100` overflows a `LongInt`,
+/// as it did on a real disk of a few hundred megabytes.)
+pub fn disk_free(drive: impl Into<i32>) -> i32 {
+    if (0..=26).contains(&drive.into()) { 1 << 29 } else { -1 }
+}
+
+/// `SetDate(year, month, day)` and `SetTime(...)` (faked): they would change
+/// the computer's clock, which a program shouldn't, so they do nothing.
+pub fn set_date(_year: impl Into<i32>, _month: impl Into<i32>, _day: impl Into<i32>) {}
+
+pub fn set_time(_hour: impl Into<i32>, _minute: impl Into<i32>, _second: impl Into<i32>, _sec100: impl Into<i32>) {}
+
+// DOS's Ctrl-Break checking and disk-write verification: settings a
+// program can read back, which change nothing here.
+thread_local! {
+    static CBREAK: Cell<bool> = const { Cell::new(false) };
+    static VERIFY: Cell<bool> = const { Cell::new(false) };
+}
+
+/// `GetCBreak(b)` and `SetCBreak(b)` (faked).
+pub fn get_cbreak(on: &mut bool) {
+    *on = CBREAK.with(Cell::get);
+}
+
+pub fn set_cbreak(on: bool) {
+    CBREAK.with(|c| c.set(on));
+}
+
+/// `GetVerify(b)` and `SetVerify(b)` (faked).
+pub fn get_verify(on: &mut bool) {
+    *on = VERIFY.with(Cell::get);
+}
+
+pub fn set_verify(on: bool) {
+    VERIFY.with(|v| v.set(on));
+}
+
+/// `SwapVectors` (faked): swapped DOS's interrupt vectors around `Exec`.
+/// There are none to swap.
+pub fn swap_vectors() {}
 
 /// `DosExitCode`: the exit code of the last program run by `Exec`.
 pub fn dos_exit_code() -> u16 {

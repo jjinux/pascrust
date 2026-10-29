@@ -1,0 +1,14 @@
+ok: FSplit of a full path
+ok: FSplit of a bare name
+ok: FSplit cuts to NameStr and ExtStr
+ok: EnvCount
+ok: EnvStr is NAME=value
+ok: EnvStr(0) is empty
+ok: DosVersion is 6.22
+ok: DiskFree and DiskSize
+ok: DiskFree is half of DiskSize
+ok: DiskSize of an invalid drive
+ok: SetCBreak and GetCBreak
+ok: SetVerify and GetVerify
+ok: DosError is a variable
+13 of 13 checks passed

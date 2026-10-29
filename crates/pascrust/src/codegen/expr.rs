@@ -563,9 +563,12 @@ impl<'a> Codegen<'a> {
                         Param::Str => self.string_arg(arg),
                         Param::Bool => self.expr(arg).0,
                         Param::FillPattern => self.coerce(arg, &crate::sema::units::fill_pattern_type()).0,
-                        Param::VarWord | Param::VarInteger | Param::VarText | Param::VarFillPattern => {
-                            self.place_mut(arg)
-                        }
+                        Param::VarWord
+                        | Param::VarInteger
+                        | Param::VarText
+                        | Param::VarStr
+                        | Param::VarBool
+                        | Param::VarFillPattern => self.place_mut(arg),
                     })
                     .collect();
                 let code = format!("{}({})", r.rust, parts.join(", "));

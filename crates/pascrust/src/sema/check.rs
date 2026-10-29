@@ -2054,6 +2054,10 @@ impl Checker {
 
     fn unit_call(&mut self, e: &Expr, r: &'static super::units::UnitRoutine, args: &[Expr]) -> Type {
         use super::units::Param;
+        if let Some(why) = r.refused {
+            self.error(e.span, format!("pascrust can't run `{}`: {why}", r.name));
+            return Type::Error;
+        }
         if r.params.len() != args.len() {
             self.error(
                 e.span,
@@ -2086,6 +2090,18 @@ impl Checker {
                     let ty = if *param == Param::FillPattern { self.expr(arg) } else { self.place(arg, true) };
                     if ty != super::units::fill_pattern_type() && ty != Type::Error {
                         self.error(arg.span, format!("expected a FillPatternType, found {ty}"));
+                    }
+                }
+                Param::VarStr => {
+                    let ty = self.place(arg, true);
+                    if !matches!(ty, Type::Str { .. } | Type::Error) {
+                        self.error(arg.span, format!("expected a string variable, found {ty}"));
+                    }
+                }
+                Param::VarBool => {
+                    let ty = self.place(arg, true);
+                    if ty != Type::Bool && ty != Type::Error {
+                        self.error(arg.span, format!("expected a Boolean variable, found {ty}"));
                     }
                 }
                 Param::VarText => {

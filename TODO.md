@@ -223,11 +223,11 @@ Sets (a language feature, but `Include`/`Exclude` and `in` are everywhere in old
 
 Dos, the rest
 - [ ] `FindFirst`/`FindNext`/`SearchRec` with DOS wildcards (`*.PAS`, `?`), the attribute filter (`Directory`, `AnyFile`, ...), names shown as on disk.
-- [ ] `FSplit`, `EnvCount`/`EnvStr`, `DosVersion` (fake: DOS 6.22, `$1606`).
+- [x] `FSplit`, `EnvCount`/`EnvStr`, `DosVersion` (fake: DOS 6.22, `$1606`). `DosError` is now a variable.
 - [ ] `GetFTime`/`SetFTime` with `PackTime`/`UnpackTime` and the `DateTime` record; `GetFAttr`/`SetFAttr` (read-only from the file's permissions, directory from its type; hidden/system/archive faked from the name and kept in memory).
-- [ ] `DiskFree`/`DiskSize`: the real figures for the mapped drive's file system, capped at what a `LongInt` holds (TP returned -1 for an invalid drive).
-- [ ] Fake: `SetDate`/`SetTime` don't change the machine's clock; `GetCBreak`/`SetCBreak` and `GetVerify`/`SetVerify` remember a flag; `SwapVectors` does nothing.
-- [ ] Never: `Intr`, `MsDos`, `Keep`, `GetIntVec`/`SetIntVec` stay a clear "needs real DOS" error.
+- [x] `DiskFree`/`DiskSize`, faked (as the user suggested): real disks overflow a `LongInt`, so every drive is a 1 GB disk with 512 MB free; past Z: is -1.
+- [x] Fake: `SetDate`/`SetTime` don't change the machine's clock; `GetCBreak`/`SetCBreak` and `GetVerify`/`SetVerify` remember a flag; `SwapVectors` does nothing.
+- [x] Never: `Intr`, `MsDos`, `Keep`, `GetIntVec`/`SetIntVec` are a clear "needs real DOS" error (`UnitRoutine::refused`).
 
 Graph, the rest
 - [ ] `DrawPoly`/`FillPoly` (arrays of `PointType`), `GetArcCoords`, and the `Get*Settings` records (`GetLineSettings`, `GetFillSettings`, `GetTextSettings`, `GetViewSettings`).

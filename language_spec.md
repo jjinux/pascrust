@@ -226,12 +226,21 @@ Overlay unit (faked: a Rust program has all its code in memory)
   `ovrOk`...`ovrNoEMSMemory` constants. `{$O+}`, `{$O UnitName}` and
   `{$F+}` are ignored silently
 
-Dos unit (as used in the examples)
+Dos unit
 
-- `GetDate`, `GetTime`, `SetDate`/`SetTime` (no-ops with a warning),
-  `FExpand`, `FSearch`, `FSplit`, `PathStr`/`DirStr`/`NameStr`/`ExtStr`,
-  `Exec`, `DosExitCode`, `ChDir`/`MkDir`/`RmDir`/`GetDir` (System), `GetEnv`,
-  `DosVersion`, `DiskFree`/`DiskSize` (best effort), `FindFirst`/`FindNext`
+- `GetDate`, `GetTime`, `FExpand`, `FSearch`, `FSplit` (parts cut to
+  `DirStr`/`NameStr`/`ExtStr`), `PathStr`/`DirStr`/`NameStr`/`ExtStr`,
+  `Exec`, `DosExitCode`, `DosError` (a variable), `GetEnv`, `EnvCount`,
+  `EnvStr`; `ChDir`/`MkDir`/`RmDir`/`GetDir` are in System
+- Faked: `DosVersion` (DOS 6.22), `DiskFree`/`DiskSize` (512 MB free of a
+  1 GB disk on every drive: real disks are too big for a `LongInt`),
+  `SetDate`/`SetTime` (don't change the computer's clock),
+  `GetCBreak`/`SetCBreak` and `GetVerify`/`SetVerify` (remembered),
+  `SwapVectors` (does nothing)
+- Refused with a clear error, since they need real DOS: `Intr`, `MsDos`,
+  `Keep`, `GetIntVec`, `SetIntVec`
+- Not yet: `FindFirst`/`FindNext`, `GetFTime`/`SetFTime`,
+  `PackTime`/`UnpackTime`, `GetFAttr`/`SetFAttr`
 - DOS path translation (`a:\tictac` → a configured directory)
 
 Graph unit (BGI, as used in the examples)

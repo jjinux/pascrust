@@ -24,6 +24,10 @@ pub enum Param {
     VarInteger,
     /// A `var` parameter of type `Text`.
     VarText,
+    /// A `var` parameter of any string type.
+    VarStr,
+    /// A `var` parameter of type `Boolean`.
+    VarBool,
     /// `Graph`'s `FillPatternType`, by value and as a `var` parameter.
     FillPattern,
     VarFillPattern,
@@ -69,6 +73,8 @@ impl Ret {
 pub struct UnitRoutine {
     /// Lowercase Pascal name.
     pub name: &'static str,
+    /// For a routine pascrust refuses: why (calling it is an error).
+    pub refused: Option<&'static str>,
     /// The runtime function.
     pub rust: &'static str,
     pub params: &'static [Param],
@@ -79,7 +85,12 @@ pub struct UnitRoutine {
 /// parameter kind listed in the brackets.
 macro_rules! routine {
     ($name:literal => $rust:literal ($($p:ident),*) $(-> $ret:ident)?) => {
-        UnitRoutine { name: $name, rust: $rust, params: &[$(Param::$p),*], ret: routine!(@ret $($ret)?) }
+        UnitRoutine { name: $name, refused: None, rust: $rust, params: &[$(Param::$p),*], ret: routine!(@ret $($ret)?) }
+    };
+    // A routine that needs real DOS: declared, so calling it gives a clear
+    // error rather than "unknown identifier".
+    ($name:literal => refused $why:literal) => {
+        UnitRoutine { name: $name, refused: Some($why), rust: "", params: &[], ret: None }
     };
     (@ret) => { None };
     (@ret $ret:ident) => { Some(Ret::$ret) };
@@ -126,13 +137,30 @@ pub static CRT: &[UnitRoutine] = &[
 
 pub static DOS: &[UnitRoutine] = &[
     routine!("exec" => "exec"(Str, Str)),
-    routine!("doserror" => "dos_error"() -> Integer),
     routine!("dosexitcode" => "dos_exit_code"() -> Word),
     routine!("gettime" => "get_time"(VarWord, VarWord, VarWord, VarWord)),
     routine!("getdate" => "get_date"(VarWord, VarWord, VarWord, VarWord)),
     routine!("fsearch" => "f_search"(Str, Str) -> Str),
     routine!("fexpand" => "f_expand"(Str) -> Str),
     routine!("getenv" => "get_env"(Str) -> Str),
+    routine!("fsplit" => "f_split"(Str, VarStr, VarStr, VarStr)),
+    routine!("envcount" => "env_count"() -> Integer),
+    routine!("envstr" => "env_str"(Int) -> Str),
+    routine!("dosversion" => "dos_version"() -> Word),
+    routine!("disksize" => "disk_size"(Int) -> LongInt),
+    routine!("diskfree" => "disk_free"(Int) -> LongInt),
+    routine!("setdate" => "set_date"(Int, Int, Int)),
+    routine!("settime" => "set_time"(Int, Int, Int, Int)),
+    routine!("getcbreak" => "get_cbreak"(VarBool)),
+    routine!("setcbreak" => "set_cbreak"(Bool)),
+    routine!("getverify" => "get_verify"(VarBool)),
+    routine!("setverify" => "set_verify"(Bool)),
+    routine!("swapvectors" => "swap_vectors"()),
+    routine!("intr" => refused "it calls a DOS or BIOS interrupt, which needs real DOS"),
+    routine!("msdos" => refused "it calls DOS itself (interrupt 21h), which needs real DOS"),
+    routine!("keep" => refused "it leaves the program resident in DOS memory, which needs real DOS"),
+    routine!("getintvec" => refused "interrupt vectors only exist in real DOS"),
+    routine!("setintvec" => refused "interrupt vectors only exist in real DOS"),
 ];
 
 /// A constant a unit exports: Pascal name, Rust name, value.
@@ -323,6 +351,7 @@ pub fn unit_vars(name: &str) -> &'static [UnitVar] {
             UnitVar { name: "checksnow", ty: Ret::Bool, get: "check_snow", set: "set_check_snow" },
             UnitVar { name: "directvideo", ty: Ret::Bool, get: "direct_video", set: "set_direct_video" },
         ],
+        "dos" => &[UnitVar { name: "doserror", ty: Ret::Integer, get: "dos_error", set: "set_dos_error" }],
         "overlay" => &[
             UnitVar { name: "ovrresult", ty: Ret::Integer, get: "ovr_result", set: "set_ovr_result" },
             UnitVar { name: "ovrfilemode", ty: Ret::Byte, get: "ovr_file_mode", set: "set_ovr_file_mode" },
