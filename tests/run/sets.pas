@@ -16,6 +16,7 @@ const
   Vowels = ['a', 'e', 'i', 'o', 'u'];
   Primary = [Red, Green, Blue];
   Typed: CharSet = ['x'..'z'];
+  Warmish: Colors = [Red..Green];
 
 var
   letters, found: CharSet;
@@ -24,6 +25,8 @@ var
   i: Integer;
   p: Palette;
   warm: Colors;
+  hue, other: Color;
+  flags: set of Boolean;
 
 procedure Show(s: CharSet);
 var
@@ -84,4 +87,19 @@ begin
     if c in Vowels + ['y'] then
       i := i + 1;
   WriteLn(i);
+  { s := s + [x], s := s * [...], s := s - [x] }
+  letters := ['a'];
+  letters := letters + ['b'];
+  letters := letters + ['c'..'e'];
+  letters := letters - ['a'];
+  letters := letters * ['b'..'d'];
+  Show(letters);
+  { enum and Boolean ranges in set values and tests }
+  warm := [Red..Blue];
+  WriteLn(Blue in warm, ' ', Yellow in warm, ' ', Green in Warmish);
+  flags := [False..True];
+  WriteLn(False in flags, ' ', True in flags);
+  hue := Blue;
+  other := Yellow;
+  WriteLn(hue in [Red..Green, other], ' ', Yellow in [Red..Green, other]);
 end.

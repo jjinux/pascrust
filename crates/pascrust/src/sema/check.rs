@@ -1020,6 +1020,17 @@ impl Checker {
         }
     }
 
+    /// Is the constant expression `e` a Word, for `Swap`: a number above
+    /// 32767 (`$FF00`, or a constant naming one), or `Swap` of a Word?
+    fn is_word_constant(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Call { callee, args } if args.len() == 1 => {
+                matches!(&callee.kind, ExprKind::Name(id) if id.key() == "swap") && self.is_word_constant(&args[0])
+            }
+            _ => matches!(self.eval_const(e), Some(ConstVal::Int(n)) if n > 32767),
+        }
+    }
+
     /// If the call `e` has constant arguments, record its value for codegen
     /// to write instead (`Hi(-1)` is just `255`).
     fn fold(&mut self, e: &Expr, ty: &Type) {
@@ -1142,11 +1153,12 @@ impl Checker {
                     ("pred", Bool(true)) => Some(Bool(false)),
                     ("hi", Int(n)) => Some(Int((n >> 8) & 0xFF)),
                     ("lo", Int(n)) => Some(Int(n & 0xFF)),
-                    // As the run-time `Swap`: on a Word above 32767, otherwise
-                    // on an Integer, so `Swap(255)` is -256.
+                    // As the run-time `Swap`: on a Word if the argument is one,
+                    // otherwise on an Integer, so `Swap(255)` is -256.
                     ("swap", Int(n)) => {
                         let swapped = (n as u16).swap_bytes();
-                        Some(Int(if n > 32767 { i64::from(swapped) } else { i64::from(swapped as i16) }))
+                        let word = self.is_word_constant(&args[0]);
+                        Some(Int(if word { i64::from(swapped) } else { i64::from(swapped as i16) }))
                     }
                     ("length", Str(s)) => Some(Int(s.len() as i64)),
                     ("odd", Int(n)) => Some(Bool(n % 2 != 0)),

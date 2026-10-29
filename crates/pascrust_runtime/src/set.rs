@@ -8,7 +8,7 @@
 
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::{BitAnd, BitOr, RangeInclusive, Sub};
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, RangeInclusive, Sub, SubAssign};
 
 use crate::ordinal::Ordinal;
 
@@ -144,8 +144,15 @@ impl<U: Ordinal> SetItems for RangeInclusive<U> {
 }
 
 /// A Pascal set literal: `pset![b'a'..=b'z', b'_']` is `['a'..'z', '_']`.
+/// Where nothing else says what the set holds (`[Mon..Wed, x].contains(d)`),
+/// `pset![set of Day; Day::Mon..=Day::Wed, x]` says it, as Pascal would.
+/// (`macro_rules!` tries its rules in order; the first only matches when the
+/// macro starts with the words `set of`.)
 #[macro_export]
 macro_rules! pset {
+    (set of $t:ty; $($item:expr),* $(,)?) => {
+        $crate::set::PSet::<$t>::new()$(.with($item))*
+    };
     ($($item:expr),* $(,)?) => {
         $crate::set::PSet::new()$(.with($item))*
     };
@@ -171,6 +178,26 @@ impl<T> Sub for PSet<T> {
     type Output = PSet<T>;
     fn sub(self, other: PSet<T>) -> PSet<T> {
         self.zip_with(other, |a, b| a & !b)
+    }
+}
+
+// And their assigning forms, for `s := s + [x]` (`s |= pset![x]`). A
+// `PSet` is `Copy`, so `*self | other` copies the old value out first.
+impl<T> BitOrAssign for PSet<T> {
+    fn bitor_assign(&mut self, other: PSet<T>) {
+        *self = *self | other;
+    }
+}
+
+impl<T> BitAndAssign for PSet<T> {
+    fn bitand_assign(&mut self, other: PSet<T>) {
+        *self = *self & other;
+    }
+}
+
+impl<T> SubAssign for PSet<T> {
+    fn sub_assign(&mut self, other: PSet<T>) {
+        *self = *self - other;
     }
 }
 

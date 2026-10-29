@@ -415,12 +415,16 @@ flag makes codegen wrap assignments into subrange variables with
 TP's 32-byte sets) with a phantom element type. `+`, `*` and `-` are
 `|`, `&` and `-` (`BitOr`/`BitAnd`/`Sub`); `=`/`<>` compare the bits;
 `<=`/`>=` are `is_subset`/`is_superset`; `Include`/`Exclude` are methods.
+`s := s + [x]` is `s |= pset![x]` (and `&=`, `-=`).
 The element methods take any `Ordinal`, so `300 in s` is simply false
 rather than wrapping to a byte. Set literals `[1, 3..5, x]` become
 `pset![1, 3..=5, x]` (each item is a value or a `RangeInclusive`, through
 the `SetItems` trait), and `x in [...]` with only constants in the list
 becomes `matches!(x, 1 | 3..=5)`, which is what a Rust programmer would
-write. Set constants are Rust `const`s, built by the `const fn`s
+write (an enum range lists its values there: Rust range patterns are for
+numbers and chars). With other items, `x in [Mon..Wed, y]` tests a set
+built on the spot, and as nothing else says what that set holds, the
+literal says it: `pset![set of Day; Day::Mon..=Day::Wed, y].contains(x)`. Set constants are Rust `const`s, built by the `const fn`s
 `PSet::of(&[...])` and `PSet::from_ranges(&[...])` from `u8` ordinals,
 since trait methods can't run in a `const`. The element type must have
 ordinals 0 to 255 (`Char`, `Byte`, `Boolean`, an enum, a subrange in that

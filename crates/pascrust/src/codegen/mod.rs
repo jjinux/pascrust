@@ -1587,7 +1587,11 @@ impl<'a> Codegen<'a> {
             && !matches!(target_ty, Type::Str { .. })
             && self.same_as_place(lhs, &place)
         {
+            // For sets, Pascal's `+` and `*` are Rust's `|` and `&`.
+            let set = matches!(target_ty, Type::Set(_));
             let rust_op = match op {
+                BinaryOp::Add if set => "|=",
+                BinaryOp::Mul if set => "&=",
                 BinaryOp::Add => "+=",
                 BinaryOp::Sub => "-=",
                 _ => "*=",

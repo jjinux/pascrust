@@ -83,6 +83,7 @@ fn count(s: PSet<i16>) -> i16 {
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
     let typed: PSet<u8> = pset![b'x'..=b'z'];
+    let warmish: PSet<Color> = pset![Color::Red..=Color::Green];
     let mut letters: PSet<u8> = PSet::new();
     let mut found: PSet<u8> = PSet::new();
     let mut c: u8 = 0;
@@ -90,6 +91,9 @@ fn pascal_main() {
     let mut i: i16 = 0;
     let mut p: Palette = Palette::default();
     let mut warm: PSet<Color> = PSet::new();
+    let mut hue: Color = Color::Red;
+    let mut other: Color = Color::Red;
+    let mut flags: PSet<bool> = PSet::new();
     letters = pset![b'a'..=b'f', b'x', b'q'];
     show(letters);
     show(letters & VOWELS);
@@ -150,6 +154,25 @@ fn pascal_main() {
         }
     }
     pwriteln!(i);
+    // s := s + [x], s := s * [...], s := s - [x]
+    letters = pset![b'a'];
+    letters |= pset![b'b'];
+    letters |= pset![b'c'..=b'e'];
+    letters -= pset![b'a'];
+    letters &= pset![b'b'..=b'd'];
+    show(letters);
+    // enum and Boolean ranges in set values and tests
+    warm = pset![Color::Red..=Color::Blue];
+    pwriteln!(warm.contains(Color::Blue), " ", warm.contains(Color::Yellow), " ", warmish.contains(Color::Green));
+    flags = pset![false..=true];
+    pwriteln!(flags.contains(false), " ", flags.contains(true));
+    hue = Color::Blue;
+    other = Color::Yellow;
+    pwriteln!(
+        pset![set of Color; Color::Red..=Color::Green, other].contains(hue),
+        " ",
+        pset![set of Color; Color::Red..=Color::Green, other].contains(Color::Yellow)
+    );
 }
 
 fn main() {

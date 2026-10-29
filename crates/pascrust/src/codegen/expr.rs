@@ -58,6 +58,8 @@ impl<'a> Codegen<'a> {
                 let ty = self.a.type_of(e.id).clone();
                 let inner = paren(self.coerce(operand, &ty), prec::UNARY);
                 match op {
+                    // `--x` reads like C's decrement, and rustc warns about it.
+                    UnaryOp::Neg if inner.starts_with('-') => (format!("-({inner})"), prec::UNARY),
                     UnaryOp::Neg => (format!("-{inner}"), prec::UNARY),
                     UnaryOp::Not => (format!("!{inner}"), prec::UNARY),
                     UnaryOp::Plus => self.coerce(operand, &ty),
@@ -88,18 +90,22 @@ impl<'a> Codegen<'a> {
         if elems.is_empty() {
             return "PSet::new()".to_string();
         }
-        let items: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty)).collect();
+        let items: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty, false)).collect();
         format!("pset![{}]", items.join(", "))
     }
 
-    /// One element of a set literal: `x` or `lo..=hi`.
-    fn set_item(&mut self, elem: &SetElem, elem_ty: &Type) -> String {
+    /// One element of a set literal, or, with `pattern`, of the `matches!`
+    /// pattern that tests `x in [...]` against constants.
+    fn set_item(&mut self, elem: &SetElem, elem_ty: &Type, pattern: bool) -> String {
         match elem {
             SetElem::Single(x) => self.coerce(x, elem_ty).0,
             SetElem::Range(lo, hi) => {
-                // Rust ranges are for numbers and chars: in `d in [Sat..Sun]`
-                // an enum's (or Boolean's) values are listed instead.
-                if matches!(elem_ty, Type::Enum(_) | Type::Bool)
+                // Rust range patterns are for numbers and chars: in
+                // `d in [Sat..Sun]` an enum's (or Boolean's) values are
+                // listed instead. (A set value can take a range of anything
+                // ordinal: `pset![Day::Sat..=Day::Sun]`.)
+                if pattern
+                    && matches!(elem_ty, Type::Enum(_) | Type::Bool)
                     && let (Some(lo), Some(hi)) = (self.const_ordinal(lo), self.const_ordinal(hi))
                 {
                     return self.ord_range_pattern(elem_ty, lo, hi);
@@ -125,10 +131,17 @@ impl<'a> Codegen<'a> {
                 if elems.is_empty() {
                     return ("false".to_string(), prec::POSTFIX);
                 }
-                let patterns: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty)).collect();
+                let patterns: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty, true)).collect();
                 return (format!("matches!({}, {})", x.0, patterns.join(" | ")), prec::POSTFIX);
             }
-            let set = self.expr(rhs);
+            // A literal tested at once has nothing else to say what it holds.
+            let set = match &rhs.kind {
+                ExprKind::Set(elems) if !elems.is_empty() => {
+                    let items: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty, false)).collect();
+                    (format!("pset![set of {}; {}]", elem_ty.rust(), items.join(", ")), prec::ATOM)
+                }
+                _ => self.expr(rhs),
+            };
             // `contains` takes any ordinal, so an integer is passed as it
             // is: `300 in s` is false for a set of bytes, rather than
             // testing 300 cut down to a byte (44).
@@ -154,8 +167,6 @@ impl<'a> Codegen<'a> {
         (format!("{} {rust_op} {}", paren(l, left_min), paren(r, p + 1)), p)
     }
 
-    /// Can this set element be a `match` pattern: a literal, a named
-    /// constant or an enum value?
     /// The ordinal of a named constant (an enum value or `True`).
     fn const_ordinal(&self, e: &Expr) -> Option<i64> {
         let sym = *self.a.refs.get(&e.id)?;
@@ -166,6 +177,8 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// Can this set element be a `match` pattern: a literal, a named
+    /// constant or an enum value?
     fn constant_item(&self, elem: &SetElem) -> bool {
         let constant = |e: &Expr| match &e.kind {
             ExprKind::Int(_) | ExprKind::Str(_) => true,
