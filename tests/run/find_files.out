@@ -19,4 +19,6 @@ ok: VolumeID alone: no volume label
 ok: a failed FindFirst ends the search before it
 ok: no match: DosError 18
 ok: missing directory: DosError 3
-21 of 21 checks passed
+ok: A:*.TXT after ChDir('A:\sub')
+ok: and A: is no longer the root, so . is listed
+23 of 23 checks passed

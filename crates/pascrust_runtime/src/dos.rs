@@ -338,13 +338,12 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
     let mut found: Vec<Found> = Vec::new();
     // DOS listed `.` and `..` in every directory but a root; `read_dir`
     // doesn't list them.
-    // `\`, `A:` and `A:\` are roots whatever directory a drive maps to.
-    let drive_or_root = dir.trim_end_matches(['\\', '/']);
+    // `\` is the root, and so is a drive's own directory, however it's
+    // reached (`A:\`, `A:\SUB\..`, or `A:` when that's the drive's current
+    // directory).
     let canonical = dir_path.canonicalize().ok();
-    // `A:\SUB\..` is the root of `A:` too.
     let drive_root = |drive: &str| dos_path(&format!("{drive}\\")).canonicalize().ok();
-    let is_root = (!dir.is_empty() && drive_or_root.is_empty())
-        || (drive_or_root.len() == 2 && drive_or_root.ends_with(':'))
+    let is_root = (!dir.is_empty() && dir.trim_end_matches(['\\', '/']).is_empty())
         || canonical.as_ref().is_some_and(|p| p.parent().is_none())
         || (dir.get(1..2) == Some(":") && canonical.is_some() && canonical == drive_root(&dir[..2]));
     if attr & DIRECTORY != 0 && !is_root {

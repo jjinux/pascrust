@@ -237,6 +237,21 @@ fn pascal_main() {
     f.erase();
     f.assign("notes.pas");
     f.erase();
+    // A:X is relative to drive A's current directory, as in DOS
+    make(&mut f, pstr("sub\\inner.txt"), pstr("in"));
+    ch_dir("A:\\sub");
+    find_first("A:*.TXT", ANY_FILE, &mut s);
+    check(
+        &mut checks,
+        &mut failures,
+        dos_error() == 0 && s.name == "inner.txt",
+        pstr("A:*.TXT after ChDir('A:\\sub')"),
+    );
+    find_first("A:*.*", DIRECTORY, &mut s);
+    check(&mut checks, &mut failures, s.name == ".", pstr("and A: is no longer the root, so . is listed"));
+    f.assign("A:inner.txt");
+    f.erase();
+    ch_dir("A:\\");
     rm_dir("sub");
     pwriteln!(checks - failures, " of ", checks, " checks passed");
     if failures > 0 {

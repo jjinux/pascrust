@@ -181,18 +181,23 @@ pub fn dos_path(path: &str) -> std::path::PathBuf {
     }
     let rest = rest.replace('\\', "/");
     let path = match base {
-        // `A:\X` is absolute on drive A; `A:X` is relative to it. Either way
-        // it lives under the drive's directory, and as in DOS, `..` can't
-        // climb above the drive's root.
+        // `A:\X` is absolute on drive A; `A:X` is relative to the drive's
+        // current directory. PascRust keeps one current directory, so that's
+        // where `ChDir` went if it's on drive A, and the drive's root if not.
+        // Either way the path stays under the drive's directory: as in DOS,
+        // `..` can't climb above the drive's root.
         Some(base) => {
-            let mut parts: Vec<&str> = Vec::new();
+            let mut parts: Vec<String> = Vec::new();
+            if !rest.starts_with('/') {
+                parts = current_dir_on(&base);
+            }
             for part in rest.split('/') {
                 match part {
                     "" | "." => {}
                     ".." => {
                         parts.pop();
                     }
-                    _ => parts.push(part),
+                    _ => parts.push(part.to_string()),
                 }
             }
             base.join(parts.join("/"))
@@ -200,6 +205,19 @@ pub fn dos_path(path: &str) -> std::path::PathBuf {
         None => std::path::PathBuf::from(rest),
     };
     match_case(&path)
+}
+
+/// The current directory's path inside a drive's directory `base`, as
+/// parts (`["sub", "deep"]`), or none if it's elsewhere.
+fn current_dir_on(base: &std::path::Path) -> Vec<String> {
+    // Compared as real paths: on macOS `/tmp` is really `/private/tmp`.
+    let (Ok(base), Ok(here)) = (base.canonicalize(), std::env::current_dir().and_then(|d| d.canonicalize())) else {
+        return Vec::new();
+    };
+    match here.strip_prefix(&base) {
+        Ok(inside) => inside.iter().map(|part| part.to_string_lossy().into_owned()).collect(),
+        Err(_) => Vec::new(),
+    }
 }
 
 /// The current directory when the program started (the first time this is

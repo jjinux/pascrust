@@ -111,7 +111,7 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 | `PASCRUST_FAST=1` | Skip `Delay`. |
 | `PASCRUST_GRAPH=headless` | Draw `Graph` output without opening a window (for tests; `ReadKey` then reads standard input). |
 | `PASCRUST_GRAPH_SAVE=screen.bmp` | Save the graphics screen to a BMP file at `CloseGraph` or `Halt`. |
-| `PASCRUST_DRIVE_C=/some/dir` | Where the DOS drive `C:` lives for file names like `C:\DATA\X.DAT` (default: the directory the program started in). Any drive letter works, names match files on disk ignoring case, and `..` stops at the drive's root, as in DOS. |
+| `PASCRUST_DRIVE_C=/some/dir` | Where the DOS drive `C:` lives for file names like `C:\DATA\X.DAT` (default: the directory the program started in). Any drive letter works, names match files on disk ignoring case, `A:X` is relative to the current directory when `ChDir` went somewhere on drive A, and `..` stops at the drive's root, as in DOS. |
 | `PASCRUST_PRINTER=...` | Where the `Printer` unit's `Lst` prints: a file name (default `printer.txt`), or `\|command` to pipe to a command such as `\|lp`. See [Printing](#printing). |
 
 ### Printing

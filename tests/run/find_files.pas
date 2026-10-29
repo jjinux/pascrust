@@ -190,6 +190,16 @@ begin
   Erase(f);
   Assign(f, 'notes.pas');
   Erase(f);
+  { A:X is relative to drive A's current directory, as in DOS }
+  Make('sub\inner.txt', 'in');
+  ChDir('A:\sub');
+  FindFirst('A:*.TXT', AnyFile, s);
+  Check((DosError = 0) and (s.Name = 'inner.txt'), 'A:*.TXT after ChDir(''A:\sub'')');
+  FindFirst('A:*.*', Directory, s);
+  Check(s.Name = '.', 'and A: is no longer the root, so . is listed');
+  Assign(f, 'A:inner.txt');
+  Erase(f);
+  ChDir('A:\');
   RmDir('sub');
   WriteLn(checks - failures, ' of ', checks, ' checks passed');
   if failures > 0 then

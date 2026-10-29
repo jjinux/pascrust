@@ -128,7 +128,11 @@ Built-ins (System unit)
   `Output` as file arguments (`Writeln(Output, x)`), also passed to a
   `var f: Text` parameter (`Report(Output)`); they're always the console,
   so `Assign`/`Reset`/`Rewrite` on them is an error
-- `GetDir` (drive C: is where the program started, as for `FExpand`)
+- `GetDir` (drive C: is where the program started, as for `FExpand`).
+  File names with a drive letter go to that drive's directory
+  (`PASCRUST_DRIVE_A`); `A:X` is relative to the current directory when
+  it's on drive A (PascRust keeps one current directory, not one per
+  drive), and `..` stops at the drive's root
 - Faked, so old programs run: `MemAvail`/`MaxAvail` (512,000 bytes),
   `Mark`/`Release` (records are freed when nothing points to them, so they
   do nothing), `SetTextBuf` (files are buffered already), `Test8087` (3)
