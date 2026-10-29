@@ -373,7 +373,7 @@ fn dispatch(a: &mut Analysis) -> Vec<Diagnostic> {
                     errors.push(Diagnostic::new(
                         a.procs[caller].span,
                         format!(
-                            "`{}` calls the virtual method `{}` of its method's object; pascrust doesn't support that from a nested procedure yet",
+                            "`{}` calls the virtual method `{}` of its method's object; PascRust doesn't support that from a nested procedure yet",
                             a.procs[caller].name, a.procs[callee].name
                         ),
                     ));
@@ -406,7 +406,7 @@ fn dispatch(a: &mut Analysis) -> Vec<Diagnostic> {
                 errors.push(Diagnostic::new(
                     a.procs[pid].span,
                     format!(
-                        "`{name}` hides `{base_name}`, which calls virtual methods; pascrust doesn't support that yet (make `{base_name}` virtual)"
+                        "`{name}` hides `{base_name}`, which calls virtual methods; PascRust doesn't support that yet (make `{base_name}` virtual)"
                     ),
                 ));
             }

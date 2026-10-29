@@ -1537,9 +1537,9 @@ impl Checker {
             };
         if !ok {
             let supported = if b == Builtin::Move {
-                "pascrust supports `Move` only between two whole variables of the same type, with `SizeOf`"
+                "PascRust supports `Move` only between two whole variables of the same type, with `SizeOf`"
             } else {
-                "pascrust supports `FillChar` on a whole variable (with `SizeOf`, filling with 0 unless it's a string or byte array), or on part of a string or byte array"
+                "PascRust supports `FillChar` on a whole variable (with `SizeOf`, filling with 0 unless it's a string or byte array), or on part of a string or byte array"
             };
             self.error(e.span, supported);
         }
@@ -2129,7 +2129,7 @@ impl Checker {
     fn unit_call(&mut self, e: &Expr, r: &'static super::units::UnitRoutine, name: &str, args: &[Expr]) -> Type {
         use super::units::Param;
         if let Some(why) = r.refused {
-            self.error(e.span, format!("pascrust can't run `{name}`: {why}"));
+            self.error(e.span, format!("PascRust can't run `{name}`: {why}"));
             return Type::Error;
         }
         if r.params.len() != args.len() {

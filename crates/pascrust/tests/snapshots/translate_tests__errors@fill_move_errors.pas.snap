@@ -3,14 +3,14 @@ source: crates/pascrust/tests/translate_tests.rs
 expression: error
 input_file: tests/errors/fill_move_errors.pas
 ---
-fill_move_errors.pas:12:3: error: pascrust supports `FillChar` on a whole variable (with `SizeOf`, filling with 0 unless it's a string or byte array), or on part of a string or byte array
+fill_move_errors.pas:12:3: error: PascRust supports `FillChar` on a whole variable (with `SizeOf`, filling with 0 unless it's a string or byte array), or on part of a string or byte array
   FillChar(p, SizeOf(p), 1);
   ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-fill_move_errors.pas:13:3: error: pascrust supports `FillChar` on a whole variable (with `SizeOf`, filling with 0 unless it's a string or byte array), or on part of a string or byte array
+fill_move_errors.pas:13:3: error: PascRust supports `FillChar` on a whole variable (with `SizeOf`, filling with 0 unless it's a string or byte array), or on part of a string or byte array
   FillChar(n, 3, 0);
   ^^^^^^^^^^^^^^^^^
 
-fill_move_errors.pas:14:3: error: pascrust supports `Move` only between two whole variables of the same type, with `SizeOf`
+fill_move_errors.pas:14:3: error: PascRust supports `Move` only between two whole variables of the same type, with `SizeOf`
   Move(n, b, SizeOf(n));
   ^^^^^^^^^^^^^^^^^^^^^
