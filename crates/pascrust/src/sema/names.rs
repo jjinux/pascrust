@@ -137,6 +137,8 @@ const RESERVED: &[&str] = &[
     "FileRecord",
     "PasWrite",
     "Enumerated",
+    "Bytes",
+    "ByteView",
     // Runtime functions the generated code calls that no Pascal name spells
     // (`Random` is `random_real()`, `for c := Red to Blue` uses
     // `enum_range`), so a program's own `RandomReal` mustn't take their place.
@@ -145,6 +147,11 @@ const RESERVED: &[&str] = &[
     "random_word",
     "io_unchecked",
     "pas_str",
+    "bytes_from",
+    "fill_bytes",
+    "move_bytes",
+    "string_bytes",
+    "string_view_bytes",
     // `TypeOf` adds a `type_name` method to an object hierarchy.
     "type_name",
     // A trait the generated code implements by name (`impl Default for

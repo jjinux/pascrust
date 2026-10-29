@@ -116,11 +116,17 @@ Built-ins (System unit)
   constant folds to the Word made of its low 16 bits swapped, so
   `Swap(255)` is 65280 and `Swap(-1)` 65535; a LongInt trades its 16-bit
   halves, as Free Pascal allows), `Assigned`, `RunError`
-- `FillChar` on a whole variable (`FillChar(x, SizeOf(x), 0)` resets it;
-  strings and arrays of bytes or chars may be filled with any value) or on
-  part of a string or byte array (`FillChar(s[1], n, ' ')`); `Move` between
-  two whole variables of the same type. Other uses are an error, since
-  PascRust can't copy raw bytes between unrelated types
+- `FillChar` and `Move` on any variables, as TP's bytes: between
+  different types, part of a record or array, with any value. A count past
+  the end of a variable is runtime error 201 (TP overwrote whatever came
+  next), and an error at compile time when it's a constant
+- Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
+  routine sees the caller's variable as TP's bytes, through a typecast
+  (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a
+  whole), and can pass it on. An argument can start inside a variable
+  (`Dump(s[1], 3)`, `Dump(buf[10], 5)`). The bytes are copied in and
+  written back when the routine returns; nothing else can see the
+  variable in between, so a program can't tell
 - System variables (and the units' `TextAttr`, `DosError`, ...; these can be
   read and set with `:=`, but not passed as `var` arguments or to `Inc`):
   `ExitCode` (the exit code when the program ends),
@@ -355,7 +361,8 @@ Later (real TP features, not in the examples, worth doing in order)
    real`), `@proc`
 5. `goto` / `label` (only the structured uses: jump forward out of nested
    loops, which Rust can express with labeled `break`)
-6. `GetMem`/`FreeMem`, untyped `Pointer`, `Addr`/`@` on variables (would need
+6. (Untyped `var` parameters are done, in tier 2.) `GetMem`/`FreeMem`,
+   untyped `Pointer`, `Addr`/`@` on variables (would need
    the place-descriptor representation from `architecture.md` §15)
 7. Untyped `file`, `BlockRead`/`BlockWrite`; `TextRec`/`FileRec`
 8. (Done, now in tier 2: TP-exact binary layout for `file of Rec`.)

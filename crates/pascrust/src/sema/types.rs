@@ -130,6 +130,9 @@ pub enum Type {
     /// TP, a pointer to the type's table of virtual methods.) It can only be
     /// compared.
     TypeInfo,
+    /// An untyped `var` parameter (`var Data`): some variable, seen as its
+    /// bytes. It can only be passed on or typecast (`TBytes(Data)`).
+    Untyped,
     /// The "type" of a procedure call, which has no value.
     Void,
     /// Produced after a type error so that one mistake doesn't cascade into
@@ -324,6 +327,7 @@ impl Type {
                 None => a.rust_unaliased(),
             },
             Type::TypeInfo => "&'static str".to_string(),
+            Type::Untyped => "&mut dyn ByteView".to_string(),
             Type::Set(elem) => format!("PSet<{}>", elem.concrete().rust()),
             Type::Nil | Type::Void | Type::Error => "()".to_string(),
         }
@@ -395,6 +399,7 @@ impl fmt::Display for Type {
             Type::File(elem) => write!(f, "file of {elem}"),
             Type::Array(a) => write!(f, "array[{}..{}] of {}", a.lo, a.hi, a.elem),
             Type::Nil | Type::TypeInfo => write!(f, "Pointer"),
+            Type::Untyped => write!(f, "untyped"),
             Type::Set(elem) if **elem == Type::Void => write!(f, "empty set"),
             Type::Set(elem) => write!(f, "set of {elem}"),
             Type::Void => write!(f, "no value"),

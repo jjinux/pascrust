@@ -374,8 +374,25 @@ pub struct Ptr<T>(Option<Rc<RefCell<T>>>);
   borrows once as `p.get_mut().x += 1`; and in `p^.x := p^.x + F`, `p^.x`
   is read into its own `let` before `F` runs, since `F` may change the
   record.
-- Untyped `Pointer`, `GetMem`/`FreeMem`, pointer arithmetic, `Addr`/`@` on
-  variables, `Seg`/`Ofs`/`Ptr(...)` and `Mem[]` are out of scope.
+- Untyped `var` parameters, and `Move`/`FillChar` between different
+  types, work on a variable's *byte view* (`runtime/src/bytes.rs`): the
+  `ByteView` trait turns a variable into TP's bytes and back, built on the
+  typed files' `FileRecord` encoding, so the bytes are what `SizeOf`
+  counts. An untyped parameter is `data: &mut dyn ByteView`; the function
+  starts with `let mut data = Bytes::of(data);`, a copy of the bytes that
+  `TBytes(Data)[i]` indexes (`data[i]`) and `TRec(Data)` decodes
+  (`data.read::<TRec>()`), and that writes them back when it's dropped, at
+  any `return`. The argument is `&mut x`, `&mut string_bytes(&mut s, 30)`
+  (a `string[30]` knows its capacity only from its type) or
+  `&mut bytes_from(..., offset)` for one that starts inside a variable.
+  Copying in and out isn't aliasing, but nothing else can reach the
+  variable during the call except through a global (lifted into a
+  parameter, so sema's overlap check applies) or the heap (a `RefCell`
+  error), so no program can tell. See `notes/untyped_memory.md` for the
+  plan this is step 1 of.
+- Untyped `Pointer`, `GetMem`/`FreeMem` (step 3 of that plan), pointer
+  arithmetic, `Addr`/`@` on variables, `Seg`/`Ofs`/`Ptr(...)` and `Mem[]`
+  are out of scope for now.
 
 Run-time aliasing hazard: a `var` argument that is a heap field, e.g.
 `Remove(p^.next)`, is passed as `&mut p.get_mut().next`, which keeps `p`'s cell

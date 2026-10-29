@@ -200,6 +200,11 @@ impl<'a> Codegen<'a> {
                 Some(code) => format!("run_error({})", self.expr(code).0),
             },
             SizeOf | High | Low => unreachable!("sema folds these into constants"),
+            FillChar if self.a.byte_moves.contains(&call_id) => {
+                let dest = self.view_arg(&args[0]);
+                let value = self.coerce(&args[2], &Type::Int(IntKind::Byte)).0;
+                format!("fill_bytes({dest}, {}, {value});", self.expr(&args[1]).0)
+            }
             FillChar => self.fill_char(call_id, args),
             Mark | Release => {
                 format!(
@@ -215,8 +220,13 @@ impl<'a> Codegen<'a> {
                 let trunc = if cap < 255 { format!(".truncated({cap})") } else { String::new() };
                 format!("{} = get_dir({}){trunc};", self.place(&args[1]), self.expr(&args[0]).0)
             }
+            // Between different types, or with untyped parameters: the bytes.
+            Move if self.a.byte_moves.contains(&call_id) => {
+                let (source, dest) = (self.view_bytes(&args[0]), self.view_arg(&args[1]));
+                format!("move_bytes({source}, {dest}, {});", self.expr(&args[2]).0)
+            }
             Move => {
-                // Sema allows only a whole variable to one of the same type.
+                // A whole variable to one of the same type.
                 let ty = self.a.type_of(args[1].id).clone();
                 format!("{} = {};", self.place(&args[1]), self.coerce(&args[0], &ty).0)
             }

@@ -558,7 +558,8 @@ impl<'a> Codegen<'a> {
             }
         }
         let mut found = std::collections::HashSet::new();
-        for ty in &self.a.file_types {
+        // Types seen as bytes need the same encoding typed files use.
+        for ty in self.a.file_types.iter().chain(&self.a.view_types) {
             visit(ty, &mut found);
         }
         found
@@ -1055,6 +1056,7 @@ impl<'a> Codegen<'a> {
         let vis = if self.self_expr.is_some() { "" } else { self.vis };
         self.line(format!("{vis}fn {}({params}){ret} {{", self.body_name(pid)));
         self.indent += 1;
+        self.untyped_guards(pid);
         self.locals(pid);
         self.stmts(&body.body);
         let end_comment = self.block_end_comments(body.body_span);
@@ -1092,12 +1094,32 @@ impl<'a> Codegen<'a> {
                 (VarRole::Param(ParamMode::Var), Type::Object(o)) if self.in_dispatch(o) => {
                     format!("{name}: &mut dyn {}", trait_name(o))
                 }
+                // An untyped `var Data`: any variable, as its bytes.
+                (VarRole::Param(ParamMode::Var), Type::Untyped) => format!("{name}: &mut dyn ByteView"),
                 (VarRole::Param(ParamMode::Var), _) => format!("{name}: &mut {ty}"),
                 _ if self.a.mutated.contains(&param) => format!("mut {name}: {ty}"),
                 _ => format!("{name}: {ty}"),
             });
         }
         params.join(", ")
+    }
+
+    /// An untyped `var Data` parameter is the variable's bytes from here
+    /// on, written back into the variable when the function returns.
+    fn untyped_guards(&mut self, pid: ProcId) {
+        for &param in &self.a.procs[pid].params.clone() {
+            if self.a.var(param).ty != Type::Untyped {
+                continue;
+            }
+            if self.first_time("untyped") {
+                self.line("// An untyped parameter is the caller's variable as Turbo Pascal's bytes;");
+                self.line("// `Bytes` copies them, and when it's dropped (at any `return`) it");
+                self.line("// writes them back into the variable.");
+            }
+            let name = self.a.sym(param).rust_name.clone();
+            let mutable = if self.a.mutated.contains(&param) { "mut " } else { "" };
+            self.line(format!("let {mutable}{name} = Bytes::of({name});"));
+        }
     }
 
     /// `let` statements for a procedure's local variables.
@@ -1705,6 +1727,10 @@ impl<'a> Codegen<'a> {
     fn assignment(&mut self, target: &Expr, value: &Expr) -> String {
         self.hoist_target_indexes(target);
         let target_ty = self.a.type_of(target.id).clone();
+        // `TRec(Data) := r`: an untyped parameter's bytes, set from a `TRec`.
+        if let Some(bytes) = self.view_cast_guard(target) {
+            return format!("{bytes}.write(&{});", self.coerce(value, &target_ty).0);
+        }
         // `RandSeed := 42` → `set_rand_seed(42);`.
         if let Some(&sym) = self.a.refs.get(&target.id)
             && let SymKind::RuntimeVar { set, .. } = self.a.sym(sym).kind
@@ -2033,7 +2059,7 @@ fn default_value(ty: &Type) -> String {
         Type::File(_) => "PFile::default()".to_string(),
         Type::TypeInfo => "\"\"".to_string(),
         Type::Set(_) => "PSet::new()".to_string(),
-        Type::Nil | Type::Void | Type::Error => "()".to_string(),
+        Type::Nil | Type::Untyped | Type::Void | Type::Error => "()".to_string(),
     }
 }
 

@@ -1,15 +1,10 @@
 program FillMoveErrors;
-{ FillChar and Move only in the safe, common cases. }
-type
-  Point = record
-    x, y: Integer;
-  end;
+{ FillChar and Move past the end of a variable: TP would have overwritten
+  whatever came next in memory. }
 var
-  p: Point;
   n: array[1..4] of Integer;
   b: array[1..4] of Byte;
 begin
-  FillChar(p, SizeOf(p), 1);
-  FillChar(n, 3, 0);
   Move(n, b, SizeOf(n));
+  FillChar(b, 10, 0);
 end.

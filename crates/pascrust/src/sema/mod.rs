@@ -255,6 +255,13 @@ pub struct Analysis {
     /// Variables that need no `let` declaration because they're only used as
     /// scoped loop variables.
     pub elided_vars: HashSet<SymId>,
+    /// Types seen as bytes (passed to an untyped parameter, or an untyped
+    /// parameter typecast to them): codegen gives each a `file_record!`, so
+    /// it has a byte view.
+    pub view_types: Vec<Type>,
+    /// `Move` and `FillChar` calls (by callee) that work on the variables'
+    /// bytes (`move_bytes`, `fill_bytes`) rather than on the values.
+    pub byte_moves: HashSet<NodeId>,
     /// A captured variable's name inside one procedure, where its own name
     /// is taken by a local (`global_count`). See `var_name`.
     pub capture_names: HashMap<(ProcId, SymId), String>,

@@ -568,6 +568,17 @@ impl<'a> Codegen<'a> {
                 };
                 format!("{}.{path}", self.selector_base(base))
             }
+            // `TBytes(Data)[i]`: a byte of an untyped parameter, read or
+            // written in place.
+            ExprKind::Index(base, indexes)
+                if let Some(bytes) = self.view_cast_guard(base)
+                    && let Type::Array(a) = self.a.type_of(base.id).clone()
+                    && super::super::sema::types::tp_size(&a.elem) == Some(1)
+                    && indexes.len() == 1 =>
+            {
+                let index = self.expr(&indexes[0]).0;
+                if a.lo == 0 { format!("{bytes}[{index}]") } else { format!("{bytes}[{index} - {}]", a.lo) }
+            }
             ExprKind::Index(base, indexes) => {
                 let mut ty = self.a.type_of(base.id).clone();
                 let mut code = self.selector_base(base);
@@ -588,6 +599,114 @@ impl<'a> Codegen<'a> {
             }
             _ => unreachable!(),
         }
+    }
+
+    /// The Rust name of an untyped parameter (its `Bytes`).
+    pub(super) fn untyped_name(&self, e: &Expr) -> String {
+        let sym = self.a.refs[&e.id];
+        self.a.sym(sym).rust_name.clone()
+    }
+
+    /// If `e` is a typecast of an untyped parameter (`TBytes(Data)`), the
+    /// parameter's `Bytes`.
+    pub(super) fn view_cast_guard(&self, e: &Expr) -> Option<String> {
+        let ExprKind::Call { args, .. } = &e.kind else { return None };
+        match args.as_slice() {
+            [arg] if *self.a.type_of(arg.id) == Type::Untyped => Some(self.untyped_name(arg)),
+            _ => None,
+        }
+    }
+
+    /// An argument for an untyped `var` parameter: the variable as bytes,
+    /// from where the argument starts (`&mut x`, `&mut string_bytes(&mut s,
+    /// 30)`, `&mut bytes_from(&mut buf, 9)`).
+    pub(super) fn view_arg(&mut self, arg: &Expr) -> String {
+        if *self.a.type_of(arg.id) == Type::Untyped {
+            return format!("&mut {}", self.untyped_name(arg));
+        }
+        let (root, offset) = self.view_offset(arg);
+        let root_view = match self.a.type_of(root.id).clone() {
+            Type::Str { cap } => format!("&mut string_bytes({}, {cap})", self.place_mut(root)),
+            _ => self.place_mut(root),
+        };
+        match offset {
+            None => root_view,
+            Some(offset) => format!("&mut bytes_from({root_view}, {offset})"),
+        }
+    }
+
+    /// A variable's bytes to read from (`Move`'s source).
+    pub(super) fn view_bytes(&mut self, arg: &Expr) -> String {
+        if *self.a.type_of(arg.id) == Type::Untyped {
+            return format!("&{}", self.untyped_name(arg));
+        }
+        let (root, offset) = self.view_offset(arg);
+        let all = match self.a.type_of(root.id).clone() {
+            Type::Str { cap } => format!("string_view_bytes(&{}, {cap})", paren(self.expr(root), prec::UNARY)),
+            _ => format!("{}.to_bytes()", paren(self.expr(root), prec::POSTFIX)),
+        };
+        match offset {
+            None => format!("&{all}"),
+            Some(offset) => format!("&{all}[{offset}..]"),
+        }
+    }
+
+    /// Where `e` starts inside the variable it's part of, in TP's bytes:
+    /// the variable, and the offset (`None` for the whole of it). An array
+    /// element is `(i - lo) * size` in, a string's `s[i]` is `i` in (after
+    /// the length byte), a record field after the fields before it.
+    fn view_offset<'e>(&mut self, e: &'e Expr) -> (&'e Expr, Option<String>) {
+        use super::super::sema::types::tp_size;
+        let mut parts: Vec<String> = Vec::new();
+        let mut constant: i64 = 0;
+        let mut node = e;
+        // Walk from the argument up to the variable, collecting offsets.
+        loop {
+            match &node.kind {
+                ExprKind::Index(base, indexes) => {
+                    let mut ty = self.a.type_of(base.id).clone();
+                    for index in indexes {
+                        let (lo, size, next) = match &ty {
+                            Type::Array(a) => (a.lo, tp_size(&a.elem).unwrap_or(1), a.elem.clone()),
+                            _ => (0, 1, Type::Char),
+                        };
+                        let literal = match &index.kind {
+                            ExprKind::Int(n) => Some(*n),
+                            _ => match self.a.folded.get(&index.id) {
+                                Some(crate::sema::ConstVal::Int(n)) => Some(*n),
+                                _ => None,
+                            },
+                        };
+                        match literal {
+                            Some(n) => constant += (n - lo) * size,
+                            None => {
+                                let i = paren(self.expr(index), prec::AS);
+                                let start =
+                                    if lo == 0 { format!("{i} as usize") } else { format!("({i} as usize - {lo})") };
+                                parts.push(if size == 1 { start } else { format!("{start} * {size}") });
+                            }
+                        }
+                        ty = next;
+                    }
+                    node = base;
+                }
+                ExprKind::Field(base, field) => {
+                    if let Type::Record(r) = self.a.type_of(base.id) {
+                        let before = r.fields.iter().take_while(|f| !f.name.eq_ignore_ascii_case(&field.name));
+                        constant += before.map(|f| tp_size(&f.ty).unwrap_or(0)).sum::<i64>();
+                    }
+                    node = base;
+                }
+                _ => break,
+            }
+        }
+        if std::ptr::eq(node, e) {
+            return (node, None); // the whole variable
+        }
+        if constant != 0 || parts.is_empty() {
+            parts.push(constant.to_string());
+        }
+        (node, Some(parts.join(" + ")))
     }
 
     /// The left side of `.field` or `[index]`. Rust dereferences
@@ -689,6 +808,11 @@ impl<'a> Codegen<'a> {
                     .collect();
                 let code = format!("{}({})", r.rust, parts.join(", "));
                 if matches!(r.rust, "ch_dir" | "mk_dir" | "rm_dir") { self.io_checked(code, callee.span) } else { code }
+            }
+            // `TRec(Data)`: an untyped parameter's bytes, read as a `TRec`.
+            SymKind::TypeName(ty) if *self.a.type_of(args[0].id) == Type::Untyped => {
+                let bytes = self.untyped_name(&args[0]);
+                format!("{bytes}.read::<{}>()", ty.rust())
             }
             SymKind::TypeName(ty) => {
                 let ty = ty.clone();
@@ -883,7 +1007,9 @@ impl<'a> Codegen<'a> {
             // pointer (the hierarchy's enum, which implements every
             // object's trait), so the record's real type picks the methods.
             let dyn_param = matches!(&ty, Type::Object(o) if self.in_dispatch(o));
-            if var.role == crate::sema::VarRole::Param(ParamMode::Var)
+            if ty == Type::Untyped {
+                parts.push(self.view_arg(arg));
+            } else if var.role == crate::sema::VarRole::Param(ParamMode::Var)
                 && dyn_param
                 && let ExprKind::Deref(pointer) = &arg.kind
             {
@@ -927,7 +1053,9 @@ impl<'a> Codegen<'a> {
                     Some(Receiver::ImplicitSelf) => self.calls(arg),
                     None => false,
                 };
-                if borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root))
+                // (A constant, like `SizeOf(x)`, reads nothing at run time.)
+                let constant = self.a.folded.contains_key(&arg.id);
+                if !constant && borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root))
                     || derefs(arg)
                     || uses_receiver
                     || (pointer_var_before && self.has_call(arg))

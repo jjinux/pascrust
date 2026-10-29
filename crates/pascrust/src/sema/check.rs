@@ -783,8 +783,10 @@ impl Checker {
         for group in &d.params {
             let ty = match &group.ty {
                 Some(t) => self.resolve_type(t),
+                // `var Data`: any variable, seen as its bytes.
+                None if group.mode == ParamMode::Var => Type::Untyped,
                 None => {
-                    self.error(group.names[0].span, "untyped parameters are not supported");
+                    self.error(group.names[0].span, "an untyped parameter must be `var`");
                     Type::Error
                 }
             };
@@ -1538,13 +1540,31 @@ impl Checker {
                 Builtin::Move => source_ty == ty,
                 _ => self.a.fill_zero.contains(&callee_id(e)) || byte_sequence(&ty),
             };
+        // Anything else works on the variables' bytes, as TP's did: `Move`
+        // between different types, `FillChar` with any value, an untyped
+        // parameter, part of a record.
         if !ok {
-            let supported = if b == Builtin::Move {
-                "PascRust supports `Move` only between two whole variables of the same type, with `SizeOf`"
-            } else {
-                "PascRust supports `FillChar` on a whole variable (with `SizeOf`, filling with 0 unless it's a string or byte array), or on part of a string or byte array"
-            };
-            self.error(e.span, supported);
+            self.a.byte_moves.insert(callee_id(e));
+            self.view_arg(target, &ty);
+            if b == Builtin::Move {
+                self.view_arg(&args[0], &source_ty);
+            }
+            // A count past the end would overwrite (or read) whatever came
+            // next in memory in TP; when it's a constant, say so now.
+            if let Some(ConstVal::Int(count)) = self.eval_const(count) {
+                let mut sizes = vec![(target, &ty)];
+                if b == Builtin::Move {
+                    sizes.push((&args[0], &source_ty));
+                }
+                for (arg, arg_ty) in sizes {
+                    if let Some(size) = super::types::tp_size(arg_ty)
+                        && matches!(arg.kind, ExprKind::Name(_))
+                        && count > size
+                    {
+                        self.error(arg.span, format!("{count} bytes don't fit in this {size}-byte variable"));
+                    }
+                }
+            }
         }
     }
 
@@ -1971,6 +1991,22 @@ impl Checker {
                 let base_ty = self.place(base, write);
                 self.select_index(base_ty, indexes, e.span)
             }
+            // `TBytes(Data)[i] := 0`: writing an untyped parameter's bytes
+            // through a typecast.
+            ExprKind::Call { callee, args }
+                if args.len() == 1
+                    && let ExprKind::Name(id) = &callee.kind
+                    && let Some(sym) = self.lookup(&id.key())
+                    && let SymKind::TypeName(target) = self.a.symbols[sym].kind.clone() =>
+            {
+                self.a.refs.insert(callee.id, sym);
+                if self.place(&args[0], write) == Type::Untyped {
+                    self.view_cast(e, &target)
+                } else {
+                    self.error(e.span, "only an untyped parameter can be typecast and assigned to");
+                    Type::Error
+                }
+            }
             // Writing through `p^` changes the record, not the pointer, so
             // the pointer itself is only read.
             ExprKind::Deref(base) => {
@@ -1984,6 +2020,52 @@ impl Checker {
         };
         self.a.types.insert(e.id, ty.clone());
         ty
+    }
+
+    /// `TRec(Data)`: an untyped parameter seen as a `TRec`. The type needs a
+    /// byte layout, a size as TP gave it.
+    fn view_cast(&mut self, e: &Expr, target: &Type) -> Type {
+        if super::types::tp_size(target).is_none() {
+            self.error(e.span, format!("an untyped parameter can't be seen as a {target}"));
+            return Type::Error;
+        }
+        self.add_view_type(target);
+        self.a.types.insert(e.id, target.clone());
+        target.clone()
+    }
+
+    fn add_view_type(&mut self, ty: &Type) {
+        if !self.a.view_types.contains(ty) {
+            self.a.view_types.push(ty.clone());
+        }
+    }
+
+    /// An argument for an untyped `var` parameter: any variable with a size
+    /// (seen as its bytes from where it starts: `s[1]`, `buf[10]`), or an
+    /// untyped parameter passed on.
+    fn untyped_arg(&mut self, arg: &Expr) {
+        let ty = self.place(arg, true);
+        self.view_arg(arg, &ty);
+    }
+
+    /// `arg` (of type `ty`, already checked as a place) seen as bytes.
+    fn view_arg(&mut self, arg: &Expr, ty: &Type) {
+        let ty = ty.clone();
+        if ty == Type::Untyped || ty == Type::Error {
+            return;
+        }
+        if super::types::tp_size(&ty).is_none() || matches!(ty, Type::Text | Type::File(_)) {
+            self.error(arg.span, format!("a {ty} can't be passed as untyped bytes"));
+            return;
+        }
+        self.add_view_type(&ty);
+        // The bytes run on to the end of the whole variable.
+        let mut root = arg;
+        while let ExprKind::Field(base, _) | ExprKind::Index(base, _) = &root.kind {
+            root = base;
+        }
+        let root_ty = self.a.types.get(&root.id).cloned().unwrap_or(Type::Error);
+        self.add_view_type(&root_ty);
     }
 
     fn deref_type(&mut self, base: Type, span: Span) -> Type {
@@ -2125,6 +2207,11 @@ impl Checker {
                     return Type::Error;
                 }
                 let from = self.expr(&args[0]);
+                // `TBytes(Data)`: an untyped parameter's bytes, read as a
+                // `TBytes`.
+                if from == Type::Untyped {
+                    return self.view_cast(e, &target);
+                }
                 if !(from.is_ordinal() && target.is_ordinal()) && from != Type::Error {
                     self.error(e.span, format!("cannot cast a {from} value to {target}"));
                 }
@@ -2353,6 +2440,10 @@ impl Checker {
         let mut var_args: Vec<VarArg> = receiver.into_iter().collect();
         for (&param, arg) in params.iter().zip(args) {
             let Var { ty, role, .. } = self.a.var(param).clone();
+            if role == VarRole::Param(ParamMode::Var) && ty == Type::Untyped {
+                self.untyped_arg(arg);
+                continue;
+            }
             if role == VarRole::Param(ParamMode::Var) {
                 let arg_ty = self.place(arg, true);
                 // An object may be passed where an ancestor is expected.
@@ -2472,7 +2563,12 @@ impl Checker {
                         || ty.is_stringish()
                         || ty == Type::Error;
                     if !writable {
-                        self.error(value.span, format!("cannot write a {ty} value"));
+                        let message = if ty == Type::Untyped {
+                            "an untyped parameter can only be passed on or typecast (`TBytes(Data)`)".to_string()
+                        } else {
+                            format!("cannot write a {ty} value")
+                        };
+                        self.error(value.span, message);
                     }
                     for n in width.into_iter().chain(decimals) {
                         let t = self.expr(n);

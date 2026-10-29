@@ -8,6 +8,7 @@
 //! everything a program normally needs is in scope.
 
 pub mod array;
+pub mod bytes;
 #[cfg(any(feature = "crt", feature = "graph"))]
 pub mod colors;
 pub mod cp437;

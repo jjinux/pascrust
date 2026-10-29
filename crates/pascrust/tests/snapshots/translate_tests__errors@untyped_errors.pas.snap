@@ -1,0 +1,20 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/untyped_errors.pas
+---
+untyped_errors.pas:6:16: error: an untyped parameter must be `var`
+procedure Show(Data);
+               ^^^^
+
+untyped_errors.pas:12:11: error: an untyped parameter can only be passed on or typecast (`TBytes(Data)`)
+  WriteLn(Data);
+          ^^^^
+
+untyped_errors.pas:20:8: error: a Text can't be passed as untyped bytes
+  Dump(t);
+       ^
+
+untyped_errors.pas:21:8: error: this can't be assigned to or passed by `var`
+  Dump(5);
+       ^
