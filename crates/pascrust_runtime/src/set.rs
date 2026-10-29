@@ -225,8 +225,28 @@ impl<T> Default for PSet<T> {
     }
 }
 
+impl<T> PSet<T> {
+    /// The set as TP stored it: bit `n % 8` of byte `n / 8` for element `n`,
+    /// in as many bytes as its elements need (`bytes`: 1 for a set of
+    /// Boolean or of an enum of up to 8 values, 32 for a set of Char).
+    pub fn encode_bytes(&self, bytes: usize, out: &mut Vec<u8>) {
+        let mut all = Vec::new();
+        crate::io::FileRecord::encode(self, &mut all);
+        out.extend_from_slice(&all[..bytes]);
+    }
+
+    pub fn decode_bytes(bytes: usize, input: &mut &[u8]) -> PSet<T> {
+        let (head, rest) = input.split_at(bytes.min(input.len()));
+        *input = rest;
+        let mut all = head.to_vec();
+        all.resize(32, 0);
+        crate::io::FileRecord::decode(&mut &all[..])
+    }
+}
+
 /// A set in a `file of` record: 32 bytes, bit `n % 8` of byte `n / 8` for
-/// element `n`, as TP stores a set of 256 elements.
+/// element `n`, as TP stores a set of 256 elements. (A smaller set in a
+/// record field is stored in fewer bytes: see `encode_bytes`.)
 impl<T> crate::io::FileRecord for PSet<T> {
     fn encode(&self, out: &mut Vec<u8>) {
         for word in self.bits {

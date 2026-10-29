@@ -1,0 +1,9 @@
+ok: SizeOf(People) is 41
+ok: one record is 41 bytes on disk
+ok: the name's length byte, then its characters
+ok: the LongInt after the 31 bytes of the name
+ok: the Real in TP's 6-byte format
+ok: and it reads back
+ok: a set of three colours takes one byte
+ok: and reads back
+8 of 8 checks passed

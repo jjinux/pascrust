@@ -724,9 +724,15 @@ window meanwhile (§19).
 - **`Read`/`Readln`** → `preadln!(x, y)`, with TP's lenient numeric parsing
   (leading blanks, stops at the first bad character).
 - **Files**: `PText` wraps a buffered reader/writer; `PFile<T>` serializes
-  records with a generated `impl PascalRecord for T` (little-endian integers,
-  length-prefixed fixed-size strings). TP-exact binary layout (6-byte `Real`)
-  is tier 3 and an open question, since the examples ship `.dat` files.
+  records with the `FileRecord` trait, implemented for each stored type by
+  the generated `file_record!(People { name: string 30, id, index })`, in
+  TP's own layout: little-endian integers, a `string[n]` as a length byte
+  and n characters, `Real` in TP's 6-byte format (`io::real48`), a set of
+  an enum or Boolean in as few bytes as it needs. So a record's size on
+  disk is `SizeOf`, and files written by TP programs read correctly (a
+  runtime test reads `examples/database/mark.dat`). Reading is lenient: a
+  string's length byte is clamped to its capacity, and an enum ordinal past
+  the last value reads as the last value.
   `Assign`, `Reset`, `Rewrite`, `Append`, `Close`, `Seek`, `FilePos`,
   `FileSize`, `Eof`, `Eoln`, `Erase`, `Rename`, `Truncate`, `IOResult` are
   runtime methods. `{$I-}` is a compile-time switch, so the driver works

@@ -190,8 +190,11 @@ Files
   sets `IOResult` instead of stopping the program, and further I/O is
   skipped until `IOResult` is read.
 - `file of T`: `Assign`, `Reset`, `Rewrite`, `Close`, `Read`, `Write`,
-  `Seek`, `FilePos`, `FileSize`, `Eof`, `Erase`, `Truncate`; records with
-  `string[n]`, integer and real fields serialized to a fixed-size layout
+  `Seek`, `FilePos`, `FileSize`, `Eof`, `Erase`, `Truncate`; records are
+  stored in Turbo Pascal's own layout, the size `SizeOf` gives: a
+  `string[n]` takes n+1 bytes, a `Real` TP's 6-byte format, a set of an
+  enum or Boolean as few bytes as its values need, so files written by TP
+  programs (`examples/database/mark.dat`) can be read
 - File variables inside records and objects; `var` file parameters
 - `Input` / `Output` as explicit file arguments
 
@@ -355,8 +358,7 @@ Later (real TP features, not in the examples, worth doing in order)
 6. `GetMem`/`FreeMem`, untyped `Pointer`, `Addr`/`@` on variables (would need
    the place-descriptor representation from `architecture.md` §15)
 7. Untyped `file`, `BlockRead`/`BlockWrite`; `TextRec`/`FileRec`
-8. TP-exact binary layout for `file of Rec` (6-byte `Real`, exact record
-   padding) to read the shipped `.dat`/`.key` files
+8. (Done, now in tier 2: TP-exact binary layout for `file of Rec`.)
 9. `const` parameters, open array parameters, `string` as `PChar` with
    `{$X+}`, `Assigned`, `Include`/`Exclude` (TP 7 additions)
 10. Vector (stroked) BGI fonts, `RegisterBGIfont`, custom drivers

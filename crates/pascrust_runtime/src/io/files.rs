@@ -388,7 +388,67 @@ macro_rules! impl_file_record_number {
         } )*
     };
 }
-impl_file_record_number!(i8, i16, i32, i64, u8, u16, u32, f32, f64);
+impl_file_record_number!(i8, i16, i32, i64, u8, u16, u32, f32);
+
+/// `Real` is stored in Turbo Pascal's own 6-byte format (PascRust's `Real`,
+/// `Single`, `Double` and `Extended` are all an `f64`, and TP's `Real` is
+/// what its programs' files hold). See [`real48`].
+impl FileRecord for f64 {
+    fn encode(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&real48::from_f64(*self));
+    }
+    fn decode(input: &mut &[u8]) -> f64 {
+        real48::to_f64(take(input, 6).try_into().unwrap())
+    }
+}
+
+/// Turbo Pascal's 6-byte `Real`: byte 0 is the exponent, biased by 129 (0
+/// means the value is 0); bytes 1 to 5 hold 39 bits of mantissa, low byte
+/// first, with the sign in the top bit of byte 5. The value is
+/// `(1 + mantissa / 2^39) * 2^(exponent - 129)`. It has about 11-12 digits,
+/// so an `f64` stored and read back is rounded to that, as in TP.
+pub mod real48 {
+    pub fn from_f64(x: f64) -> [u8; 6] {
+        if x == 0.0 || !x.is_finite() {
+            return [0; 6];
+        }
+        let bits = x.to_bits();
+        let sign = (bits >> 63) as u8;
+        let exponent = ((bits >> 52) & 0x7FF) as i64 - 1023 + 129;
+        // The f64 mantissa's top 39 of 52 bits, rounded.
+        let mut mantissa = ((bits & ((1 << 52) - 1)) + (1 << 12)) >> 13;
+        let mut exponent = exponent;
+        if mantissa == 1 << 39 {
+            mantissa = 0;
+            exponent += 1;
+        }
+        if exponent < 1 {
+            return [0; 6]; // too small for a Real: 0
+        }
+        let exponent = exponent.min(255) as u8;
+        let mut out = [0u8; 6];
+        out[0] = exponent;
+        for (i, byte) in out[1..].iter_mut().enumerate() {
+            *byte = (mantissa >> (8 * i)) as u8;
+        }
+        out[5] |= sign << 7;
+        out
+    }
+
+    pub fn to_f64(bytes: [u8; 6]) -> f64 {
+        if bytes[0] == 0 {
+            return 0.0;
+        }
+        let mut mantissa: u64 = 0;
+        for (i, &byte) in bytes[1..].iter().enumerate() {
+            mantissa |= u64::from(byte) << (8 * i);
+        }
+        let negative = mantissa & (1 << 39) != 0;
+        mantissa &= (1 << 39) - 1;
+        let value = (1.0 + mantissa as f64 / (1u64 << 39) as f64) * 2f64.powi(i32::from(bytes[0]) - 129);
+        if negative { -value } else { value }
+    }
+}
 
 impl FileRecord for bool {
     fn encode(&self, out: &mut Vec<u8>) {
@@ -399,16 +459,48 @@ impl FileRecord for bool {
     }
 }
 
+/// A plain `string` takes 256 bytes; a `string[n]` field takes n+1, which
+/// [`FileString`] does (`file_record!(Rec { name: string 30 })`).
 impl FileRecord for PString {
     fn encode(&self, out: &mut Vec<u8>) {
-        let mut bytes = [0u8; 256];
-        bytes[0] = self.length() as u8;
-        bytes[1..=self.as_bytes().len()].copy_from_slice(self.as_bytes());
-        out.extend_from_slice(&bytes);
+        self.encode_string(255, out);
     }
     fn decode(input: &mut &[u8]) -> PString {
-        let bytes = take(input, 256);
-        PString::from_bytes(&bytes[1..=bytes[0] as usize])
+        PString::decode_string(255, input)
+    }
+}
+
+/// Strings stored with a capacity: a `string[30]` is a length byte and 30
+/// characters, as in TP, and so is each string in an array of them.
+pub trait FileString: Sized {
+    fn encode_string(&self, capacity: usize, out: &mut Vec<u8>);
+    fn decode_string(capacity: usize, input: &mut &[u8]) -> Self;
+}
+
+impl FileString for PString {
+    fn encode_string(&self, capacity: usize, out: &mut Vec<u8>) {
+        let text = &self.as_bytes()[..self.as_bytes().len().min(capacity)];
+        out.push(text.len() as u8);
+        out.extend_from_slice(text);
+        // TP wrote whatever was in memory after the text; zeros here.
+        out.resize(out.len() + capacity - text.len(), 0);
+    }
+    fn decode_string(capacity: usize, input: &mut &[u8]) -> PString {
+        let bytes = take(input, capacity + 1);
+        // A length byte from another program may claim more than fits.
+        let length = usize::from(bytes[0]).min(capacity);
+        PString::from_bytes(&bytes[1..=length])
+    }
+}
+
+impl<T: FileString, const LO: i64, const N: usize> FileString for crate::array::PArray<T, LO, N> {
+    fn encode_string(&self, capacity: usize, out: &mut Vec<u8>) {
+        for item in self.iter() {
+            item.encode_string(capacity, out);
+        }
+    }
+    fn decode_string(capacity: usize, input: &mut &[u8]) -> Self {
+        crate::array::PArray::new(std::array::from_fn(|_| T::decode_string(capacity, input)))
     }
 }
 
@@ -437,10 +529,11 @@ impl<T> FileRecord for crate::ptr::Ptr<T> {
 }
 
 /// Implement [`FileRecord`] for a record (struct) by encoding its fields in
-/// order, or for an enum by its ordinal:
+/// order, or for an enum by its ordinal. A `string[n]` field (or an array
+/// of them) says its capacity:
 ///
 /// ```ignore
-/// file_record!(Person { name, age });
+/// file_record!(Person { name: string 30, age });
 /// file_record!(enum Color);
 /// ```
 #[macro_export]
@@ -451,22 +544,45 @@ macro_rules! file_record {
                 out.push($crate::ordinal::Ordinal::ord(*self) as u8);
             }
             fn decode(input: &mut &[u8]) -> Self {
-                let ord = <u8 as $crate::io::FileRecord>::decode(input);
-                <$ty as $crate::ordinal::Enumerated>::from_ord(ord)
+                // A byte beyond the last value (another program's file) is
+                // read as the last value rather than stopping the program.
+                let values = <$ty as $crate::ordinal::Enumerated>::VALUES;
+                let ord = usize::from(<u8 as $crate::io::FileRecord>::decode(input));
+                values[ord.min(values.len() - 1)]
             }
         }
     };
-    ($ty:ident { $($field:ident),* $(,)? }) => {
+    ($ty:ident { $($field:ident $(: $kind:ident $size:literal)?),* $(,)? }) => {
         impl $crate::io::FileRecord for $ty {
             fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
-                $( $crate::io::FileRecord::encode(&self.$field, out); )*
+                $( $crate::file_record!(@encode self.$field, out $(, $kind $size)?); )*
             }
             fn decode(input: &mut &[u8]) -> Self {
                 // Struct fields are evaluated in the order written, which is
                 // the order they were encoded in.
-                $ty { $( $field: $crate::io::FileRecord::decode(input), )* }
+                $ty { $( $field: $crate::file_record!(@decode input $(, $kind $size)?), )* }
             }
         }
+    };
+    // One field. `string 30` is a `string[30]` (or an array of them); `set 1`
+    // is a set stored in its first byte (a set of an enum of up to 8 values).
+    (@encode $value:expr, $out:ident) => {
+        $crate::io::FileRecord::encode(&$value, $out)
+    };
+    (@encode $value:expr, $out:ident, string $cap:literal) => {
+        $crate::io::FileString::encode_string(&$value, $cap, $out)
+    };
+    (@encode $value:expr, $out:ident, set $bytes:literal) => {
+        $value.encode_bytes($bytes, $out)
+    };
+    (@decode $input:ident) => {
+        $crate::io::FileRecord::decode($input)
+    };
+    (@decode $input:ident, string $cap:literal) => {
+        $crate::io::FileString::decode_string($cap, $input)
+    };
+    (@decode $input:ident, set $bytes:literal) => {
+        $crate::set::PSet::decode_bytes($bytes, $input)
     };
 }
 
@@ -684,5 +800,52 @@ mod tests {
         assert!(t.eof());
         t.close();
         std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    /// The record of `examples/database/founit.pas`.
+    #[derive(Default)]
+    struct People {
+        name: PString,
+        id: i32,
+        index: f64,
+    }
+    crate::file_record!(People { name: string 30, id, index });
+
+    #[test]
+    fn records_are_laid_out_as_in_turbo_pascal() {
+        // `mark.dat` was written by the real program, under TP: a
+        // `string[30]` (31 bytes), a `LongInt` (4) and a `Real` (6).
+        let bytes = include_bytes!("../../../../examples/database/mark.dat");
+        assert_eq!(People::record_size(), 41);
+        let person = People::decode(&mut &bytes[..]);
+        assert_eq!(person.name.to_string(), "Shannon Behrens");
+        assert_eq!((person.id, person.index), (1, 2930802.0));
+        let mut again = Vec::new();
+        person.encode(&mut again);
+        assert_eq!(again.len(), 41);
+        assert_eq!(People::decode(&mut &again[..]).index, 2930802.0);
+    }
+
+    #[test]
+    fn reals_round_trip_to_about_twelve_digits() {
+        for x in [1.0, -1.0, 0.5, 1.23456789012, 1e30, -2.5e-30, 123456789.125] {
+            let back = real48::to_f64(real48::from_f64(x));
+            assert!(((back - x) / x).abs() < 1e-11, "{x} came back as {back}");
+        }
+        assert_eq!(real48::from_f64(0.0), [0; 6]);
+        assert_eq!(real48::from_f64(1.0), [129, 0, 0, 0, 0, 0]);
+        assert_eq!(real48::from_f64(-2.0), [130, 0, 0, 0, 0, 0x80]);
+    }
+
+    #[test]
+    fn a_string_longer_than_its_length_byte_allows_is_cut() {
+        let mut bytes = vec![200u8];
+        bytes.extend_from_slice(&[b'x'; 30]);
+        assert_eq!(PString::decode_string(30, &mut &bytes[..]).length(), 30);
     }
 }

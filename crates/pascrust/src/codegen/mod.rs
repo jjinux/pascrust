@@ -574,12 +574,12 @@ impl<'a> Codegen<'a> {
         match ty {
             Type::Enum(e) => self.line(format!("file_record!(enum {});", e.rust_name)),
             Type::Record(r) => {
-                let fields: Vec<&str> = r.fields.iter().map(|f| f.rust_name.as_str()).collect();
+                let fields: Vec<String> = r.fields.iter().map(file_record_field).collect();
                 self.line(format!("file_record!({} {{ {} }});", r.rust_name, fields.join(", ")));
             }
             Type::Object(o) => {
-                let mut fields: Vec<&str> = o.parent.iter().map(|_| "base").collect();
-                fields.extend(o.fields.iter().map(|f| f.rust_name.as_str()));
+                let mut fields: Vec<String> = o.parent.iter().map(|_| "base".to_string()).collect();
+                fields.extend(o.fields.iter().map(file_record_field));
                 self.line(format!("file_record!({} {{ {} }});", o.rust_name, fields.join(", ")));
             }
             _ => {}
@@ -1907,6 +1907,26 @@ impl Covered {
             }
         }
         self.ranges = merged;
+    }
+}
+
+/// A field in `file_record!`: a `string[n]` (or an array of them) says its
+/// capacity, so it takes n+1 bytes in the file, and a set smaller than 32
+/// bytes says its size, as in TP (and as `SizeOf` says).
+fn file_record_field(field: &crate::sema::types::Field) -> String {
+    fn capacity(ty: &Type) -> Option<u8> {
+        match ty {
+            Type::Str { cap } => Some(*cap),
+            Type::Array(a) => capacity(&a.elem),
+            _ => None,
+        }
+    }
+    if let Some(cap) = capacity(&field.ty) {
+        return format!("{}: string {cap}", field.rust_name);
+    }
+    match crate::sema::types::tp_size(&field.ty) {
+        Some(bytes) if matches!(field.ty, Type::Set(_)) && bytes < 32 => format!("{}: set {bytes}", field.rust_name),
+        _ => field.rust_name.clone(),
     }
 }
 
