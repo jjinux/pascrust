@@ -44,7 +44,7 @@ pub fn generate(
         proc: MAIN,
         explained: Default::default(),
         end_comment: None,
-        hoisted_indexes: HashMap::new(),
+        hoisted: HashMap::new(),
         file: 0,
         vis: "",
         mutable_place: false,
@@ -84,9 +84,10 @@ struct Codegen<'a> {
     /// The comment after the `end` of an `if` or loop body (`end; {loop}`),
     /// for the line that closes the Rust block. See [`Codegen::line`].
     end_comment: Option<String>,
-    /// Indexes of an assignment's target that were worked out first into a
-    /// `let` (see [`Codegen::hoist_target_indexes`]), by node.
-    hoisted_indexes: HashMap<NodeId, String>,
+    /// Parts of an expression worked out first into a `let`, by node: call
+    /// indexes (see [`Codegen::hoist_target_indexes`]) and reads through a
+    /// pointer that must end before a call.
+    hoisted: HashMap<NodeId, String>,
     /// The source file (index in the source map) being translated.
     file: usize,
     /// Visibility for items: `pub ` in a unit's module, nothing in `main.rs`.
@@ -1651,7 +1652,7 @@ impl<'a> Codegen<'a> {
                         let code = self.expr(index).0;
                         let name = self.temp_name("index");
                         self.pending.push(format!("let {name} = {code};"));
-                        self.hoisted_indexes.insert(index.id, name);
+                        self.hoisted.insert(index.id, name);
                     }
                 }
             }
@@ -1675,7 +1676,13 @@ impl<'a> Codegen<'a> {
             // variable the function receives. Then it stays `n = n + f(...)`,
             // which Rust works out left to right. (For a set, `s |= f(&mut s)`
             // wouldn't even borrow-check.)
-            && !(self.has_call(rhs) && (mentions(rhs, &root_name(target)) || self.call_reaches(rhs, root_expr(target))))
+            // And a call can't be followed through pointers (another pointer
+            // may point to the same record), so a target through a pointer
+            // keeps the long form whenever the right side calls anything.
+            && !(self.has_call(rhs)
+                && (mentions(rhs, &root_name(target))
+                    || self.call_reaches(rhs, root_expr(target))
+                    || contains_deref(target)))
             // `s[i] |= s[1]` borrows `s` mutably for the place before reading
             // `s[1]` (the operator is a trait method, unlike `+=` on
             // numbers), which the borrow checker rejects.
@@ -1718,6 +1725,18 @@ impl<'a> Codegen<'a> {
                 if let Some(code) = self.compound_assignment(target, value, &place) {
                     return code;
                 }
+            }
+            // `p^.n := p^.n + F`: `p^.n` is read into its own `let` first,
+            // since `F` may change the record (through another pointer) and
+            // the read's borrow would still be alive during the call.
+            if let ExprKind::Binary { lhs, rhs, .. } = &value.kind
+                && contains_deref(lhs)
+                && self.has_call(rhs)
+            {
+                let code = self.expr(lhs).0;
+                let name = self.temp_name(&value_temp_base(lhs));
+                self.pending.push(format!("let {name} = {code};"));
+                self.hoisted.insert(lhs.id, name);
             }
             let temp = self.temp_name(&value_temp_base(value));
             let value_code = self.coerce(value, &target_ty).0;

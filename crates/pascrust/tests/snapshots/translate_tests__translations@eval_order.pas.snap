@@ -12,6 +12,26 @@ input_file: tests/translate/eval_order.pas
 
 use pascrust_runtime::prelude::*;
 
+// When a function in an expression has side effects: Write(F, G) writes
+// F's value before G runs (TP defines it as Write(F); Write(G)), to the
+// screen and to a file, and n := n + Bump reads n before Bump changes it,
+// as Free Pascal does. A call that can't change n keeps n += ....
+// The .out comes from fpc -Mtp, except that Free Pascal prints the line
+// written to the '' file first: piped, its standard output is held until
+// the program ends. TP (and PascRust) print in program order.
+/// Pascal: `^Count`
+///
+/// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared
+/// heap record (an `Rc<RefCell<...>>` inside): using `nil` or a disposed
+/// record is a runtime error instead of undefined behaviour.
+type PCount = Ptr<Count>;
+
+/// Pascal: `record n: Integer; end`
+#[derive(Clone, Copy, Debug, Default)]
+struct Count {
+    n: i16,
+}
+
 /// Pascal: `function Bump: Integer;`
 ///
 /// The global variables this procedure uses are passed in as parameters,
@@ -46,6 +66,17 @@ fn twice(x: i16) -> i16 {
     result
 }
 
+// Changes the record p points to, through q.
+/// Pascal: `function ViaPointer: Integer;`
+///
+/// Uses globals, which are passed in as parameters.
+fn via_pointer(q: &PCount) -> i16 {
+    let mut result: i16 = 0;
+    q.get_mut().n += 1;
+    result = 5;
+    result
+}
+
 /// Pascal: `function Mark: Integer;`
 ///
 /// Uses globals, which are passed in as parameters.
@@ -59,15 +90,10 @@ fn mark(log: &mut PText) -> i16 {
 /// The main program: the `begin ... end.` block of `EvalOrder`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    // When a function in an expression has side effects: Write(F, G) writes
-    // F's value before G runs (TP defines it as Write(F); Write(G)), to the
-    // screen and to a file, and n := n + Bump reads n before Bump changes it,
-    // as Free Pascal does. A call that can't change n keeps n += ....
-    // The .out comes from fpc -Mtp, except that Free Pascal prints the line
-    // written to the '' file first: piped, its standard output is held until
-    // the program ends. TP (and PascRust) print in program order.
     let mut n: i16 = 0;
     let mut total: i16 = 0;
+    let mut p: PCount = Ptr::nil();
+    let mut q: PCount = Ptr::nil();
     let mut log: PText = PText::default();
     let mut line: PString = PString::new();
     n = 0;
@@ -82,6 +108,13 @@ fn pascal_main() {
     total = 1;
     total += twice(3);
     pwriteln!("total + Twice(3): ", total);
+    p = Ptr::alloc();
+    q = p.clone();
+    p.get_mut().n = 0;
+    let n_arg = p.get().n;
+    let value = n_arg + via_pointer(&q);
+    p.get_mut().n = value;
+    pwriteln!("p^.n + ViaPointer: ", p.get().n);
     log.assign("order.txt");
     log.rewrite();
     fwriteln!(log, "a", mark(&mut log), "b");

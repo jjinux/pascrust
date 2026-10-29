@@ -309,7 +309,10 @@ Graph unit (BGI, as used in the examples)
 - `DrawPoly`/`FillPoly` with an array of `PointType` (TP's untyped `var
   PolyPoints` took any variable; PascRust wants that array). `DrawPoly`
   doesn't close the shape; `FillPoly` fills it (even-odd rule) and
-  outlines it closed
+  outlines it closed. A `NumPoints` beyond the array's length uses the
+  array's points (TP would read past it). Out-of-range `SetPalette`,
+  `SetAllPalette` and `SetFillStyle` arguments change nothing, as the
+  BGI's `grError` did
 - `SetLineStyle`/`GetLineSettings` (`SolidLn`, `DottedLn`, ..., `NormWidth`,
   `ThickWidth`, `LineSettingsType`), `SetFillStyle`/`SetFillPattern`/
   `GetFillPattern`/`GetFillSettings` (`FillPatternType`,

@@ -6,8 +6,14 @@ program EvalOrder;
   The .out comes from fpc -Mtp, except that Free Pascal prints the line
   written to the '' file first: piped, its standard output is held until
   the program ends. TP (and PascRust) print in program order. }
+type
+  PCount = ^Count;
+  Count = record
+    n: Integer;
+  end;
 var
   n, total: Integer;
+  p, q: PCount;
   log: Text;
   line: string;
 
@@ -34,6 +40,13 @@ begin
   Twice := x * 2;
 end;
 
+{ Changes the record p points to, through q. }
+function ViaPointer: Integer;
+begin
+  q^.n := q^.n + 1;
+  ViaPointer := 5;
+end;
+
 function Mark: Integer;
 begin
   Write(log, 'x');
@@ -53,6 +66,11 @@ begin
   total := 1;
   total := total + Twice(3);
   WriteLn('total + Twice(3): ', total);
+  New(p);
+  q := p;
+  p^.n := 0;
+  p^.n := p^.n + ViaPointer;
+  WriteLn('p^.n + ViaPointer: ', p^.n);
   Assign(log, 'order.txt');
   Rewrite(log);
   WriteLn(log, 'a', Mark, 'b');

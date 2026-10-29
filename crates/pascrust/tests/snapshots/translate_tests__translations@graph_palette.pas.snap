@@ -44,6 +44,7 @@ fn pascal_main() {
     let mut pal: PaletteType = PaletteType::default();
     let mut xasp: u16 = 0;
     let mut yasp: u16 = 0;
+    let mut fills: FillSettingsType = FillSettingsType::default();
     checks = 0;
     failures = 0;
     driver = i16::from(DETECT);
@@ -71,6 +72,15 @@ fn pascal_main() {
         i16::from(pal.colors[BLUE]) == 5 && i16::from(pal.colors[RED]) == 63,
         pstr("SetAllPalette: -1 leaves a colour alone"),
     );
+    set_palette(16, 5);
+    set_palette(GREEN, 100);
+    get_palette(&mut pal);
+    check(
+        &mut checks,
+        &mut failures,
+        i16::from(pal.colors[BLACK]) == 0 && i16::from(pal.colors[GREEN]) == 2,
+        pstr("SetPalette out of range changes nothing"),
+    );
     get_default_palette(&mut pal);
     check(
         &mut checks,
@@ -90,6 +100,16 @@ fn pascal_main() {
         pstr("GraphDefaults resets colours and the palette"),
     );
     check(&mut checks, &mut failures, get_pixel(5, 5) == u16::from(YELLOW), pstr("but not the picture"));
+    set_fill_style(HATCH_FILL, RED);
+    set_fill_style(13, BLUE);
+    set_fill_style(USER_FILL, BLUE);
+    get_fill_settings(&mut fills);
+    check(
+        &mut checks,
+        &mut failures,
+        fills.pattern == u16::from(HATCH_FILL) && fills.color == u16::from(RED),
+        pstr("SetFillStyle out of range changes nothing"),
+    );
     set_aspect_ratio(5000, 10000);
     get_aspect_ratio(&mut xasp, &mut yasp);
     check(&mut checks, &mut failures, xasp == 5000 && yasp == 10000, pstr("SetAspectRatio and GetAspectRatio"));

@@ -86,7 +86,10 @@ fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[Str
     let program = match program {
         SourceFile::Program(program) => program,
         SourceFile::Unit(unit) => {
-            return Err(format!("{file_name} is a unit; give pascrust the program that uses it ({})", unit.name.name));
+            return Err(format!(
+                "{file_name} is a unit; give `pascrust` the program that uses it ({})",
+                unit.name.name
+            ));
         }
     };
 

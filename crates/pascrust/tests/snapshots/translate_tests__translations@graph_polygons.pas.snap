@@ -40,6 +40,12 @@ fn set_point(p: &mut PointType, x: i16, y: i16) {
     p.y = y;
 }
 
+// The points arrive as a value parameter: only read.
+/// Pascal: `procedure Copied(points: Triangle);`
+fn copied(points: Triangle) {
+    draw_poly(3, points.as_slice());
+}
+
 // The points arrive as a var parameter.
 /// Pascal: `procedure Outline(var points: Triangle; count: Integer);`
 fn outline(points: &mut Triangle, count: i16) {
@@ -61,6 +67,8 @@ fn pascal_main() {
     let mut texts: TextSettingsType = TextSettingsType::default();
     let mut view: ViewPortType = ViewPortType::default();
     let mut pattern: FillPatternType = FillPatternType::default();
+    let corner: Triangle =
+        PArray::new([PointType { x: 200, y: 300 }, PointType { x: 220, y: 300 }, PointType { x: 220, y: 320 }]);
     checks = 0;
     failures = 0;
     driver = i16::from(DETECT);
@@ -98,6 +106,14 @@ fn pascal_main() {
         &mut failures,
         get_pixel(120, 100) == u16::from(GREEN) && get_pixel(140, 120) == u16::from(RED),
         pstr("only NumPoints points, through a var parameter"),
+    );
+    set_color(YELLOW);
+    copied(corner);
+    check(
+        &mut checks,
+        &mut failures,
+        get_pixel(210, 300) == u16::from(YELLOW) && get_pixel(220, 310) == u16::from(YELLOW),
+        pstr("a typed constant, as a value parameter"),
     );
     arc(200, 200, 0, 90, 50);
     get_arc_coords(&mut arcs);

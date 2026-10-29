@@ -276,7 +276,7 @@ pub(crate) fn read_key_plain() -> u8 {
     match INPUT.with_borrow_mut(LineReader::next_char) {
         Some(key) => key,
         None => {
-            eprintln!("[pascrust] ReadKey: no more input, stopping the program");
+            eprintln!("[PascRust] ReadKey: no more input, stopping the program");
             crate::halt(0);
             unreachable!()
         }

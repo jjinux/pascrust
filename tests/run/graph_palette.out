@@ -2,9 +2,11 @@ ok: GetPalette: the EGA colours
 ok: GetPaletteSize
 ok: SetPalette shows in GetPalette
 ok: SetAllPalette: -1 leaves a colour alone
+ok: SetPalette out of range changes nothing
 ok: GetDefaultPalette
 ok: GraphDefaults resets colours and the palette
 ok: but not the picture
+ok: SetFillStyle out of range changes nothing
 ok: SetAspectRatio and GetAspectRatio
 ok: GetDriverName
 ok: GetMaxMode and GetModeName
@@ -16,4 +18,4 @@ ok: SetUserCharSize scales the text
 ok: drawing on page 1
 ok: leaves page 0 alone
 ok: and page 1 keeps it
-18 of 18 checks passed
+20 of 20 checks passed

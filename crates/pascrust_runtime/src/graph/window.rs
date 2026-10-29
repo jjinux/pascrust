@@ -177,7 +177,7 @@ pub(crate) fn main_loop(worker: &JoinHandle<()>) {
                         STATE.store(OPEN, Ordering::SeqCst);
                     }
                     Err(e) => {
-                        eprintln!("[pascrust] cannot open a graphics window ({e}); drawing without one");
+                        eprintln!("[PascRust] cannot open a graphics window ({e}); drawing without one");
                         STATE.store(HEADLESS, Ordering::SeqCst);
                     }
                 }

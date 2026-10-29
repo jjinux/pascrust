@@ -9,6 +9,7 @@ var
   driver, mode, lo, hi, i, font: Integer;
   pal: PaletteType;
   xasp, yasp: Word;
+  fills: FillSettingsType;
 
 procedure Check(ok: Boolean; what: string);
 begin
@@ -39,6 +40,10 @@ begin
   SetAllPalette(pal);
   GetPalette(pal);
   Check((pal.Colors[Blue] = 5) and (pal.Colors[Red] = 63), 'SetAllPalette: -1 leaves a colour alone');
+  SetPalette(16, 5);
+  SetPalette(Green, 100);
+  GetPalette(pal);
+  Check((pal.Colors[Black] = 0) and (pal.Colors[Green] = 2), 'SetPalette out of range changes nothing');
   GetDefaultPalette(pal);
   Check((pal.Colors[Blue] = 1) and (pal.Colors[Red] = 4), 'GetDefaultPalette');
   SetRGBPalette(pal.Colors[Red], 63, 0, 0);
@@ -48,6 +53,11 @@ begin
   GetPalette(pal);
   Check((GetColor = White) and (pal.Colors[Red] = 4), 'GraphDefaults resets colours and the palette');
   Check(GetPixel(5, 5) = Yellow, 'but not the picture');
+  SetFillStyle(HatchFill, Red);
+  SetFillStyle(13, Blue);
+  SetFillStyle(UserFill, Blue);
+  GetFillSettings(fills);
+  Check((fills.Pattern = HatchFill) and (fills.Color = Red), 'SetFillStyle out of range changes nothing');
   SetAspectRatio(5000, 10000);
   GetAspectRatio(xasp, yasp);
   Check((xasp = 5000) and (yasp = 10000), 'SetAspectRatio and GetAspectRatio');

@@ -1714,7 +1714,7 @@ impl Checker {
                 self.error(
                     *span,
                     format!(
-                        "the `with` body changes `{name}`, which chooses this record; pascrust writes the record out at every use, so it would pick a different one"
+                        "the `with` body changes `{name}`, which chooses this record; PascRust writes the record out at every use, so it would pick a different one"
                     ),
                 );
             }
@@ -2215,7 +2215,8 @@ impl Checker {
                     }
                 }
                 Param::Points => {
-                    let ty = self.place(arg, true);
+                    // A variable (TP's untyped `var`), but only read.
+                    let ty = self.place(arg, false);
                     let point = super::units::graph_record("pointtype").expect("PointType");
                     if !matches!(&ty, Type::Array(a) if a.elem == point) && ty != Type::Error {
                         self.error(arg.span, format!("expected an array of PointType, found {ty}"));
@@ -2963,7 +2964,7 @@ impl Checker {
                 }
                 _ => {
                     let which = if file == StdFile::Output { "Output" } else { "Input" };
-                    self.error(e.span, format!("pascrust's `{which}` is always the console; `{name}` can't change it"));
+                    self.error(e.span, format!("PascRust's `{which}` is always the console; `{name}` can't change it"));
                 }
             }
         }

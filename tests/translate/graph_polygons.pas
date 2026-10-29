@@ -35,6 +35,15 @@ begin
   p.Y := y;
 end;
 
+const
+  Corner: Triangle = ((X: 200; Y: 300), (X: 220; Y: 300), (X: 220; Y: 320));
+
+{ The points arrive as a value parameter: only read. }
+procedure Copied(points: Triangle);
+begin
+  DrawPoly(3, points);
+end;
+
 { The points arrive as a var parameter. }
 procedure Outline(var points: Triangle; count: Integer);
 begin
@@ -65,6 +74,9 @@ begin
   SetColor(Green);
   Outline(path, 2);
   Check((GetPixel(120, 100) = Green) and (GetPixel(140, 120) = Red), 'only NumPoints points, through a var parameter');
+  SetColor(Yellow);
+  Copied(Corner);
+  Check((GetPixel(210, 300) = Yellow) and (GetPixel(220, 310) = Yellow), 'a typed constant, as a value parameter');
   Arc(200, 200, 0, 90, 50);
   GetArcCoords(arcs);
   Check((arcs.X = 200) and (arcs.Y = 200), 'GetArcCoords: the centre');

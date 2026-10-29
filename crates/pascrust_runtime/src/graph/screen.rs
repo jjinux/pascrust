@@ -319,7 +319,6 @@ impl Screen {
         }
     }
 
-    /// A filled wedge of an ellipse (`PieSlice`, `Sector`), outlined.
     /// The centre and the end points of an arc, for `GetArcCoords`.
     fn remember_arc(&mut self, cx: i32, cy: i32, start: i32, end: i32, xr: i32, yr: i32) {
         // Angles go counterclockwise from 3 o'clock, and y grows downwards.
@@ -357,6 +356,7 @@ impl Screen {
         }
     }
 
+    /// A filled wedge of an ellipse (`PieSlice`, `Sector`), outlined.
     pub fn sector(&mut self, cx: i32, cy: i32, start: i32, end: i32, xr: i32, yr: i32) {
         self.remember_arc(cx, cy, start, end, xr, yr);
         let (start_f, mut end_f) = (f64::from(start.rem_euclid(360)), f64::from(end.rem_euclid(360)));

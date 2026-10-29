@@ -354,9 +354,14 @@ pub fn get_bk_color() -> u16 {
 
 /// `SetPalette(ColorNum, Color)`: show colour number `n` as EGA colour
 /// `ega` (0..63).
+/// `SetPalette(ColorNum, Color)`: colour number 0..15 shows EGA colour
+/// 0..63. Anything else was an error in the BGI (`grError`), which changed
+/// nothing; so it changes nothing here.
 pub fn set_palette(n: impl Into<i32>, ega: impl Into<i32>) {
-    let (n, ega) = (color(n), (ega.into() & 63) as u8);
-    with(|s| s.palette[usize::from(n)] = ega);
+    let (n, ega) = (i(n), i(ega));
+    if (0..16).contains(&n) && (0..64).contains(&ega) {
+        with(|s| s.palette[n as usize] = ega as u8);
+    }
 }
 
 /// `PaletteType`: the number of colours, and the EGA colour of each.
@@ -389,6 +394,10 @@ fn fill_palette(palette: &mut PaletteType, colors: [u8; 16]) {
 pub fn set_all_palette(palette: &mut PaletteType) {
     let count = usize::from(palette.size).min(16);
     let colors: Vec<i8> = palette.colors.iter().take(count).copied().collect();
+    // A colour beyond the EGA's 64 was an error, and nothing changed.
+    if colors.iter().any(|&ega| !(-1..=63).contains(&ega)) {
+        return;
+    }
     with(|s| {
         for (n, &ega) in colors.iter().enumerate() {
             if ega >= 0 {
@@ -485,9 +494,14 @@ pub fn rectangle(x1: impl Into<i32>, y1: impl Into<i32>, x2: impl Into<i32>, y2:
     with(|s| s.rectangle(x1, y1, x2, y2));
 }
 
+/// `SetFillStyle(Pattern, Color)`. A pattern number beyond `CloseDotFill`
+/// (including `UserFill`, which only `SetFillPattern` sets) was an error,
+/// and nothing changed.
 pub fn set_fill_style(pattern: impl Into<i32>, c: impl Into<i32>) {
     let (pattern, c) = (i(pattern), color(c));
-    with(|s| s.set_fill_style(pattern, c));
+    if (0..i32::from(USER_FILL)).contains(&pattern) {
+        with(|s| s.set_fill_style(pattern, c));
+    }
 }
 
 /// `SetFillPattern(Pattern, Color)`: fill with a pattern of your own.
@@ -773,7 +787,7 @@ pub(crate) fn save_if_requested() {
     let mut rgb = vec![0u32; WIDTH * HEIGHT];
     screen.render(&mut rgb);
     if let Err(e) = std::fs::write(&path, bmp(&rgb)) {
-        eprintln!("[pascrust] cannot save the screen to {path}: {e}");
+        eprintln!("[PascRust] cannot save the screen to {path}: {e}");
     }
 }
 

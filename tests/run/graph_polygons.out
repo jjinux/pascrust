@@ -4,6 +4,7 @@ ok: and nothing outside
 ok: DrawPoly joins the points
 ok: without closing the shape
 ok: only NumPoints points, through a var parameter
+ok: a typed constant, as a value parameter
 ok: GetArcCoords: the centre
 ok: and the ends
 ok: GetLineSettings
@@ -12,4 +13,4 @@ ok: GetFillSettings after SetFillPattern
 ok: GetTextSettings: font
 ok: and justification
 ok: GetViewSettings
-14 of 14 checks passed
+15 of 15 checks passed

@@ -38,7 +38,7 @@ pub(super) fn paren(code: Code, min: u8) -> String {
 impl<'a> Codegen<'a> {
     /// An expression in its natural Rust type.
     pub(super) fn expr(&mut self, e: &Expr) -> Code {
-        if let Some(name) = self.hoisted_indexes.get(&e.id) {
+        if let Some(name) = self.hoisted.get(&e.id) {
             return (name.clone(), prec::ATOM);
         }
         // `items[Count]` in a method is `self.items[self.count()]`, which
@@ -47,11 +47,11 @@ impl<'a> Codegen<'a> {
         if let ExprKind::Index(base, indexes) = &e.kind {
             let root = super::root_expr(base);
             for index in indexes {
-                if !self.hoisted_indexes.contains_key(&index.id) && self.call_reaches(index, root) {
+                if !self.hoisted.contains_key(&index.id) && self.call_reaches(index, root) {
                     let code = self.expr(index).0;
                     let name = self.temp_name("index");
                     self.pending.push(format!("let {name} = {code};"));
-                    self.hoisted_indexes.insert(index.id, name);
+                    self.hoisted.insert(index.id, name);
                 }
             }
         }
@@ -650,15 +650,10 @@ impl<'a> Codegen<'a> {
                         // call dereferences by itself, so a `var` parameter
                         // `*points` is just `points.as_slice()`.
                         Param::Points => {
-                            let place = self.place(arg);
-                            match place.strip_prefix('*') {
-                                Some(name) if name.chars().all(|c| c.is_alphanumeric() || c == '_') => {
-                                    format!("{name}.as_slice()")
-                                }
-                                _ => {
-                                    let precedence = if place.starts_with('*') { prec::UNARY } else { prec::POSTFIX };
-                                    format!("{}.as_slice()", paren((place, precedence), prec::POSTFIX))
-                                }
+                            let (code, precedence) = self.expr(arg);
+                            match code.strip_prefix('*') {
+                                Some(rest) => format!("{rest}.as_slice()"),
+                                None => format!("{}.as_slice()", paren((code, precedence), prec::POSTFIX)),
                             }
                         }
                     })
