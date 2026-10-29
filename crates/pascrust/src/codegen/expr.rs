@@ -8,7 +8,7 @@
 
 use super::Codegen;
 use crate::ast::*;
-use crate::sema::{Access, ConstVal, IntKind, SymId, SymKind, Type, numeric_common};
+use crate::sema::{Access, Builtin, ConstVal, IntKind, SymId, SymKind, Type, numeric_common};
 
 /// Rust operator precedence, loosest first. Only the relative order matters.
 pub(super) mod prec {
@@ -517,7 +517,11 @@ impl<'a> Codegen<'a> {
             SymKind::Builtin(b) => {
                 let b = *b;
                 let code = self.builtin(b, args, callee.id);
-                if b.is_io() { self.io_checked(code, callee.span) } else { code }
+                // Writing to the console never sets `IOResult`, so it needs
+                // no `io_unchecked` around it.
+                let console_write = matches!(b, Builtin::Write | Builtin::Writeln)
+                    && !args.first().is_some_and(|a| matches!(self.a.type_of(a.id), Type::Text | Type::File(_)));
+                if b.is_io() && !console_write { self.io_checked(code, callee.span) } else { code }
             }
             SymKind::UnitRoutine(r) => {
                 use crate::sema::units::Param;

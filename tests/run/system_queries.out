@@ -28,6 +28,7 @@ ok: High(string[30])
 ok: Low(string)
 ok: Swap(Word)
 ok: Swap(Integer)
+ok: Swap of a Word literal
 ok: Assigned(nil)
 ok: Assigned(p)
-32 of 32 checks passed
+33 of 33 checks passed

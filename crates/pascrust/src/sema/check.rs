@@ -2510,7 +2510,12 @@ impl Checker {
             // Faked: our files are buffered already.
             SetTextBuf => {
                 if arity(&mut self.errors, span, args.len(), 2..=3, &name) {
-                    self.file_arg(&args[0], &name, true);
+                    // Only read: `SetTextBuf` becomes a comment, so the file
+                    // mustn't look changed (that would make it `mut`).
+                    let ty = self.place(&args[0], false);
+                    if !matches!(ty, Type::Text | Type::Error) {
+                        self.error(args[0].span, format!("`SetTextBuf` needs a text file variable, found {ty}"));
+                    }
                     self.place(&args[1], false);
                     if let Some(size) = args.get(2) {
                         self.int_arg(size);
@@ -2539,8 +2544,15 @@ impl Checker {
                 span,
                 args,
                 &name,
-                |t| matches!(t.concrete(), Type::Int(IntKind::Integer | IntKind::Word)),
-                |t| t.concrete(),
+                // TP's `Swap(X: Word)` also takes literals up to $FFFF.
+                |t| {
+                    matches!(t, Type::IntLit(n) if (0..=65535).contains(n))
+                        || matches!(t.concrete(), Type::Int(IntKind::Integer | IntKind::Word))
+                },
+                |t| match t {
+                    Type::IntLit(n) if *n > 32767 => Type::Int(IntKind::Word),
+                    t => t.concrete(),
+                },
             ),
             Assigned => self.unary_builtin(span, args, &name, |t| matches!(t, Type::Pointer(_)), |_| Type::Bool),
             RunError => {

@@ -79,6 +79,7 @@ begin
   Check(Swap(w) = $3412, 'Swap(Word)');
   i := $0102;
   Check(Swap(i) = $0201, 'Swap(Integer)');
+  Check(Swap($ABCD) = $CDAB, 'Swap of a Word literal');
   p := nil;
   Check(not Assigned(p), 'Assigned(nil)');
   New(p);

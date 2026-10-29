@@ -180,7 +180,11 @@ impl<'a> Codegen<'a> {
                 format!("({} >> 8) as u8", paren(self.coerce(&args[0], &t), prec::SHIFT + 1))
             }
             Swap => {
-                let t = ty(self, &args[0]).concrete();
+                // A literal above 32767 is a `Word` here, as TP's `Swap(X: Word)`.
+                let t = match ty(self, &args[0]) {
+                    Type::IntLit(n) if n > 32767 => Type::Int(IntKind::Word),
+                    t => t.concrete(),
+                };
                 format!("{}.swap_bytes()", self.postfix(&args[0], &t))
             }
             Assigned => format!("!{}.is_nil()", self.selector_base(&args[0])),
@@ -485,10 +489,14 @@ impl Codegen<'_> {
         match elem {
             Type::Bool => match &value.kind {
                 ExprKind::Int(n) => (*n != 0).to_string(),
+                // `True` or a Boolean variable is fine as it is.
+                _ if *self.a.type_of(value.id) == Type::Bool => self.expr(value).0,
                 _ => format!("{} != 0", paren(self.expr(value), prec::CMP + 1)),
             },
-            // A literal number is already a fine `u8`.
-            Type::Char if matches!(self.a.type_of(value.id), Type::IntLit(_)) => self.expr(value).0,
+            // A literal number, or a `Byte`, is already a fine `u8`.
+            Type::Char if matches!(self.a.type_of(value.id), Type::IntLit(_) | Type::Int(IntKind::Byte)) => {
+                self.expr(value).0
+            }
             Type::Char if matches!(self.a.type_of(value.id), Type::Int(_)) => {
                 format!("{} as u8", paren(self.expr(value), prec::AS))
             }

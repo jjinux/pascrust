@@ -47,6 +47,7 @@ fn pascal_main() {
     let mut q: Point = Point::default();
     let mut s: PString = PString::new();
     let mut total: i16 = 0;
+    let mut b: u8 = 0;
     checks = 0;
     failures = 0;
     for i in 1_i16..=10 {
@@ -71,6 +72,12 @@ fn pascal_main() {
     check(&mut checks, &mut failures, chars[0] == b'*' && chars[4] == b'*', pstr("fill a char array"));
     flags.fill(true);
     check(&mut checks, &mut failures, flags[1] && flags[3], pstr("fill a boolean array"));
+    flags = PArray::default();
+    flags.fill(true);
+    check(&mut checks, &mut failures, flags[2], pstr("fill a boolean array with True"));
+    b = 33;
+    chars.fill(b);
+    check(&mut checks, &mut failures, chars[2] == b'!', pstr("fill a char array from a Byte"));
     grid[2][2] = 5;
     grid = PArray::default();
     check(&mut checks, &mut failures, grid[2][2] == 0, pstr("zero a 2D array"));

@@ -15,6 +15,7 @@ var
   p, q: Point;
   s: string[20];
   i, total: Integer;
+  b: Byte;
 
 procedure Check(ok: Boolean; what: string);
 begin
@@ -46,6 +47,12 @@ begin
   Check((chars[0] = '*') and (chars[4] = '*'), 'fill a char array');
   FillChar(flags, SizeOf(flags), 1);
   Check(flags[1] and flags[3], 'fill a boolean array');
+  FillChar(flags, SizeOf(flags), False);
+  FillChar(flags, SizeOf(flags), True);
+  Check(flags[2], 'fill a boolean array with True');
+  b := 33;
+  FillChar(chars, SizeOf(chars), b);
+  Check(chars[2] = '!', 'fill a char array from a Byte');
   grid[2, 2] := 5;
   FillChar(grid, SizeOf(grid), 0);
   Check(grid[2, 2] = 0, 'zero a 2D array');
