@@ -36,6 +36,7 @@ impl Comments {
             walker.decls(&unit.interface);
             walker.decls(&unit.implementation);
             walker.stmts(&unit.init);
+            walker.block_end(unit.end);
         }
         let mut anchors = walker.anchors;
         anchors.sort();
@@ -212,7 +213,11 @@ impl Anchors<'_> {
                 }
             }
             StmtKind::While { body, .. } | StmtKind::For { body, .. } | StmtKind::With { body, .. } => self.stmt(body),
-            StmtKind::Repeat { body, .. } => self.stmts(body),
+            StmtKind::Repeat { body, cond } => {
+                self.stmts(body);
+                // The `until` test: comments before `until` stay in the loop.
+                self.anchors.push((cond.span.start, cond.span.end));
+            }
             StmtKind::Case { arms, else_body, .. } => {
                 for arm in arms {
                     self.stmt(&arm.body);

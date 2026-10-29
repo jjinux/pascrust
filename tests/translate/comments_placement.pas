@@ -2,6 +2,8 @@ program CommentsPlacement;
 { Where comments land in the Rust: after an end, before an else if,
   before until, on loop variables, on declarations with no Rust of
   their own. }
+uses CmtUnit;
+
 var
   x, y, n: Integer;
 
@@ -28,5 +30,14 @@ begin
   begin
     Inc(n);
   end; { a plain block }
-  WriteLn(x, ' ', y, ' ', n);
+  if x = 2 then
+    y := 3
+  { before else if }
+  else if x = 1 then
+    y := y + 10;
+  repeat
+    Inc(n);
+    { about to test }
+  until n > 4; { loop done }
+  WriteLn(x, ' ', y, ' ', n, ' ', Ready);
 end. { end of program }

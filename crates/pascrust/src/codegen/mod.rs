@@ -300,8 +300,12 @@ impl<'a> Codegen<'a> {
             self.line(format!("pub fn {}({params}) {{", self.a.procs[init].rust_name));
             self.indent += 1;
             self.stmts(&unit.init);
+            let end_comment = self.block_end_comments(unit.end);
             self.indent -= 1;
             self.line("}");
+            if let Some(comment) = end_comment {
+                self.append_comment(&comment);
+            }
         }
         self.vis = "";
     }
@@ -1213,12 +1217,16 @@ impl<'a> Codegen<'a> {
             self.indent -= 1;
             self.line("}");
         }
+        let at = cond.span.start;
+        self.leading_comments(at);
         let cond = self.condition(cond);
         self.line(format!("if {cond} {{"));
         self.line("    break;");
         self.line("}");
         self.indent -= 1;
         self.line("}");
+        // `until done; {comment}`.
+        self.trailing_comment(at);
     }
 
     /// Does `body` call `Break` or `Continue` (`b`) for the loop around it,
@@ -1346,6 +1354,13 @@ impl<'a> Codegen<'a> {
         // an `else if`, where there's no line before it to put them on.)
         let cond = if prefix.is_empty() { self.expr(cond).0 } else { self.condition(cond) };
         self.line(format!("{prefix}if {cond} {{"));
+        if !prefix.is_empty() {
+            // Comments before `else if`: there's no line for them between
+            // `}` and `else`, so they start the block.
+            self.indent += 1;
+            self.leading_comments(s.span.start);
+            self.indent -= 1;
+        }
         self.block_body(then_branch);
         match else_branch.as_deref() {
             None => self.line("}"),

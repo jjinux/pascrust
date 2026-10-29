@@ -226,7 +226,7 @@ impl Parser {
         let implementation_uses = self.uses_clause()?;
         let implementation = self.declarations(false)?;
         let init = if self.eat_keyword(Keyword::Begin) { self.statement_list()? } else { Vec::new() };
-        self.expect_keyword(Keyword::End)?;
+        let end = self.expect_keyword(Keyword::End)?;
         self.expect(&TokenKind::Dot)?;
         Ok(Unit {
             name,
@@ -235,6 +235,7 @@ impl Parser {
             implementation_uses,
             implementation,
             init,
+            end,
             span: start.to(self.prev_span()),
         })
     }

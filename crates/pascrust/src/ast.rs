@@ -52,6 +52,8 @@ pub struct Unit {
     /// The initialization part: statements run once, before the main
     /// program starts. Empty if there is none.
     pub init: Vec<Stmt>,
+    /// The unit's final `end` (comments before it end the initialization).
+    pub end: Span,
     pub span: Span,
 }
 
