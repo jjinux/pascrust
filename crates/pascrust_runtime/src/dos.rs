@@ -360,9 +360,9 @@ fn glob(pattern: &[u8], text: &[u8]) -> bool {
 fn pack_system_time(time: std::time::SystemTime) -> i32 {
     let local: chrono::DateTime<Local> = time.into();
     let year = (local.year() - 1980).clamp(0, 127) as u32;
-    let date = year << 9 | local.month() << 5 | local.day();
-    let clock = local.hour() << 11 | local.minute() << 5 | local.second() / 2;
-    (date << 16 | clock) as i32
+    let date = (year << 9) | (local.month() << 5) | local.day();
+    let clock = (local.hour() << 11) | (local.minute() << 5) | (local.second() / 2);
+    ((date << 16) | clock) as i32
 }
 
 #[cfg(test)]
