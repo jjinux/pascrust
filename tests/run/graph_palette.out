@@ -13,4 +13,7 @@ ok: GetModeRange of CGA
 ok: GetModeRange of no driver
 ok: InstallUserFont gives a new font number
 ok: SetUserCharSize scales the text
-15 of 15 checks passed
+ok: drawing on page 1
+ok: leaves page 0 alone
+ok: and page 1 keeps it
+18 of 18 checks passed

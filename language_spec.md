@@ -323,8 +323,10 @@ Graph unit (BGI, as used in the examples)
   font), `SetGraphBufSize` does nothing. Refused: `RegisterBGIdriver`,
   `RegisterBGIfont` and `InstallUserDriver`, which link or load driver
   code; PascRust's one driver is built in, so the calls can go
+- `SetActivePage`/`SetVisualPage`: two pages in every mode (VGA had two
+  only at 640x350), for flicker-free animation
 - Not yet: `GetImage`/`PutImage`/`ImageSize` (they need `GetMem` and
-  untyped pointers), pages (see TODO.md, Phase 7)
+  untyped pointers; see TODO.md, Phase 7)
 
 ## Tier 3: later, or never
 

@@ -64,8 +64,15 @@ pub enum WriteMode {
 }
 
 pub struct Screen {
-    /// One colour number (0..15) per pixel, row by row.
+    /// One colour number (0..15) per pixel, row by row: the active page,
+    /// where drawing goes.
     pub pixels: Vec<u8>,
+    /// The other page, put aside while it isn't active, and the numbers of
+    /// the active page and the page on show (`SetActivePage`,
+    /// `SetVisualPage`).
+    pub other_page: Vec<u8>,
+    pub active_page: usize,
+    pub visual_page: usize,
     /// The EGA colour each colour number is displayed as.
     pub palette: [u8; 16],
     /// The VGA's colour registers (its DAC): what each of the 64 EGA colours
@@ -107,6 +114,9 @@ impl Screen {
     pub fn new() -> Screen {
         Screen {
             pixels: vec![0; WIDTH * HEIGHT],
+            other_page: vec![0; WIDTH * HEIGHT],
+            active_page: 0,
+            visual_page: 0,
             palette: DEFAULT_PALETTE,
             // `from_fn` builds an array from its index: entry `i` is EGA
             // colour `i`.
@@ -135,12 +145,23 @@ impl Screen {
     /// The screen as `0xRRGGBB` pixels, for a window or an image file.
     pub fn render(&self, out: &mut [u32]) {
         let rgb: Vec<u32> = self.palette.iter().map(|&e| self.dac[usize::from(e & 63)]).collect();
-        for (dst, &src) in out.iter_mut().zip(&self.pixels) {
+        // The page on show, which needn't be the one being drawn on.
+        let shown = if self.visual_page == self.active_page { &self.pixels } else { &self.other_page };
+        for (dst, &src) in out.iter_mut().zip(shown) {
             *dst = rgb[usize::from(src & 15)];
         }
     }
 
     // Pixels.
+
+    /// `SetActivePage(Page)`: from now on, draw on page 0 or 1. The pages
+    /// trade places, so drawing always goes to `pixels`.
+    pub fn set_active_page(&mut self, page: usize) {
+        if page < 2 && page != self.active_page {
+            std::mem::swap(&mut self.pixels, &mut self.other_page);
+            self.active_page = page;
+        }
+    }
 
     /// The index of viewport-relative `(x, y)` in `pixels`, if it's visible.
     fn index(&self, x: i32, y: i32) -> Option<usize> {
@@ -469,6 +490,22 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_visual_page_is_shown() {
+        let mut s = Screen::new();
+        s.set_active_page(1);
+        s.put_pixel(0, 0, 15);
+        let mut out = vec![0; WIDTH * HEIGHT];
+        s.render(&mut out);
+        assert_eq!(out[0], 0, "page 0 is on show");
+        s.visual_page = 1;
+        s.render(&mut out);
+        assert_eq!(out[0], 0xFFFFFF, "page 1 is on show");
+        s.set_active_page(0);
+        s.render(&mut out);
+        assert_eq!(out[0], 0xFFFFFF, "still page 1 while drawing on page 0");
+    }
 
     #[test]
     fn rgb_palette_recolours() {

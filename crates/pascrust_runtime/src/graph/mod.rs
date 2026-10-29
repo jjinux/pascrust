@@ -9,8 +9,8 @@
 //! colours and palettes, pixels, lines (styles, thickness, XOR mode),
 //! rectangles, bars, circles, arcs, ellipses, pie slices, flood fill,
 //! viewports, polygons, the `Get*Settings` records, and text in the 8x8
-//! default font (other fonts fall back to it, scaled). Not yet:
-//! `GetImage`/`PutImage`, palettes beyond `SetPalette`, pages.
+//! default font (other fonts fall back to it, scaled), palettes, and two
+//! pages. Not yet: `GetImage`/`PutImage`.
 //!
 //! Environment variables:
 //! - `PASCRUST_GRAPH=headless`: draw without a window (for tests).
@@ -253,8 +253,11 @@ pub fn set_aspect_ratio(x: impl Into<i32>, y: impl Into<i32>) {
 pub fn graph_defaults() {
     with(|s| {
         let pixels = std::mem::take(&mut s.pixels);
+        let other_page = std::mem::take(&mut s.other_page);
+        let pages = (s.active_page, s.visual_page);
         *s = Screen::new();
-        s.pixels = pixels;
+        (s.pixels, s.other_page) = (pixels, other_page);
+        (s.active_page, s.visual_page) = pages;
     });
 }
 
@@ -664,6 +667,26 @@ pub fn get_text_settings(settings: &mut TextSettingsType) {
 pub fn get_view_settings(view: &mut ViewPortType) {
     let ((x1, y1, x2, y2), clip) = with(|s| (s.view, s.clip));
     *view = ViewPortType { x1: x1 as i16, y1: y1 as i16, x2: x2 as i16, y2: y2 as i16, clip };
+}
+
+// Pages.
+
+/// `SetActivePage(Page)`: draw on page 0 or 1 from now on. VGA had two
+/// pages only in its 640x350 mode; here every program has two, for
+/// flicker-free animation: draw on the hidden page, then show it.
+pub fn set_active_page(page: impl Into<i32>) {
+    let page = i(page) as usize;
+    with(|s| s.set_active_page(page));
+}
+
+/// `SetVisualPage(Page)`: show page 0 or 1.
+pub fn set_visual_page(page: impl Into<i32>) {
+    let page = i(page) as usize;
+    with(|s| {
+        if page < 2 {
+            s.visual_page = page;
+        }
+    });
 }
 
 // The screen and viewports.

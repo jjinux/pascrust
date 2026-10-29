@@ -1,6 +1,6 @@
 program GraphPalette;
 { Graph's palettes, GraphDefaults, the mode queries, SetAspectRatio,
-  SetUserCharSize and the font and buffer fakes (the tests run with
+  SetUserCharSize, the font and buffer fakes, and the two pages (the tests run with
   PASCRUST_GRAPH=headless). Self-checking: Free Pascal's Graph unit needs
   a real screen, so this .out is built from the checks, by hand. }
 uses Graph;
@@ -65,6 +65,14 @@ begin
   SetTextStyle(DefaultFont, HorizDir, UserCharSize);
   SetUserCharSize(1, 1, 3, 1);
   Check(TextHeight('A') = 24, 'SetUserCharSize scales the text');
+  SetActivePage(1);
+  SetVisualPage(0);
+  PutPixel(1, 1, Red);
+  Check(GetPixel(1, 1) = Red, 'drawing on page 1');
+  SetActivePage(0);
+  Check(GetPixel(1, 1) = Black, 'leaves page 0 alone');
+  SetActivePage(1);
+  Check(GetPixel(1, 1) = Red, 'and page 1 keeps it');
   CloseGraph;
   WriteLn(checks - failures, ' of ', checks, ' checks passed');
   if failures > 0 then
