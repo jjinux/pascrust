@@ -249,8 +249,12 @@ Dos unit
 - Refused with a clear error, since they need real DOS: `Intr`, `MsDos`,
   `Keep`, `GetIntVec`, `SetIntVec` (`Registers` is declared, with its
   `Word` registers, so a program using it gets that error)
-- Not yet: `GetFTime`/`SetFTime`,
-  `PackTime`/`UnpackTime`, `GetFAttr`/`SetFAttr`
+- `GetFTime`/`SetFTime` (the file's real modification time, packed as DOS
+  did), `PackTime`/`UnpackTime` with `DateTime` (seconds kept to 2), and
+  `GetFAttr`/`SetFAttr` on a `Text` or typed file: `ReadOnly` and
+  `Directory` are real; `Hidden` is a name starting with `.`; `Archive`,
+  `SysFile` and a `Hidden` set by `SetFAttr` are remembered while the
+  program runs (faked: modern file systems have nowhere to keep them)
 - DOS path translation (`a:\tictac` → a configured directory)
 
 Graph unit (BGI, as used in the examples)

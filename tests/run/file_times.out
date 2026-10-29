@@ -1,0 +1,11 @@
+ok: PackTime and UnpackTime keep the date
+ok: and the time, to 2 seconds
+ok: SetFTime
+ok: GetFTime reads back what SetFTime set
+ok: a new file is Archive, not a Directory
+ok: SetFAttr ReadOnly
+ok: SetFAttr Hidden, and not ReadOnly any more
+ok: GetFTime of a typed file
+ok: GetFAttr of a directory
+ok: GetFAttr of a missing file: DosError 2
+10 of 10 checks passed

@@ -787,6 +787,10 @@ sense; only what can't be real is faked.
   `DiskSize` report 512 MB free of 1 GB on every drive, because a real
   disk's size overflows TP's `LongInt`; `SetDate`/`SetTime` don't touch
   the computer's clock; the Ctrl-Break and verify switches are remembered.
+  `SetFAttr`'s `Hidden`, `SysFile` and `Archive` bits have nowhere to go on
+  a modern file system, so they're remembered per path while the program
+  runs (`ReadOnly` really changes the permissions). The routines that take
+  TP's untyped `var F` take any file through the runtime's `AnyFile` trait.
 - **System and Crt** (`MemAvail`/`MaxAvail` report 512,000 bytes,
   `Mark`/`Release` and `SetTextBuf` become comments, `Test8087` is 3,
   `DirectVideo`/`CheckSnow`/`CheckEOF` are remembered and ignored): see

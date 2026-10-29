@@ -27,6 +27,24 @@ fn open_error(e: std::io::Error, name: &PString) -> ! {
     crate::rte(code, format!("{e}: {name}"))
 }
 
+/// A file variable of either kind, for the `Dos` routines that take any
+/// file (`GetFTime(var F; ...)`): its assigned name, if it has one.
+pub trait AnyFile {
+    fn assigned_name(&self) -> Option<PString>;
+}
+
+impl AnyFile for PText {
+    fn assigned_name(&self) -> Option<PString> {
+        self.name
+    }
+}
+
+impl<T> AnyFile for PFile<T> {
+    fn assigned_name(&self) -> Option<PString> {
+        self.name
+    }
+}
+
 // ----- Text files -----------------------------------------------------------
 
 /// Pascal `Text`.

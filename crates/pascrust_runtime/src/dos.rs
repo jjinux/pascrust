@@ -3,7 +3,7 @@
 
 use std::cell::Cell;
 
-use chrono::{Datelike, Local, Timelike};
+use chrono::{Datelike, Local, TimeZone, Timelike};
 
 use crate::string::PString;
 use crate::system::dos_path;
@@ -375,10 +375,161 @@ fn glob(pattern: &[u8], text: &[u8]) -> bool {
 /// minute, seconds / 2), in local time.
 fn pack_system_time(time: std::time::SystemTime) -> i32 {
     let local: chrono::DateTime<Local> = time.into();
-    let year = (local.year() - 1980).clamp(0, 127) as u32;
-    let date = (year << 9) | (local.month() << 5) | local.day();
-    let clock = (local.hour() << 11) | (local.minute() << 5) | (local.second() / 2);
-    ((date << 16) | clock) as i32
+    let dt = DateTime {
+        year: local.year().clamp(1980, 2107) as u16,
+        month: local.month() as u16,
+        day: local.day() as u16,
+        hour: local.hour() as u16,
+        min: local.minute() as u16,
+        sec: local.second() as u16,
+    };
+    let mut packed = 0;
+    pack_time(&dt, &mut packed);
+    packed
+}
+
+// ----- File times and attributes -----------------------------------------------
+
+/// The `Dos` unit's `DateTime`, for `PackTime` and `UnpackTime`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DateTime {
+    pub year: u16,
+    pub month: u16,
+    pub day: u16,
+    pub hour: u16,
+    pub min: u16,
+    pub sec: u16,
+}
+
+/// `PackTime(dt, time)`: pack a date and time into a `LongInt` as DOS
+/// stored file times (see `pack_system_time`). Seconds are kept to 2.
+pub fn pack_time(dt: &DateTime, time: &mut i32) {
+    let year = u32::from(dt.year.saturating_sub(1980) & 127);
+    let date = (year << 9) | (u32::from(dt.month & 15) << 5) | u32::from(dt.day & 31);
+    let clock = (u32::from(dt.hour & 31) << 11) | (u32::from(dt.min & 63) << 5) | u32::from((dt.sec / 2) & 31);
+    *time = ((date << 16) | clock) as i32;
+}
+
+/// `UnpackTime(time, dt)`: the reverse of `PackTime`.
+pub fn unpack_time(time: impl Into<i32>, dt: &mut DateTime) {
+    let time = time.into() as u32;
+    let (date, clock) = (time >> 16, time & 0xFFFF);
+    *dt = DateTime {
+        year: (1980 + (date >> 9)) as u16,
+        month: ((date >> 5) & 15) as u16,
+        day: (date & 31) as u16,
+        hour: (clock >> 11) as u16,
+        min: ((clock >> 5) & 63) as u16,
+        sec: ((clock & 31) * 2) as u16,
+    };
+}
+
+/// The file a file variable is assigned to, or `None` (and `DosError` 6,
+/// DOS's "invalid handle") if it isn't assigned.
+fn file_path(f: &impl crate::io::AnyFile) -> Option<std::path::PathBuf> {
+    match f.assigned_name() {
+        Some(name) => Some(dos_path(&name.to_string())),
+        None => {
+            set_dos_error(6);
+            None
+        }
+    }
+}
+
+/// `DosError` for an I/O error: 2 file not found, 5 access denied.
+fn io_dos_error(e: &std::io::Error) -> i16 {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => 2,
+        std::io::ErrorKind::PermissionDenied => 5,
+        _ => 1,
+    }
+}
+
+/// `GetFTime(f, time)`: the file's modification time, packed.
+pub fn get_f_time(f: &mut impl crate::io::AnyFile, time: &mut i32) {
+    let Some(path) = file_path(f) else { return };
+    match std::fs::metadata(&path).and_then(|m| m.modified()) {
+        Ok(modified) => {
+            *time = pack_system_time(modified);
+            set_dos_error(0);
+        }
+        Err(e) => set_dos_error(io_dos_error(&e)),
+    }
+}
+
+/// `SetFTime(f, time)`: set the file's modification time from a packed time.
+pub fn set_f_time(f: &mut impl crate::io::AnyFile, time: impl Into<i32>) {
+    let Some(path) = file_path(f) else { return };
+    let mut dt = DateTime::default();
+    unpack_time(time, &mut dt);
+    let local = Local.with_ymd_and_hms(
+        i32::from(dt.year),
+        u32::from(dt.month),
+        u32::from(dt.day),
+        u32::from(dt.hour),
+        u32::from(dt.min),
+        u32::from(dt.sec),
+    );
+    let Some(local) = local.earliest() else {
+        set_dos_error(1);
+        return;
+    };
+    let result = std::fs::File::options().write(true).open(&path).and_then(|file| file.set_modified(local.into()));
+    set_dos_error(match result {
+        Ok(()) => 0,
+        Err(e) => io_dos_error(&e),
+    });
+}
+
+thread_local! {
+    /// The attribute bits a modern file system has no place for (`Hidden`,
+    /// `SysFile`, `Archive` set by `SetFAttr`), remembered per path.
+    static EXTRA_ATTRS: std::cell::RefCell<std::collections::HashMap<std::path::PathBuf, u8>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// `GetFAttr(f, attr)`: the file's attributes. `ReadOnly` and `Directory`
+/// come from the file itself, `Hidden` from a name starting with `.`, and
+/// `Archive` (set for every file, as DOS did for new ones), `SysFile` and
+/// a `Hidden` set by `SetFAttr` are remembered while the program runs.
+pub fn get_f_attr(f: &mut impl crate::io::AnyFile, attr: &mut u16) {
+    let Some(path) = file_path(f) else { return };
+    match std::fs::metadata(&path) {
+        Ok(meta) => {
+            let mut bits = if meta.is_dir() { DIRECTORY } else { ARCHIVE };
+            if meta.permissions().readonly() {
+                bits |= READ_ONLY;
+            }
+            if path.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) {
+                bits |= HIDDEN;
+            }
+            if let Some(extra) = EXTRA_ATTRS.with_borrow(|attrs| attrs.get(&path).copied()) {
+                bits = (bits & (READ_ONLY | DIRECTORY)) | extra;
+            }
+            *attr = u16::from(bits);
+            set_dos_error(0);
+        }
+        Err(e) => set_dos_error(io_dos_error(&e)),
+    }
+}
+
+/// `SetFAttr(f, attr)`: `ReadOnly` really changes the file's permissions;
+/// `Hidden`, `SysFile` and `Archive` are remembered (see `get_f_attr`).
+pub fn set_f_attr(f: &mut impl crate::io::AnyFile, attr: impl Into<i32>) {
+    let Some(path) = file_path(f) else { return };
+    let attr = attr.into() as u8;
+    let result = std::fs::metadata(&path).and_then(|meta| {
+        let mut permissions = meta.permissions();
+        permissions.set_readonly(attr & READ_ONLY != 0);
+        std::fs::set_permissions(&path, permissions)
+    });
+    match result {
+        Ok(()) => {
+            EXTRA_ATTRS.with_borrow_mut(|attrs| attrs.insert(path, attr & (HIDDEN | SYS_FILE | ARCHIVE)));
+            set_dos_error(0);
+        }
+        Err(e) => set_dos_error(io_dos_error(&e)),
+    }
 }
 
 #[cfg(test)]
@@ -394,5 +545,17 @@ mod find_tests {
         assert!(dos_match("DATA?.DAT", "data1.dat"));
         assert!(!dos_match("DATA?.DAT", "data12.dat"));
         assert!(dos_match("*", ".hidden"));
+    }
+
+    #[test]
+    fn pack_and_unpack_time() {
+        let dt = DateTime { year: 1997, month: 3, day: 11, hour: 7, min: 30, sec: 41 };
+        let mut packed = 0;
+        pack_time(&dt, &mut packed);
+        let mut back = DateTime::default();
+        unpack_time(packed, &mut back);
+        // Seconds are kept to 2, as DOS did.
+        assert_eq!((back.year, back.month, back.day, back.hour, back.min, back.sec), (1997, 3, 11, 7, 30, 40));
+        assert_eq!(packed as u32 >> 25, 17);
     }
 }

@@ -569,6 +569,9 @@ impl<'a> Codegen<'a> {
                         | Param::VarStr(_)
                         | Param::VarBool
                         | Param::VarSearchRec
+                        | Param::VarDateTime
+                        | Param::VarLongInt
+                        | Param::VarFile
                         | Param::VarFillPattern => self.place_mut(arg),
                     })
                     .collect();

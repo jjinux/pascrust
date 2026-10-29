@@ -32,6 +32,13 @@ pub enum Param {
     VarBool,
     /// A `var` parameter of the `Dos` unit's `SearchRec`.
     VarSearchRec,
+    /// A `var` parameter of the `Dos` unit's `DateTime`.
+    VarDateTime,
+    /// A `var` parameter of type `LongInt`.
+    VarLongInt,
+    /// A file variable of either kind, `Text` or `file of T` (TP's untyped
+    /// `var F`).
+    VarFile,
     /// `Graph`'s `FillPatternType`, by value and as a `var` parameter.
     FillPattern,
     VarFillPattern,
@@ -60,6 +67,17 @@ pub fn search_rec_type() -> Type {
             field("Name", Type::Str { cap: 255 }),
         ],
     }))
+}
+
+/// The `Dos` unit's `DateTime`, for `PackTime` and `UnpackTime`.
+pub fn date_time_type() -> Type {
+    use super::types::{Field, RecordType};
+    let names = ["Year", "Month", "Day", "Hour", "Min", "Sec"];
+    let fields = names
+        .iter()
+        .map(|n| Field { name: n.to_string(), rust_name: n.to_ascii_lowercase(), ty: Type::Int(IntKind::Word) })
+        .collect();
+    Type::Record(std::rc::Rc::new(RecordType { rust_name: "DateTime".to_string(), fields }))
 }
 
 /// The `Dos` unit's `Registers`, for `Intr` and `MsDos`, which pascrust
@@ -197,6 +215,12 @@ pub static DOS: &[UnitRoutine] = &[
     routine!("fsplit" => "f_split"(Str, VarStr(67), VarStr(8), VarStr(4))),
     routine!("findfirst" => "find_first"(Str, Int, VarSearchRec)),
     routine!("findnext" => "find_next"(VarSearchRec)),
+    routine!("getftime" => "get_f_time"(VarFile, VarLongInt)),
+    routine!("setftime" => "set_f_time"(VarFile, Int)),
+    routine!("getfattr" => "get_f_attr"(VarFile, VarWord)),
+    routine!("setfattr" => "set_f_attr"(VarFile, Int)),
+    routine!("packtime" => "pack_time"(VarDateTime, VarLongInt)),
+    routine!("unpacktime" => "unpack_time"(Int, VarDateTime)),
     routine!("envcount" => "env_count"() -> Integer),
     routine!("envstr" => "env_str"(Int) -> Str),
     routine!("dosversion" => "dos_version"() -> Word),
@@ -452,6 +476,7 @@ pub fn unit_types(name: &str) -> Vec<(&'static str, Type)> {
             ("extstr", Type::Str { cap: 4 }),
             ("searchrec", search_rec_type()),
             ("registers", registers_type()),
+            ("datetime", date_time_type()),
         ],
         "graph" => vec![("fillpatterntype", fill_pattern_type())],
         _ => Vec::new(),
