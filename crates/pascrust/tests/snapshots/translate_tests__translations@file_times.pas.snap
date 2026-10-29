@@ -75,6 +75,10 @@ fn pascal_main() {
     dt.sec = 0;
     pack_time(&mut dt, &mut stamp);
     check(&mut checks, &mut failures, stamp == 4194304, pstr("PackTime: day 32 spills into the month, as in TP"));
+    dt.day = 1;
+    dt.hour = 32;
+    pack_time(&mut dt, &mut stamp);
+    check(&mut checks, &mut failures, stamp == 2162688, pstr("PackTime: hour 32 doesn't spill into the date"));
     f.assign("open.txt");
     f.rewrite();
     fwriteln!(f, "written before SetFTime");

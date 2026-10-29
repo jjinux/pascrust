@@ -256,14 +256,16 @@ Dos unit
   `Word` registers, so a program using it gets that error)
 - `GetFTime`/`SetFTime` (the file's real modification time, packed as DOS
   did), `PackTime`/`UnpackTime` with `DateTime` (seconds kept to 2; as in
-  TP, an out-of-range field spills into the next), and
+  TP, an out-of-range field spills into the next, within the date or
+  the time), and
   `GetFAttr`/`SetFAttr` on a `Text` or typed file: `ReadOnly` and
   `Directory` are real; `Hidden` is a name starting with `.`; `Archive`,
   `SysFile` and a `Hidden` set by `SetFAttr` are remembered while the
   program runs (faked: modern file systems have nowhere to keep them).
   They follow the file through `Rename`, and writing to it sets `Archive`
   again, as in DOS. `SetFTime` on a file open for writing sticks after
-  `Close`, as in DOS; a time that doesn't exist locally (the hour skipped
+  `Close`, as in DOS, and works on a read-only file (except on Windows,
+  which wants write access); a time that doesn't exist locally (the hour skipped
   when clocks go forward, day 0) moves to the nearest one that does.
   `DosError` is 2 for a missing file and 3 for a missing directory.
   TP's untyped `var F` took any variable; pascrust wants a file

@@ -1,6 +1,7 @@
 ok: PackTime and UnpackTime keep the date
 ok: and the time, to 2 seconds
 ok: PackTime: day 32 spills into the month, as in TP
+ok: PackTime: hour 32 doesn't spill into the date
 ok: SetFTime on an open file outlasts Close
 ok: writing a file sets Archive again
 ok: attributes go with the file through Rename
@@ -17,4 +18,4 @@ ok: SetFAttr Hidden, and not ReadOnly any more
 ok: GetFTime of a typed file
 ok: GetFAttr of a directory
 ok: GetFAttr of a missing file: DosError 2
-19 of 19 checks passed
+20 of 20 checks passed

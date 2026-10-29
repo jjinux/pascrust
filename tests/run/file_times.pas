@@ -46,6 +46,10 @@ begin
   dt.Sec := 0;
   PackTime(dt, stamp);
   Check(stamp = 4194304, 'PackTime: day 32 spills into the month, as in TP');
+  dt.Day := 1;
+  dt.Hour := 32;
+  PackTime(dt, stamp);
+  Check(stamp = 2162688, 'PackTime: hour 32 doesn''t spill into the date');
   Assign(f, 'open.txt');
   Rewrite(f);
   WriteLn(f, 'written before SetFTime');

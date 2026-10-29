@@ -465,18 +465,15 @@ pub struct DateTime {
 /// `PackTime(dt, time)`: pack a date and time into a `LongInt` as DOS
 /// stored file times (see `pack_system_time`). Seconds are kept to 2.
 /// Like TP, it adds the fields up in place without checking them, so an
-/// out-of-range one spills into the next (day 32 is the next month's 0).
+/// out-of-range one spills into the next (day 32 is the next month's 0);
+/// but the date and the time are separate 16-bit words, so the time can't
+/// spill into the date.
 /// `dt` is `&mut` only because TP declares it `var T: DateTime` (passed by
 /// reference to save copying it); it isn't changed.
 pub fn pack_time(dt: &mut DateTime, time: &mut i32) {
-    let field = |value: u16, shift: u32| (i32::from(value)).wrapping_shl(shift);
-    *time = (i32::from(dt.year) - 1980)
-        .wrapping_shl(25)
-        .wrapping_add(field(dt.month, 21))
-        .wrapping_add(field(dt.day, 16))
-        .wrapping_add(field(dt.hour, 11))
-        .wrapping_add(field(dt.min, 5))
-        .wrapping_add(i32::from(dt.sec / 2));
+    let date = dt.year.wrapping_sub(1980).wrapping_shl(9).wrapping_add(dt.month.wrapping_shl(5)).wrapping_add(dt.day);
+    let clock = dt.hour.wrapping_shl(11).wrapping_add(dt.min.wrapping_shl(5)).wrapping_add(dt.sec / 2);
+    *time = ((u32::from(date) << 16) | u32::from(clock)) as i32;
 }
 
 /// `UnpackTime(time, dt)`: the reverse of `PackTime`.
