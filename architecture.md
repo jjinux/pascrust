@@ -820,11 +820,13 @@ window meanwhile (§19).
 
   `GetImage`/`PutImage` (step 4 of `notes/untyped_memory.md`) keep the image
   in TP's EGA/VGA layout, not one of PascRust's own (Fable's review): a
-  6-byte header, then each row as bit planes 3 down to 0. The header is from
-  TP's Programmer's Reference ("the first two words store the width and
-  height; the third is reserved") and the row size from the BGI's
-  `ImageSize`. The plane order isn't documented anywhere we found; 3 first
-  is what the BGI's 16-colour drivers are reported to do. The buffer is an
+  4-byte header (width - 1, height - 1), then each row as bit planes 3
+  down to 0, as BGI documentation and the Usenet notes of the time
+  describe; `ImageSize` counts 2 bytes more at the end, which nothing
+  seems to use. The header's size and the plane order come from "Fast
+  PUTIMAGE" in the SWAG archive, a 1990s `PutImage` replacement in
+  assembly that draws real `GetImage` buffers: it skips 4 bytes, then
+  writes each row with the VGA's map mask 8, 4, 2, 1 (plane 3 first). The buffer is an
   untyped `var` (`Param::Untyped` for `GetImage`, `Param::UntypedIn` for
   `PutImage`), so it goes through the byte views.
 

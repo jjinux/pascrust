@@ -13,23 +13,23 @@ input_file: tests/translate/graph_images.pas
 use pascrust_runtime::prelude::*;
 
 // GetImage, PutImage with its five modes, and ImageSize, with the image
-// in TP's own buffer layout: three Words (width - 1, height - 1, and one
-// reserved), then each row as bit planes 3 down to 0. The buffer comes
+// in TP's own buffer layout: two Words (width - 1, height - 1), then each
+// row as bit planes 3 down to 0 (and 2 bytes more that ImageSize counts
+// but GetImage leaves alone). The buffer comes
 // from GetMem, a static array, or a file. Self-checking: Free Pascal's
 // Graph unit needs a real screen (and keeps images its own way), so this
 // .out is built from the checks, by hand.
 
-/// Pascal: `record width, height, reserved: Word; end`
+/// Pascal: `record width, height: Word; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Header {
     width: u16,
     height: u16,
-    reserved: u16,
 }
 
 // `file of` needs to turn records into bytes and back. This runtime macro
 // implements that (the `FileRecord` trait) field by field.
-file_record!(Header { width, height, reserved });
+file_record!(Header { width, height });
 
 /// Pascal: `procedure Check(ok: Boolean; what: string);`
 ///
@@ -81,13 +81,8 @@ fn pascal_main() {
     size = image_size(0, 0, 9, 9);
     p = AnyPtr::alloc(size);
     get_image(0, 0, 9, 9, &mut p.bytes());
-    move_bytes(&p.bytes().to_bytes(), &mut head, 6);
-    check(
-        &mut checks,
-        &mut failures,
-        head.width == 9 && head.height == 9 && head.reserved == 0,
-        pstr("the header: width - 1, height - 1"),
-    );
+    move_bytes(&p.bytes().to_bytes(), &mut head, 4);
+    check(&mut checks, &mut failures, head.width == 9 && head.height == 9, pstr("the header: width - 1, height - 1"));
     put_image(100, 50, &p.bytes().to_bytes(), NORMAL_PUT);
     check(
         &mut checks,
@@ -130,14 +125,14 @@ fn pascal_main() {
     check(
         &mut checks,
         &mut failures,
-        i16::from(buf[7]) == 128 && i16::from(buf[9]) == 0 && i16::from(buf[11]) == 0 && i16::from(buf[13]) == 128,
+        i16::from(buf[5]) == 128 && i16::from(buf[7]) == 0 && i16::from(buf[9]) == 0 && i16::from(buf[11]) == 128,
         pstr("row 0: planes 3 down to 0"),
     );
     // Brown is 0110: the last row, planes 2 and 1, pixel 9 is bit 6 of byte 2.
     check(
         &mut checks,
         &mut failures,
-        i16::from(buf[79]) == 0 && i16::from(buf[82]) == 64 && i16::from(buf[84]) == 64 && i16::from(buf[86]) == 0,
+        i16::from(buf[77]) == 0 && i16::from(buf[80]) == 64 && i16::from(buf[82]) == 64 && i16::from(buf[84]) == 0,
         pstr("the last row"),
     );
     // A sprite saved to a file and drawn from it.

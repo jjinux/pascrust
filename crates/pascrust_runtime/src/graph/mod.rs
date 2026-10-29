@@ -761,12 +761,12 @@ pub fn get_image(
 /// `NormalPut`, `XORPut`, `OrPut`, `AndPut` or `NotPut`.
 pub fn put_image(x: impl Into<i32>, y: impl Into<i32>, bitmap: &[u8], bit_blt: impl Into<i32>) {
     let (x, y, bit_blt) = (i(x), i(y), i(bit_blt));
-    let header_ok = bitmap.len() >= 6;
-    let needed = if header_ok {
+    // The header, then the pixels (not the 2 bytes `ImageSize` adds).
+    let needed = if bitmap.len() >= 4 {
         let word = |i: usize| i32::from(u16::from_le_bytes([bitmap[i], bitmap[i + 1]]));
-        image_bytes(word(0) + 1, word(2) + 1)
+        image_bytes(word(0) + 1, word(2) + 1) - 2
     } else {
-        6
+        4
     };
     if needed > bitmap.len() {
         crate::rte(201, format!("Range check error: PutImage of {needed} bytes from {}", bitmap.len()));

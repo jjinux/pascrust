@@ -111,8 +111,9 @@ pub struct Screen {
 }
 
 /// The bytes `GetImage` needs for a `width` by `height` rectangle: the
-/// 6-byte header, then four planes of `width / 8` bytes (rounded up) for
-/// each row.
+/// 4-byte header, four planes of `width / 8` bytes (rounded up) for each
+/// row, and 2 bytes more, which TP's `ImageSize` counted (for what, nobody
+/// seems to know) but `GetImage` doesn't fill.
 pub fn image_bytes(width: i32, height: i32) -> usize {
     6 + (width.max(0) as usize).div_ceil(8) * 4 * height.max(0) as usize
 }
@@ -212,15 +213,16 @@ impl Screen {
     /// `GetImage`: the rectangle's pixels in the layout TP's EGA/VGA driver
     /// used, so a buffer sized by hand, a program that reads the header and
     /// an image saved to a file by the original program all still work.
-    /// Three `Word`s (the width and height, each minus one, and one TP
-    /// left reserved), then each row as the four bit planes from plane 3
-    /// (intensity) down to plane 0 (blue), each one bit per pixel, eight
-    /// pixels to a byte with the leftmost in bit 7.
+    /// Two `Word`s (the width and height, each minus one), then each row
+    /// as the four bit planes from plane 3 (intensity) down to plane 0
+    /// (blue), each one bit per pixel, eight pixels to a byte with the
+    /// leftmost in bit 7. (The order of the planes is what a 1990s fast
+    /// `PutImage` in assembly expects, "Fast PUTIMAGE" in the SWAG archive.)
     pub fn get_image(&self, x1: i32, y1: i32, x2: i32, y2: i32) -> Vec<u8> {
         let (width, height) = (x2 - x1 + 1, y2 - y1 + 1);
         let row_bytes = (width as usize).div_ceil(8);
         let mut image = Vec::with_capacity(image_bytes(width, height));
-        for word in [width - 1, height - 1, 0] {
+        for word in [width - 1, height - 1] {
             image.extend_from_slice(&(word as u16).to_le_bytes());
         }
         for y in y1..=y2 {
@@ -246,7 +248,7 @@ impl Screen {
         let (width, height) = (word(0) + 1, word(2) + 1);
         let row_bytes = (width as usize).div_ceil(8);
         for row in 0..height {
-            let start = 6 + row as usize * 4 * row_bytes;
+            let start = 4 + row as usize * 4 * row_bytes;
             for col in 0..width {
                 let (byte, bit) = (col as usize / 8, 0x80 >> (col % 8));
                 let mut color = 0;
@@ -599,12 +601,12 @@ mod tests {
         s.put_pixel(0, 0, 9); // 1001: planes 3 and 0
         s.put_pixel(9, 1, 6); // 0110: planes 2 and 1
         let image = s.get_image(0, 0, 9, 1);
-        assert_eq!(image.len(), image_bytes(10, 2));
-        assert_eq!(image[..6], [9, 0, 1, 0, 0, 0]);
+        assert_eq!(image.len(), image_bytes(10, 2) - 2);
+        assert_eq!(image[..4], [9, 0, 1, 0]);
         // Row 0: planes 3, 2, 1, 0, two bytes each; pixel 0 is bit 7.
-        assert_eq!(image[6..14], [0x80, 0, 0, 0, 0, 0, 0x80, 0]);
+        assert_eq!(image[4..12], [0x80, 0, 0, 0, 0, 0, 0x80, 0]);
         // Row 1: pixel 9 is bit 6 of the second byte.
-        assert_eq!(image[14..22], [0, 0, 0, 0x40, 0, 0x40, 0, 0]);
+        assert_eq!(image[12..20], [0, 0, 0, 0x40, 0, 0x40, 0, 0]);
         s.put_image(20, 20, &image, 0);
         assert_eq!((s.get_pixel(20, 20), s.get_pixel(29, 21)), (9, 6));
         s.put_image(20, 20, &image, 1); // XORPut twice clears it

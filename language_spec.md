@@ -363,8 +363,9 @@ Graph unit (BGI, as used in the examples)
 - `GetImage`/`PutImage`/`ImageSize`, with `NormalPut`/`CopyPut`,
   `XORPut`, `OrPut`, `AndPut` and `NotPut`. The buffer (`p^` after
   `GetMem(p, ImageSize(...))`, or any variable) holds the image in TP's
-  EGA/VGA layout: three `Word`s (width - 1, height - 1, reserved), then
-  each row as bit planes 3 down to 0, 8 pixels a byte. So sprites saved by
+  EGA/VGA layout: two `Word`s (width - 1, height - 1), then each row as
+  bit planes 3 down to 0, 8 pixels a byte (`ImageSize` counts 2 bytes
+  more, which `GetImage` leaves alone). So sprites saved by
   the original programs still draw. `ImageSize` of 64K or more is 0 with
   `GraphResult` `grError`. A buffer too small is runtime error 201.
   `PutImage` is clipped to the viewport (with `ClipOn`)
