@@ -137,6 +137,29 @@ const RESERVED: &[&str] = &[
     "FileRecord",
     "PasWrite",
     "Enumerated",
+    // Runtime functions the generated code calls that no Pascal name spells
+    // (`Random` is `random_real()`, `for c := Red to Blue` uses
+    // `enum_range`), so a program's own `RandomReal` mustn't take their place.
+    "enum_range",
+    "random_real",
+    "random_word",
+    "io_unchecked",
+    "pas_str",
+    // The setters of runtime variables (`RandSeed := 1` is `set_rand_seed(1)`).
+    "set_exit_code",
+    "set_rand_seed",
+    "set_file_mode",
+    "set_text_attr",
+    "set_last_mode",
+    "set_check_break",
+    "set_check_eof",
+    "set_check_snow",
+    "set_direct_video",
+    "set_dos_error",
+    "set_ovr_file_mode",
+    "set_ovr_load_count",
+    "set_ovr_result",
+    "set_ovr_trap_count",
 ];
 
 fn escape(name: String) -> String {
@@ -152,6 +175,17 @@ fn escape(name: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A unit variable's setter has no Pascal spelling, so a program's own
+    /// `SetTextAttr` must be renamed rather than take its place.
+    #[test]
+    fn runtime_setters_are_reserved() {
+        for unit in ["crt", "dos", "graph", "overlay"] {
+            for var in crate::sema::units::unit_vars(unit) {
+                assert!(RESERVED.contains(&var.set), "{} is not reserved", var.set);
+            }
+        }
+    }
 
     #[test]
     fn conversions() {

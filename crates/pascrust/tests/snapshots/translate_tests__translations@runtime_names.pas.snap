@@ -32,9 +32,52 @@ struct PFile_ {
     size: i16,
 }
 
+/// Pascal: `(Red, Green, Blue)`
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+enum C {
+    #[default]
+    Red,
+    Green,
+    Blue,
+}
+
+// Pascal enumerations are ordinal types: they can index arrays, drive
+// `for` loops and go through `Succ`/`Pred`. These impls connect the enum
+// to the runtime's support for that.
+impl Ordinal for C {
+    fn ord(self) -> i64 {
+        self as i64
+    }
+}
+
+impl Enumerated for C {
+    const VALUES: &'static [Self] = &[C::Red, C::Green, C::Blue];
+}
+
 // Type names that the runtime also uses (PSet, PArray, Ptr, PText,
-// PFile) are renamed in the Rust, so a program can use them too.
+// PFile), and the names of runtime functions the Rust calls behind the
+// scenes (Random is random_real, a for loop over an enum uses
+// enum_range), are renamed, so a program can use them too.
 // Pascal: `CharSet = set of Char`
+
+/// Pascal: `function RandomReal: Real;`
+fn random_real_() -> f64 {
+    let mut result: f64 = 0.0;
+    result = 0.5;
+    result
+}
+
+/// Pascal: `function EnumRange(n: Integer): Integer;`
+fn enum_range_(n: i16) -> i16 {
+    let mut result: i16 = 0;
+    result = n * 2;
+    result
+}
+
+/// Pascal: `procedure SetRandSeed(n: Integer);`
+fn set_rand_seed_(n: i16) {
+    pwriteln!("my SetRandSeed ", n);
+}
 
 /// The main program: the `begin ... end.` block of `RuntimeNames`.
 /// Its local variables are the Pascal program's global variables.
@@ -43,6 +86,7 @@ fn pascal_main() {
     let mut a: PArray_ = PArray_::default();
     let mut p: Ptr_ = Ptr::nil();
     let mut f: PFile_ = PFile_::default();
+    let mut r: f64 = 0.0;
     s = Ptr::alloc();
     *s.get_mut() = pset![b'a', b'b'];
     a[2] = 7;
@@ -51,6 +95,13 @@ fn pascal_main() {
     f.name = pstr("notes.txt");
     f.size = *p.get();
     pwriteln!((*s.get()).contains(b'b'), " ", a[2], " ", *p.get(), " ", f.name, " ", f.size);
+    set_rand_seed(1);
+    set_rand_seed_(2);
+    r = random_real();
+    for c in enum_range(C::Red, C::Blue) {
+        pwrite!(c as i16);
+    }
+    pwriteln!(" ", r < 1.0, " ", wd(random_real_(), 3, 1), " ", enum_range_(3));
     s.dispose();
     p.dispose();
 }
