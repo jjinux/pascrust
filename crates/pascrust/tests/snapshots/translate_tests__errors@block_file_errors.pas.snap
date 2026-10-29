@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/block_file_errors.pas
+---
+block_file_errors.pas:10:9: error: an untyped file is read and written with `BlockRead`/`BlockWrite`, not `Write`
+  Write(f, n);
+        ^
+
+block_file_errors.pas:11:12: error: only an untyped file has a record size for `Reset`
+  Reset(g, 1);
+           ^
+
+block_file_errors.pas:12:13: error: `BlockRead` needs an untyped file (`file`), found Text
+  BlockRead(t, n, 1);
+            ^

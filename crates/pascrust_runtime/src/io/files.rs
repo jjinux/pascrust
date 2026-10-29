@@ -746,6 +746,204 @@ impl<T: FileRecord> PFile<T> {
     }
 }
 
+/// Pascal `file` without `of`: an untyped file, read and written in blocks
+/// of records of `record_size` bytes (128 unless `Reset(f, n)` or
+/// `Rewrite(f, n)` says otherwise) with `BlockRead`/`BlockWrite`, into any
+/// variable's bytes (a [`ByteView`](crate::bytes::ByteView)).
+#[derive(Default)]
+pub struct PBlockFile {
+    name: Option<PString>,
+    file: Option<File>,
+    record_size: usize,
+}
+
+/// As for [`PText`], a copy is closed.
+impl Clone for PBlockFile {
+    fn clone(&self) -> Self {
+        PBlockFile { name: self.name, file: None, record_size: self.record_size }
+    }
+}
+
+impl std::fmt::Debug for PBlockFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PBlockFile({:?})", self.name)
+    }
+}
+
+impl AnyFile for PBlockFile {
+    fn assigned_name(&self) -> Option<PString> {
+        self.name
+    }
+}
+
+impl PBlockFile {
+    fn name(&self) -> PString {
+        match self.name {
+            Some(name) => name,
+            None => crate::rte(102, "File not assigned"),
+        }
+    }
+
+    fn file(&mut self) -> &mut File {
+        match &mut self.file {
+            Some(file) => file,
+            None => crate::rte(103, "File not open"),
+        }
+    }
+
+    fn file_ref(&self) -> &File {
+        match &self.file {
+            Some(file) => file,
+            None => crate::rte(103, "File not open"),
+        }
+    }
+
+    /// Pascal `Assign(f, name)`.
+    pub fn assign(&mut self, name: impl Into<PString>) {
+        self.file = None;
+        self.name = Some(name.into());
+    }
+
+    /// Pascal `Reset(f)`: open an existing file, in records of 128 bytes.
+    pub fn reset(&mut self) {
+        self.reset_records(128);
+    }
+
+    /// Pascal `Reset(f, RecSize)`: in records of `RecSize` bytes (often 1).
+    pub fn reset_records(&mut self, record_size: impl Into<i32>) {
+        self.record_size = usize::try_from(record_size.into()).unwrap_or(1).max(1);
+        let name = self.name();
+        let mode = crate::system::file_mode() & 3;
+        match OpenOptions::new().read(mode != 1).write(mode != 0).open(dos_path(&name.to_string())) {
+            Ok(file) => self.file = Some(file),
+            Err(e) => open_error(e, &name),
+        }
+    }
+
+    /// Pascal `Rewrite(f)`: create an empty file, in records of 128 bytes.
+    pub fn rewrite(&mut self) {
+        self.rewrite_records(128);
+    }
+
+    /// Pascal `Rewrite(f, RecSize)`.
+    pub fn rewrite_records(&mut self, record_size: impl Into<i32>) {
+        self.record_size = usize::try_from(record_size.into()).unwrap_or(1).max(1);
+        let name = self.name();
+        let path = dos_path(&name.to_string());
+        match OpenOptions::new().read(true).write(true).create(true).truncate(true).open(path) {
+            Ok(file) => self.file = Some(file),
+            Err(e) => open_error(e, &name),
+        }
+    }
+
+    /// Pascal `Close(f)`.
+    pub fn close(&mut self) {
+        if self.file.take().is_none() {
+            crate::rte(103, "File not open");
+        }
+    }
+
+    /// Pascal `Erase(f)`.
+    pub fn erase(&mut self) {
+        let name = self.name();
+        if let Err(e) = remove_file(&dos_path(&name.to_string())) {
+            open_error(e, &name);
+        }
+    }
+
+    /// Pascal `Rename(f, new_name)`.
+    pub fn rename(&mut self, new_name: impl Into<PString>) {
+        let (name, new_name) = (self.name(), new_name.into());
+        if let Err(e) = std::fs::rename(dos_path(&name.to_string()), dos_path(&new_name.to_string())) {
+            open_error(e, &name);
+        }
+        self.name = Some(new_name);
+    }
+
+    /// Pascal `FileSize(f)`: the number of whole records.
+    pub fn file_size(&self) -> i32 {
+        let bytes = self.file_ref().metadata().map_or(0, |m| m.len());
+        (bytes / self.record_size as u64) as i32
+    }
+
+    /// Pascal `FilePos(f)`: the number of the next record (0-based).
+    pub fn file_pos(&self) -> i32 {
+        let pos = self.file_ref().stream_position().unwrap_or(0);
+        (pos / self.record_size as u64) as i32
+    }
+
+    /// Pascal `Seek(f, n)`: move to record `n` (0-based).
+    pub fn seek(&mut self, n: impl Into<i32>) {
+        let n = n.into();
+        if n < 0 || n > self.file_size() {
+            crate::rte(100, format!("Disk read error: seek to record {n}"));
+        }
+        let offset = n as u64 * self.record_size as u64;
+        if self.file().seek(SeekFrom::Start(offset)).is_err() {
+            crate::rte(100, "Disk read error");
+        }
+    }
+
+    /// Pascal `Eof(f)`.
+    pub fn eof(&self) -> bool {
+        let pos = self.file_ref().stream_position().unwrap_or(0);
+        pos >= self.file_ref().metadata().map_or(0, |m| m.len())
+    }
+
+    /// Pascal `Truncate(f)`.
+    pub fn truncate(&mut self) {
+        let pos = self.file().stream_position().unwrap_or(0);
+        let _ = self.file().set_len(pos);
+    }
+
+    /// `BlockRead(f, Buf, Count, Result)`: read up to `Count` records into
+    /// `Buf`'s bytes, and say how many whole records there were. Only the
+    /// bytes read change; the rest of `Buf` stays as it was.
+    pub fn block_read_count(&mut self, buf: &mut dyn crate::bytes::ByteView, count: impl Into<i32>) -> i32 {
+        let wanted = usize::try_from(count.into()).unwrap_or(0) * self.record_size;
+        let mut bytes = buf.to_bytes();
+        if wanted > bytes.len() {
+            crate::rte(201, format!("Range check error: BlockRead of {wanted} bytes into {}", bytes.len()));
+        }
+        let mut read = 0;
+        while read < wanted {
+            match self.file().read(&mut bytes[read..wanted]) {
+                Ok(0) => break,
+                Ok(n) => read += n,
+                Err(_) => crate::rte(100, "Disk read error"),
+            }
+        }
+        buf.set_bytes(&bytes);
+        (read / self.record_size) as i32
+    }
+
+    /// `BlockRead(f, Buf, Count)`: all `Count` records, or runtime error 100.
+    pub fn block_read(&mut self, buf: &mut dyn crate::bytes::ByteView, count: impl Into<i32>) {
+        let count = count.into();
+        if self.block_read_count(buf, count) < count {
+            crate::rte(100, "Disk read error: read past the end of the file");
+        }
+    }
+
+    /// `BlockWrite(f, Buf, Count, Result)`: write `Count` records from
+    /// `Buf`'s bytes, and say how many were written.
+    pub fn block_write_count(&mut self, buf: &[u8], count: impl Into<i32>) -> i32 {
+        let wanted = usize::try_from(count.into()).unwrap_or(0) * self.record_size;
+        if wanted > buf.len() {
+            crate::rte(201, format!("Range check error: BlockWrite of {wanted} bytes from {}", buf.len()));
+        }
+        if self.file().write_all(&buf[..wanted]).is_err() {
+            crate::rte(101, "Disk write error");
+        }
+        (wanted / self.record_size) as i32
+    }
+
+    /// `BlockWrite(f, Buf, Count)`.
+    pub fn block_write(&mut self, buf: &[u8], count: impl Into<i32>) {
+        self.block_write_count(buf, count);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

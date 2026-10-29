@@ -2056,6 +2056,7 @@ fn default_value(ty: &Type) -> String {
         Type::Array(_) | Type::Record(_) | Type::Object(_) => format!("{}::default()", ty.rust()),
         Type::Pointer(_) => "Ptr::nil()".to_string(),
         Type::Text => "PText::default()".to_string(),
+        Type::File(elem) if **elem == Type::Untyped => "PBlockFile::default()".to_string(),
         Type::File(_) => "PFile::default()".to_string(),
         Type::TypeInfo => "\"\"".to_string(),
         Type::Set(_) => "PSet::new()".to_string(),

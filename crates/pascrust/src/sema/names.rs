@@ -134,6 +134,7 @@ const RESERVED: &[&str] = &[
     "Ptr",
     "PText",
     "PFile",
+    "PBlockFile",
     "FileRecord",
     "PasWrite",
     "Enumerated",

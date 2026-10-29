@@ -317,6 +317,7 @@ impl Type {
             Type::Record(r) => r.rust_name.clone(),
             Type::Object(o) => o.rust_name.clone(),
             Type::Text => "PText".to_string(),
+            Type::File(elem) if **elem == Type::Untyped => "PBlockFile".to_string(),
             Type::File(elem) => format!("PFile<{}>", elem.rust()),
             Type::Pointer(p) => match &p.alias {
                 Some(alias) => alias.clone(),
@@ -396,6 +397,7 @@ impl fmt::Display for Type {
             Type::Object(o) => write!(f, "{}", o.rust_name),
             Type::Pointer(p) => write!(f, "^{}", p.target_name),
             Type::Text => write!(f, "Text"),
+            Type::File(elem) if **elem == Type::Untyped => write!(f, "file"),
             Type::File(elem) => write!(f, "file of {elem}"),
             Type::Array(a) => write!(f, "array[{}..{}] of {}", a.lo, a.hi, a.elem),
             Type::Nil | Type::TypeInfo => write!(f, "Pointer"),

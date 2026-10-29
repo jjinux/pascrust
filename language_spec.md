@@ -120,6 +120,12 @@ Built-ins (System unit)
   different types, part of a record or array, with any value. A count past
   the end of a variable is runtime error 201 (TP overwrote whatever came
   next), and an error at compile time when it's a constant
+- Untyped files (`file`): `Reset(f, RecSize)`/`Rewrite(f, RecSize)` (128
+  bytes if not given), `BlockRead(f, Buf, Count [, Result])` and
+  `BlockWrite` into and from any variable's bytes (also from inside one:
+  `BlockWrite(f, s[1], Length(s))`), `Seek`/`FilePos`/`FileSize`/`Eof`/
+  `Truncate` in records. Without `Result`, reading fewer than `Count`
+  records is runtime error 100; with it, only the bytes read change
 - Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
   routine sees the caller's variable as TP's bytes, through a typecast
   (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a
@@ -364,7 +370,7 @@ Later (real TP features, not in the examples, worth doing in order)
 6. (Untyped `var` parameters are done, in tier 2.) `GetMem`/`FreeMem`,
    untyped `Pointer`, `Addr`/`@` on variables (would need
    the place-descriptor representation from `architecture.md` §15)
-7. Untyped `file`, `BlockRead`/`BlockWrite`; `TextRec`/`FileRec`
+7. (Untyped files are done, in tier 2.) `TextRec`/`FileRec`
 8. (Done, now in tier 2: TP-exact binary layout for `file of Rec`.)
 9. `const` parameters, open array parameters, `string` as `PChar` with
    `{$X+}`, `Assigned`, `Include`/`Exclude` (TP 7 additions)

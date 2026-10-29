@@ -91,6 +91,29 @@ impl<'a> Codegen<'a> {
             Flush if self.std_text(&args[0]) == Some(StdFile::Output) => {
                 "pascrust_runtime::io::flush_stdout();".to_string()
             }
+            // `Reset(f, 1)`: an untyped file in records of 1 byte.
+            Reset | Rewrite if args.len() == 2 => {
+                let method = if b == Reset { "reset_records" } else { "rewrite_records" };
+                format!("{}.{method}({});", self.place_receiver(&args[0]), self.expr(&args[1]).0)
+            }
+            BlockRead | BlockWrite => {
+                let file = self.place_receiver(&args[0]);
+                let buffer = if b == BlockRead { self.view_arg(&args[1]) } else { self.view_bytes(&args[1]) };
+                let count = self.expr(&args[2]).0;
+                let method = if b == BlockRead { "block_read" } else { "block_write" };
+                match args.get(3) {
+                    None => format!("{file}.{method}({buffer}, {count});"),
+                    Some(result) => {
+                        let ty = self.a.type_of(result.id).clone();
+                        let call = format!("{file}.{method}_count({buffer}, {count})");
+                        format!(
+                            "{} = {};",
+                            self.place(result),
+                            super::expr::cast((call, prec::POSTFIX), &Type::Int(IntKind::LongInt), &ty).0
+                        )
+                    }
+                }
+            }
             Reset | Rewrite | Append | Close | Erase | Flush | Truncate => {
                 let method = format!("{b:?}").to_ascii_lowercase();
                 format!("{}.{method}();", self.place_receiver(&args[0]))

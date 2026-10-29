@@ -46,6 +46,7 @@ builtins! {
     Assign => "assign", Reset => "reset", Rewrite => "rewrite", Append => "append",
     Close => "close", Erase => "erase", Rename => "rename", Flush => "flush",
     Truncate => "truncate", Seek => "seek", FilePos => "filepos", FileSize => "filesize",
+    BlockRead => "blockread", BlockWrite => "blockwrite",
     Eof => "eof", Eoln => "eoln", SeekEof => "seekeof", SeekEoln => "seekeoln",
     IOResult => "ioresult", TypeOf => "typeof", GetDir => "getdir", SetTextBuf => "settextbuf",
 }

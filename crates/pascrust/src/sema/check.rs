@@ -888,10 +888,8 @@ impl Checker {
                 self.a.file_types.push(elem.clone());
                 Type::File(Rc::new(elem))
             }
-            TypeExpr::File(None, span) => {
-                self.error(*span, "untyped files are not supported");
-                Type::Error
-            }
+            // `file`: untyped, read and written in blocks of bytes.
+            TypeExpr::File(None, _) => Type::File(Rc::new(Type::Untyped)),
             TypeExpr::Pointer(target, _) => {
                 let alias = if self.declaring_type { name.map(|n| self.type_name(n)) } else { None };
                 let ptr = Rc::new(PointerType { target_name: target.name.clone(), target: Default::default(), alias });
@@ -2536,6 +2534,13 @@ impl Checker {
                 {
                     self.file_arg(first, &name, false);
                     args = &args[1..];
+                    if matches!(&file_ty, Type::File(elem) if **elem == Type::Untyped) {
+                        self.error(
+                            first.span,
+                            format!("an untyped file is read and written with `BlockRead`/`BlockWrite`, not `{name}`"),
+                        );
+                        return Type::Void;
+                    }
                     if let Type::File(elem) = file_ty {
                         if b == Writeln {
                             self.error(span, "`Writeln` needs a text file");
@@ -2586,6 +2591,13 @@ impl Checker {
                 {
                     self.file_arg(first, &name, false);
                     args = &args[1..];
+                    if matches!(&file_ty, Type::File(elem) if **elem == Type::Untyped) {
+                        self.error(
+                            first.span,
+                            format!("an untyped file is read and written with `BlockRead`/`BlockWrite`, not `{name}`"),
+                        );
+                        return Type::Void;
+                    }
                     if let Type::File(elem) = file_ty {
                         for arg in args {
                             let ty = self.place(arg, true);
@@ -2617,9 +2629,44 @@ impl Checker {
                 }
                 Type::Void
             }
-            Reset | Rewrite | Close | Erase | Flush => {
+            Reset | Rewrite => {
+                if arity(&mut self.errors, span, args.len(), 1..=2, &name) {
+                    self.file_arg(&args[0], &name, false);
+                    // `Reset(f, 1)`: an untyped file's record size.
+                    if let Some(size) = args.get(1) {
+                        if !matches!(self.a.types.get(&args[0].id), Some(Type::File(elem)) if **elem == Type::Untyped) {
+                            self.error(size.span, format!("only an untyped file has a record size for `{name}`"));
+                        }
+                        self.int_arg(size);
+                    }
+                }
+                Type::Void
+            }
+            Close | Erase | Flush => {
                 if arity(&mut self.errors, span, args.len(), 1..=1, &name) {
                     self.file_arg(&args[0], &name, false);
+                }
+                Type::Void
+            }
+            BlockRead | BlockWrite => {
+                if arity(&mut self.errors, span, args.len(), 3..=4, &name) {
+                    let file = self.place(&args[0], true);
+                    if !matches!(&file, Type::File(elem) if **elem == Type::Untyped) && file != Type::Error {
+                        self.error(args[0].span, format!("`{name}` needs an untyped file (`file`), found {file}"));
+                    }
+                    // `BlockWrite` only reads its buffer.
+                    let buffer = self.place(&args[1], b == BlockRead);
+                    self.view_arg(&args[1], &buffer);
+                    self.int_arg(&args[2]);
+                    if let Some(result) = args.get(3) {
+                        let ty = self.place(result, true);
+                        if !matches!(ty, Type::Int(_) | Type::Error) {
+                            self.error(
+                                result.span,
+                                format!("`{name}`'s count of records goes in an integer, not a {ty}"),
+                            );
+                        }
+                    }
                 }
                 Type::Void
             }
