@@ -821,6 +821,14 @@ sense; only what can't be real is faked.
   what to put in the `.OVR` file. The calls stay ordinary function calls
   in the generated code (`ovr_init("GAME.OVR")`), so a reader sees what
   the program asked for.
+- **Drive letters** (`dos_path` in `runtime/src/system.rs`): `C:` is the
+  file system's root, `/`, so `C:\DATA\X.DAT` is `/DATA/X.DAT` and
+  `GetDir`/`FExpand` show the real path, which the operating system
+  understands too. Other drives exist only when `PASCRUST_DRIVE_A` (and so
+  on) maps them, so `A:` can be real removable media or a folder standing
+  in for a floppy; a name on an unmapped drive isn't found. A name without
+  a drive is relative to the current directory. Names match ignoring
+  case, and `..` stops at the drive's root.
 - **Dos** (`runtime/src/dos.rs`): `DosVersion` is 6.22; `DiskFree`/
   `DiskSize` report 512 MB free of 1 GB on every drive, because a real
   disk's size overflows TP's `LongInt`; `SetDate`/`SetTime` don't touch

@@ -96,6 +96,10 @@ fn run_tests() {
             .stderr(Stdio::piped())
             .env("PASCRUST_FAST", "1")
             .env("PASCRUST_GRAPH", "headless")
+            // Drives C: and A: are the scratch directory, so tests that use
+            // drive letters and `GetDir` give the same answers anywhere.
+            .env("PASCRUST_DRIVE_C", ".")
+            .env("PASCRUST_DRIVE_A", ".")
             .spawn()
             .unwrap();
         child.stdin.take().unwrap().write_all(&input).unwrap();

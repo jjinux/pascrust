@@ -128,9 +128,11 @@ Built-ins (System unit)
   `Output` as file arguments (`Writeln(Output, x)`), also passed to a
   `var f: Text` parameter (`Report(Output)`); they're always the console,
   so `Assign`/`Reset`/`Rewrite` on them is an error
-- `GetDir` (drive C: is where the program started, as for `FExpand`).
-  File names with a drive letter go to that drive's directory
-  (`PASCRUST_DRIVE_A`); `A:X` is relative to the current directory when
+- `GetDir`. Drive C: is the file system's root (`/`) unless
+  `PASCRUST_DRIVE_C` says otherwise, so `GetDir` and `FExpand` give the
+  real path (`C:\USERS\JJ\GAMES`); other drives exist only when mapped
+  (`PASCRUST_DRIVE_A`), and a name on an unmapped drive isn't found.
+  File names with a drive letter go to that drive's directory; `A:X` is relative to the current directory when
   it's on drive A (PascRust keeps one current directory, not one per
   drive), and `..` stops at the drive's root. `GetDir` and `FExpand`
   agree: after `ChDir('A:\SUB')`, `GetDir(1)` is `A:\SUB` and

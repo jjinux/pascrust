@@ -183,8 +183,8 @@ pub fn val<T: ValTarget>(s: impl Into<PString>, x: &mut T, code: &mut i16) {
 
 /// Translate a DOS path like `A:\\GAMES\\SCORES.DAT` for this machine:
 /// backslashes become slashes, and a drive letter is looked up in the
-/// environment variable `PASCRUST_DRIVE_A` (for drive A:, and so on). An
-/// unmapped drive is the directory the program started in. DOS file names
+/// environment variable `PASCRUST_DRIVE_A` (for drive A:, and so on); see
+/// [`drive_base`] for drives that aren't set. DOS file names
 /// are case-insensitive, so each part of the path matches an existing file
 /// or directory whatever its case.
 pub fn dos_path(path: &str) -> std::path::PathBuf {
@@ -194,10 +194,7 @@ pub fn dos_path(path: &str) -> std::path::PathBuf {
         && drive.is_ascii_alphabetic()
     {
         rest = &path[2..];
-        let var = format!("PASCRUST_DRIVE_{}", drive.to_ascii_uppercase() as char);
-        // `join` with an absolute path gives that path, so a relative
-        // mapping is relative to where the program started.
-        base = Some(start_dir().join(std::env::var(var).unwrap_or_default()));
+        base = Some(drive_base(drive.to_ascii_uppercase() as char));
     }
     let rest = rest.replace('\\', "/");
     let path = match base {
@@ -237,6 +234,22 @@ fn current_dir_on(base: &std::path::Path) -> Vec<String> {
     match here.strip_prefix(&base) {
         Ok(inside) => inside.iter().map(|part| part.to_string_lossy().into_owned()).collect(),
         Err(_) => Vec::new(),
+    }
+}
+
+/// Where a drive's root is on this machine. `PASCRUST_DRIVE_A` (and so on)
+/// says, for any drive; a relative mapping is relative to where the program
+/// started (`join` with an absolute path gives that path). Without one,
+/// `C:` is the file system's root, `/`, so `C:\DATA\X.DAT` is `/DATA/X.DAT`
+/// and `GetDir` shows the real directory; any other drive doesn't exist,
+/// and its root is a path nothing can be found under, so using it fails as
+/// DOS's "path not found" did. (A drive must be set up to use it: `A:`
+/// might be a floppy, a USB stick, or a folder standing in for one.)
+pub(crate) fn drive_base(drive: char) -> std::path::PathBuf {
+    match std::env::var(format!("PASCRUST_DRIVE_{drive}")) {
+        Ok(mapping) => start_dir().join(mapping),
+        Err(_) if drive == 'C' => std::path::PathBuf::from("/"),
+        Err(_) => std::path::PathBuf::from(format!("/PASCRUST_DRIVE_{drive} is not set")),
     }
 }
 
@@ -365,11 +378,13 @@ mod tests {
     #[test]
     fn dos_paths() {
         assert_eq!(dos_path("data\\mark.dat"), std::path::PathBuf::from("data/mark.dat"));
-        // Drive A: isn't mapped (no PASCRUST_DRIVE_A): it's where we started.
-        assert_eq!(dos_path("q:\\tictac"), start_dir().join("tictac"));
-        // `..` stops at the drive's root.
-        assert_eq!(dos_path("q:\\..\\tictac"), start_dir().join("tictac"));
-        assert_eq!(dos_path("q:\\sub\\..\\tictac"), start_dir().join("tictac"));
+        // Unmapped, C: is the file system's root, and `..` stops there.
+        // (The test run doesn't set PASCRUST_DRIVE_C.)
+        assert_eq!(dos_path("c:\\usr"), std::path::PathBuf::from("/usr"));
+        assert_eq!(dos_path("c:\\..\\usr"), std::path::PathBuf::from("/usr"));
+        assert_eq!(dos_path("c:\\usr\\..\\usr"), std::path::PathBuf::from("/usr"));
+        // Any other drive must be mapped; without that, nothing is there.
+        assert!(!dos_path("q:\\tictac").exists());
     }
 
     #[test]
