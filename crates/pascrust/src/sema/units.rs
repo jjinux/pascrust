@@ -22,6 +22,8 @@ pub enum Param {
     VarWord,
     /// A `var` parameter of type `Integer`.
     VarInteger,
+    /// A `var` parameter of type `Text`.
+    VarText,
     /// `Graph`'s `FillPatternType`, by value and as a `var` parameter.
     FillPattern,
     VarFillPattern,
@@ -119,7 +121,7 @@ pub static CRT: &[UnitRoutine] = &[
     // they're functions here.
     routine!("windmin" => "wind_min"() -> Word),
     routine!("windmax" => "wind_max"() -> Word),
-    routine!("textattr" => "text_attr"() -> Byte),
+    routine!("assigncrt" => "assign_crt"(VarText)),
 ];
 
 pub static DOS: &[UnitRoutine] = &[
@@ -270,6 +272,31 @@ pub static GRAPH_CONSTS: &[UnitConst] = &[
     ("xorput", "XOR_PUT", 1),
     ("maxcolors", "MAX_COLORS", 15),
 ];
+
+/// A variable a unit exports that lives in the runtime, read through `get`
+/// and assigned through `set` (`TextAttr := $1F` is `set_text_attr(0x1F)`).
+pub struct UnitVar {
+    pub name: &'static str,
+    pub ty: Ret,
+    pub get: &'static str,
+    pub set: &'static str,
+}
+
+/// The variables a unit exports.
+pub fn unit_vars(name: &str) -> &'static [UnitVar] {
+    match name {
+        "crt" => &[
+            UnitVar { name: "textattr", ty: Ret::Byte, get: "text_attr", set: "set_text_attr" },
+            UnitVar { name: "lastmode", ty: Ret::Word, get: "last_mode", set: "set_last_mode" },
+            UnitVar { name: "checkbreak", ty: Ret::Bool, get: "check_break", set: "set_check_break" },
+            // Faked: remembered, but they change nothing.
+            UnitVar { name: "checkeof", ty: Ret::Bool, get: "check_eof", set: "set_check_eof" },
+            UnitVar { name: "checksnow", ty: Ret::Bool, get: "check_snow", set: "set_check_snow" },
+            UnitVar { name: "directvideo", ty: Ret::Bool, get: "direct_video", set: "set_direct_video" },
+        ],
+        _ => &[],
+    }
+}
 
 /// Boolean constants a unit exports: Pascal name, Rust name, value.
 pub fn unit_bools(name: &str) -> &'static [(&'static str, &'static str, bool)] {

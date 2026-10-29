@@ -1,0 +1,12 @@
+ok: LastMode starts as CO80
+ok: TextMode sets LastMode
+ok: TextMode(LastMode)
+ok: TextAttr from TextColor and TextBackground
+ok: TextAttr :=
+ok: NormVideo resets TextAttr
+ok: CheckBreak starts True
+ok: CheckBreak :=
+ok: DirectVideo and CheckSnow can be set
+written through AssignCrt
+ok: read through AssignCrt
+10 of 10 checks passed

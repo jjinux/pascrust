@@ -335,6 +335,11 @@ impl Checker {
                     let sym = self.add_symbol(name, rust.to_string(), kind);
                     self.scopes[0].insert(name.to_string(), sym);
                 }
+                for var in super::units::unit_vars(&unit.key()) {
+                    let kind = SymKind::RuntimeVar { ty: var.ty.ty(), get: var.get, set: var.set };
+                    let sym = self.add_symbol(var.name, var.get.to_string(), kind);
+                    self.scopes[0].insert(var.name.to_string(), sym);
+                }
                 for (name, ty) in super::units::unit_types(&unit.key()) {
                     let sym = self.add_symbol(name, ty.rust(), SymKind::TypeName(ty));
                     self.scopes[0].insert(name.to_string(), sym);
@@ -2007,6 +2012,12 @@ impl Checker {
                     let ty = if *param == Param::FillPattern { self.expr(arg) } else { self.place(arg, true) };
                     if ty != super::units::fill_pattern_type() && ty != Type::Error {
                         self.error(arg.span, format!("expected a FillPatternType, found {ty}"));
+                    }
+                }
+                Param::VarText => {
+                    let ty = self.place(arg, true);
+                    if ty != Type::Text && ty != Type::Error {
+                        self.error(arg.span, format!("expected a Text variable, found {ty}"));
                     }
                 }
                 Param::VarInteger => {

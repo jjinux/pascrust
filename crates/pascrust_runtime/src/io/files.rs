@@ -34,6 +34,8 @@ fn open_error(e: std::io::Error, name: &PString) -> ! {
 pub struct PText {
     name: Option<PString>,
     mode: TextMode,
+    /// Set by `AssignCrt`: opening the file opens the console.
+    crt: bool,
 }
 
 #[derive(Default)]
@@ -42,6 +44,9 @@ enum TextMode {
     Closed,
     Reading(LineReader),
     Writing(BufWriter<File>),
+    /// After `AssignCrt(f)` and `Reset`/`Rewrite`: the screen and keyboard,
+    /// shared with plain `Write` and `Read`.
+    Console,
 }
 
 impl PText {
@@ -56,11 +61,23 @@ impl PText {
     pub fn assign(&mut self, name: impl Into<PString>) {
         self.close_quietly();
         self.name = Some(name.into());
+        self.crt = false;
+    }
+
+    /// Crt's `AssignCrt(f)`: like `Assign`, but for the screen and keyboard.
+    pub fn assign_crt(&mut self) {
+        self.close_quietly();
+        self.name = None;
+        self.crt = true;
     }
 
     /// Pascal `Reset(f)`: open for reading from the start.
     pub fn reset(&mut self) {
         self.close_quietly();
+        if self.crt {
+            self.mode = TextMode::Console;
+            return;
+        }
         let name = *self.name();
         match File::open(dos_path(&name.to_string())) {
             Ok(file) => self.mode = TextMode::Reading(LineReader::new(Source::File(BufReader::new(file)))),
@@ -72,6 +89,10 @@ impl PText {
     /// writing.
     pub fn rewrite(&mut self) {
         self.close_quietly();
+        if self.crt {
+            self.mode = TextMode::Console;
+            return;
+        }
         let name = *self.name();
         match File::create(dos_path(&name.to_string())) {
             Ok(file) => self.mode = TextMode::Writing(BufWriter::new(file)),
@@ -82,6 +103,10 @@ impl PText {
     /// Pascal `Append(f)`: open for writing at the end.
     pub fn append(&mut self) {
         self.close_quietly();
+        if self.crt {
+            self.mode = TextMode::Console;
+            return;
+        }
         let name = *self.name();
         match OpenOptions::new().append(true).open(dos_path(&name.to_string())) {
             Ok(file) => self.mode = TextMode::Writing(BufWriter::new(file)),
@@ -106,8 +131,12 @@ impl PText {
 
     /// Pascal `Flush(f)`.
     pub fn flush(&mut self) {
-        if let TextMode::Writing(writer) = &mut self.mode {
-            let _ = writer.flush();
+        match &mut self.mode {
+            TextMode::Writing(writer) => {
+                let _ = writer.flush();
+            }
+            TextMode::Console => super::flush_stdout(),
+            _ => {}
         }
     }
 
@@ -133,37 +162,50 @@ impl PText {
             TextMode::Reading(reader) => reader,
             TextMode::Closed => crate::rte(103, "File not open"),
             TextMode::Writing(_) => crate::rte(104, "File not open for input"),
+            TextMode::Console => unreachable!("console reads go to standard input"),
         }
+    }
+
+    fn is_console(&self) -> bool {
+        matches!(self.mode, TextMode::Console)
     }
 
     /// Pascal `Eof(f)`.
     pub fn eof(&mut self) -> bool {
-        self.reader().eof()
+        if self.is_console() { super::eof() } else { self.reader().eof() }
     }
 
     /// Pascal `Eoln(f)`.
     pub fn eoln(&mut self) -> bool {
-        self.reader().eoln()
+        if self.is_console() { super::eoln() } else { self.reader().eoln() }
     }
 
     /// Pascal `SeekEof(f)`.
     pub fn seek_eof(&mut self) -> bool {
-        self.reader().seek_eof()
+        if self.is_console() { super::seek_eof() } else { self.reader().seek_eof() }
     }
 
     /// Pascal `SeekEoln(f)`.
     pub fn seek_eoln(&mut self) -> bool {
-        self.reader().seek_eoln()
+        if self.is_console() { super::seek_eoln() } else { self.reader().seek_eoln() }
     }
 
     /// One value for `Read(f, ...)`; used by the `fread!` macro.
     pub fn read_into<T: PasRead>(&mut self, target: &mut T) {
-        target.pas_read(self.reader());
+        if self.is_console() {
+            super::read_into(target);
+        } else {
+            target.pas_read(self.reader());
+        }
     }
 
     /// The end of a `Readln(f, ...)`.
     pub fn readln_end(&mut self) {
-        self.reader().end_line();
+        if self.is_console() {
+            super::readln_end();
+        } else {
+            self.reader().end_line();
+        }
     }
 
     /// Text for `Write(f, ...)`; used by the `fwrite!` macro.
@@ -174,6 +216,7 @@ impl PText {
                     crate::rte(101, "Disk write error");
                 }
             }
+            TextMode::Console => super::write_stdout(bytes),
             TextMode::Closed => crate::rte(103, "File not open"),
             TextMode::Reading(_) => crate::rte(105, "File not open for output"),
         }
@@ -185,7 +228,7 @@ impl PText {
 /// records containing a `Text` can derive `Clone`.)
 impl Clone for PText {
     fn clone(&self) -> PText {
-        PText { name: self.name, mode: TextMode::Closed }
+        PText { name: self.name, mode: TextMode::Closed, crt: self.crt }
     }
 }
 

@@ -203,8 +203,8 @@ System, the small routines
 - [x] Fake: `MemAvail`/`MaxAvail` return a typical DOS figure (about 500 KB), so "is there enough memory?" checks pass; `Mark`/`Release` do nothing (records are freed when nothing points to them); `SetTextBuf` does nothing (our files are buffered anyway); `Test8087` is 3 (an 80387 is present).
 
 Crt, the variables
-- [ ] `TextAttr` as an assignable variable (now a read-only function), `LastMode` (the mode from `TextMode`), `AssignCrt(f)` (a `Text` file that writes through Crt, honouring the window and colours).
-- [ ] Fake: `DirectVideo`, `CheckSnow` and `CheckEOF` are accepted and ignored; `CheckBreak` decides whether Ctrl-Break ends the program (as now, by default).
+- [x] `TextAttr` as an assignable variable (now a read-only function), `LastMode` (the mode from `TextMode`), `AssignCrt(f)` (a `Text` file that writes through Crt, honouring the window and colours).
+- [x] Fake: `DirectVideo`, `CheckSnow` and `CheckEOF` are accepted and ignored; `CheckBreak` decides whether Ctrl-Break ends the program (as now, by default).
 
 Printer and Overlay
 - [ ] Fake `Printer`: `Lst` is a `Text` file appended to `printer.txt` (or the file named by `PASCRUST_PRINTER`), so printed reports can be read.

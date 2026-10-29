@@ -186,10 +186,16 @@ More language
 Crt unit (the whole examples set uses it)
 
 - `ClrScr`, `ClrEol`, `GotoXY`, `WhereX`, `WhereY`, `TextColor`,
-  `TextBackground`, `Window`, `WindMin`, `WindMax`, `TextAttr`, `HighVideo`,
+  `TextBackground`, `Window`, `WindMin`, `WindMax`, `HighVideo`,
   `LowVideo`, `NormVideo`, `TextMode`, `ReadKey`, `KeyPressed`,
-  `Delay`, `Sound`, `NoSound`, `InsLine`, `DelLine`, `CheckBreak`,
-  `DirectVideo` (ignored), colour constants `Black..White`, `Blink`
+  `Delay`, `Sound`, `NoSound`, `InsLine`, `DelLine`, `AssignCrt` (a `Text`
+  file on the screen and keyboard), colour constants `Black..White`,
+  `Blink`, mode constants (`BW80`, `CO80`, ...)
+- Variables: `TextAttr` (read and assign; it holds both colours),
+  `LastMode` (set by `TextMode`), `CheckBreak` (when False, Ctrl-C comes
+  back from `ReadKey` as `#3` instead of ending the program); faked, so
+  they're remembered but change nothing: `DirectVideo`, `CheckSnow`,
+  `CheckEOF`
 - A non-TTY "plain" mode so scripted tests can drive these programs
 
 Dos unit (as used in the examples)

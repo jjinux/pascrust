@@ -648,7 +648,8 @@ window meanwhile (§19).
   a `repeat`, which must still run the `until` test: the body goes in a
   labeled block, `'repeat_body: { ... }`, and `Continue` is
   `break 'repeat_body;`. `goto` is unsupported.
-- **System variables** (`ExitCode`, `RandSeed`, `FileMode`) live in the
+- **System variables** (`ExitCode`, `RandSeed`, `FileMode`, and a unit's,
+  like Crt's `TextAttr`, listed in `units::unit_vars`) live in the
   runtime, as a getter and a setter (`SymKind::RuntimeVar`): reading is
   `rand_seed()`, assigning is `set_rand_seed(42)`. Only plain reads and
   `:=` are allowed, not `var` arguments or `Inc`. `ExitCode` and

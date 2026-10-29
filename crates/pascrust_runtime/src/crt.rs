@@ -55,6 +55,8 @@ struct CrtState {
     /// The second half of an extended key (arrows, function keys), which
     /// `ReadKey` returns after first returning `#0`.
     pending_scan_code: Option<u8>,
+    /// `LastMode`: the mode last passed to `TextMode` (3 is `CO80`).
+    last_mode: u16,
 }
 
 // `thread_local!` gives each thread its own `CrtState`, and only the Pascal
@@ -72,6 +74,7 @@ thread_local! {
             attr: LIGHT_GRAY,
             window: (1, 1, SCREEN_COLS, SCREEN_ROWS),
             pending_scan_code: None,
+            last_mode: 3,
         })
     };
 }
@@ -174,9 +177,76 @@ pub fn norm_video() {
     set_attr(LIGHT_GRAY);
 }
 
-/// The `TextAttr` variable.
+/// The `TextAttr` variable: foreground in bits 0-3, background in bits
+/// 4-6, blink in bit 7.
 pub fn text_attr() -> u8 {
     attr()
+}
+
+/// `TextAttr := a`: set both colours at once.
+pub fn set_text_attr(a: impl Into<i32>) {
+    set_attr(a.into() as u8);
+}
+
+/// The `LastMode` variable.
+pub fn last_mode() -> u16 {
+    CRT.with_borrow(|crt| crt.last_mode)
+}
+
+/// `LastMode := m`. As in TP, this doesn't change the mode; it's what a
+/// later `TextMode(LastMode)` will switch back to.
+pub fn set_last_mode(m: impl Into<i32>) {
+    CRT.with_borrow_mut(|crt| crt.last_mode = m.into() as u16);
+}
+
+// `CheckBreak` and the faked switches. Statics, like `RAW_MODE`, so that
+// reading a key can check `CheckBreak` without borrowing `CRT`.
+static CHECK_BREAK: AtomicBool = AtomicBool::new(true);
+static CHECK_EOF: AtomicBool = AtomicBool::new(false);
+static CHECK_SNOW: AtomicBool = AtomicBool::new(true);
+static DIRECT_VIDEO: AtomicBool = AtomicBool::new(true);
+
+/// The `CheckBreak` variable: if True (the default), Ctrl-C (TP's
+/// Ctrl-Break) ends the program; if False, `ReadKey` returns it as `#3`.
+pub fn check_break() -> bool {
+    CHECK_BREAK.load(Ordering::Relaxed)
+}
+
+pub fn set_check_break(on: bool) {
+    CHECK_BREAK.store(on, Ordering::Relaxed);
+}
+
+/// `CheckEOF` (faked): whether Ctrl-Z ends keyboard input. Remembered, but
+/// input ends at the real end of standard input either way.
+pub fn check_eof() -> bool {
+    CHECK_EOF.load(Ordering::Relaxed)
+}
+
+pub fn set_check_eof(on: bool) {
+    CHECK_EOF.store(on, Ordering::Relaxed);
+}
+
+/// `CheckSnow` (faked): avoided "snow" on old CGA cards. Remembered only.
+pub fn check_snow() -> bool {
+    CHECK_SNOW.load(Ordering::Relaxed)
+}
+
+pub fn set_check_snow(on: bool) {
+    CHECK_SNOW.store(on, Ordering::Relaxed);
+}
+
+/// `DirectVideo` (faked): wrote straight to video memory. Remembered only.
+pub fn direct_video() -> bool {
+    DIRECT_VIDEO.load(Ordering::Relaxed)
+}
+
+pub fn set_direct_video(on: bool) {
+    DIRECT_VIDEO.store(on, Ordering::Relaxed);
+}
+
+/// `AssignCrt(f)`: make `f` a text file on the Crt screen and keyboard.
+pub fn assign_crt(f: &mut crate::io::PText) {
+    f.assign_crt();
 }
 
 /// `ClrScr`: clear the window in the current background colour and move
@@ -285,8 +355,12 @@ pub fn del_line() {
 }
 
 /// `TextMode(mode)`: TP switched video modes; we reset colours and clear.
-pub fn text_mode(_mode: impl Into<i32>) {
-    CRT.with_borrow_mut(|crt| crt.window = (1, 1, SCREEN_COLS, SCREEN_ROWS));
+pub fn text_mode(mode: impl Into<i32>) {
+    let mode = mode.into() as u16;
+    CRT.with_borrow_mut(|crt| {
+        crt.window = (1, 1, SCREEN_COLS, SCREEN_ROWS);
+        crt.last_mode = mode;
+    });
     norm_video();
     clr_scr();
 }
@@ -381,8 +455,9 @@ fn translate_key(key: KeyEvent) -> (u8, Option<u8>) {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
         // Ctrl-C has to stop the program: raw mode turned off the terminal's
-        // own handling of it. (TP's equivalent was Ctrl-Break.)
-        KeyCode::Char('c') if ctrl => {
+        // own handling of it. (TP's equivalent was Ctrl-Break.) Unless the
+        // program turned `CheckBreak` off: then it's just `#3`.
+        KeyCode::Char('c') if ctrl && check_break() => {
             restore();
             std::process::exit(130);
         }
