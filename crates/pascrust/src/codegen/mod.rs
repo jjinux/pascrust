@@ -1325,6 +1325,9 @@ impl<'a> Codegen<'a> {
         // Turbo Pascal doesn't object to a label appearing twice; the first
         // arm wins. Rust warns about the unreachable second one, so drop it.
         let mut seen = Covered::default();
+        // Notes about arms dropped whole wait for the next arm: after the
+        // last one, rustfmt would take them for that arm's.
+        let mut waiting: Vec<String> = Vec::new();
         for arm in arms {
             let mut labels = Vec::new();
             let mut dropped = Vec::new();
@@ -1348,17 +1351,26 @@ impl<'a> Codegen<'a> {
                 seen.add(lo, hi);
             }
             // TP lets labels repeat, and the first one wins.
+            let mut notes = Vec::new();
             if !dropped.is_empty() {
-                self.line(format!("// {} also appeared in an earlier label, which wins.", dropped.join(", ")));
+                notes.push(format!("// {} appeared before; the first one wins.", dropped.join(", ")));
             }
             if !trimmed.is_empty() {
-                self.line(format!(
-                    "// {} overlapped an earlier label, which wins: only the rest is here.",
+                notes.push(format!(
+                    "// {} overlapped a label before; the first one wins, so only the rest is here.",
                     trimmed.join(", ")
                 ));
             }
+            for note in notes {
+                if !waiting.contains(&note) {
+                    waiting.push(note);
+                }
+            }
             if labels.is_empty() {
                 continue;
+            }
+            for note in std::mem::take(&mut waiting) {
+                self.line(note);
             }
             self.line(format!("{} => {{", labels.join(" | ")));
             self.block_body(&arm.body);
@@ -1378,6 +1390,12 @@ impl<'a> Codegen<'a> {
         // rustfmt would take them for that arm's: they go at the end of the
         // `else` arm, or before the `_ => {}` that stands for no `else`.
         let end_at = comments::end_keyword(self.map, span);
+        // With a `_` arm to come, the waiting notes go before it.
+        if else_body.is_some() || !exhaustive {
+            for note in std::mem::take(&mut waiting) {
+                self.line(note);
+            }
+        }
         match else_body {
             Some(body) => {
                 if exhaustive {
@@ -1415,7 +1433,8 @@ impl<'a> Codegen<'a> {
             && else_body.is_none()
             && let Some(at) = end_at
         {
-            let lines = self.comments.take_leading(at);
+            let mut lines = std::mem::take(&mut waiting);
+            lines.extend(self.comments.take_leading(at));
             if !lines.is_empty() {
                 end_comment = Some(lines.join(" ").replace(" // ", " "));
             }

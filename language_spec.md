@@ -72,7 +72,11 @@ Expressions
 - Integer, real (`1.5`, `1E3`), char (`'a'`, `#13`, `^M`), string (`'it''s'`),
   boolean literals; `nil`
 - Typecasts between ordinal types `Integer(c)`, `Char(65)`, `Ord`, `Chr`
-- Constant expressions in `const` sections and array bounds
+- Constant expressions in `const` sections, array bounds and `case` labels,
+  with TP 7's constant functions: `Abs`, `Chr`, `Hi`, `High`, `Length`,
+  `Lo`, `Low`, `Odd`, `Ord`, `Pred`, `Round`, `SizeOf`, `Succ`, `Swap`,
+  `Trunc`. A constant that is an enum value (`const Last = Sun`) has the
+  enum's type
 - Function calls, including calling a function name as the result variable
   inside its own body
 - Operator precedence exactly as TP (`not` > `* / div mod and shl shr` > `+ -

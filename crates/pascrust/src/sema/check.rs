@@ -531,7 +531,11 @@ impl Checker {
             return;
         };
         let ty = match &value {
-            ConstVal::Int(v) => Type::Int(IntKind::for_literal(*v)),
+            // An enum value (`const Last = Sun`) keeps its enum type.
+            ConstVal::Int(v) => match self.expr(e) {
+                ty @ Type::Enum(_) => ty,
+                _ => Type::Int(IntKind::for_literal(*v)),
+            },
             ConstVal::Real(_) => Type::Real,
             ConstVal::Bool(_) => Type::Bool,
             ConstVal::Str(s) if s.len() == 1 => Type::Char,
@@ -1113,6 +1117,21 @@ impl Checker {
                     ("ord", Int(n)) => Some(Int(n)),
                     ("ord", Bool(b)) => Some(Int(b as i64)),
                     ("abs", Int(n)) => Some(Int(n.abs())),
+                    ("abs", Real(x)) => Some(Real(x.abs())),
+                    // TP 7 also allows these in constant expressions.
+                    ("succ", Int(n)) => Some(Int(n + 1)),
+                    ("pred", Int(n)) => Some(Int(n - 1)),
+                    ("succ", Str(s)) if s.len() == 1 && s[0] < 255 => Some(Str(vec![s[0] + 1])),
+                    ("pred", Str(s)) if s.len() == 1 && s[0] > 0 => Some(Str(vec![s[0] - 1])),
+                    ("succ", Bool(false)) => Some(Bool(true)),
+                    ("pred", Bool(true)) => Some(Bool(false)),
+                    ("hi", Int(n)) => Some(Int((n >> 8) & 0xFF)),
+                    ("lo", Int(n)) => Some(Int(n & 0xFF)),
+                    ("swap", Int(n)) => Some(Int(((n & 0xFF) << 8) | ((n >> 8) & 0xFF))),
+                    ("length", Str(s)) => Some(Int(s.len() as i64)),
+                    ("odd", Int(n)) => Some(Bool(n % 2 != 0)),
+                    ("round", Real(x)) => Some(Int(x.round() as i64)),
+                    ("trunc", Real(x)) => Some(Int(x.trunc() as i64)),
                     _ => None,
                 }
             }

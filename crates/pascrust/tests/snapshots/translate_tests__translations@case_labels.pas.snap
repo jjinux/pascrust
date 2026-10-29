@@ -12,6 +12,10 @@ input_file: tests/translate/case_labels.pas
 
 use pascrust_runtime::prelude::*;
 
+const FIRST: Day = Day::Mon;
+const LAST: Day = Day::Sun;
+const WORD4: &str = "abcd";
+
 // Case labels: wide ranges, ranges that cover a whole integer type, enum
 // ranges, and labels an earlier arm already covers. Self-checking. (Free
 // Pascal rejects a label that appears twice, which TP allows, so this .out
@@ -69,6 +73,7 @@ fn pascal_main() {
     let mut d: Day = Day::Mon;
     let mut what: PString = PString::new();
     let mut flag: bool = false;
+    let mut c: u8 = 0;
     checks = 0;
     failures = 0;
     l = 5;
@@ -133,7 +138,7 @@ fn pascal_main() {
         1 | 2 => {
             what = pstr("one or two");
         }
-        // 1..=2 also appeared in an earlier label, which wins.
+        // 1..=2 appeared before; the first one wins.
         0 => {
             what = pstr("zero");
         }
@@ -147,7 +152,7 @@ fn pascal_main() {
         3..=7 => {
             what = pstr("middle");
         }
-        // 1..=5, 6..=10 overlapped an earlier label, which wins: only the rest is here.
+        // 1..=5, 6..=10 overlapped a label before; the first one wins, so only the rest is here.
         1..=2 | 8..=10 => {
             what = pstr("low");
         }
@@ -159,7 +164,7 @@ fn pascal_main() {
         Day::Mon | Day::Tue | Day::Wed => {
             what = pstr("early");
         }
-        // Day::Tue | Day::Wed | Day::Thu | Day::Fri | Day::Sat overlapped an earlier label, which wins: only the rest is here.
+        // Day::Tue | Day::Wed | Day::Thu | Day::Fri | Day::Sat overlapped a label before; the first one wins, so only the rest is here.
         Day::Thu | Day::Fri | Day::Sat => {
             what = pstr("later");
         }
@@ -171,7 +176,7 @@ fn pascal_main() {
         Day::Mon | Day::Tue | Day::Wed => {
             what = pstr("early");
         }
-        // Day::Tue | Day::Wed | Day::Thu | Day::Fri | Day::Sat overlapped an earlier label, which wins: only the rest is here.
+        // Day::Tue | Day::Wed | Day::Thu | Day::Fri | Day::Sat overlapped a label before; the first one wins, so only the rest is here.
         Day::Thu | Day::Fri | Day::Sat => {
             what = pstr("later");
         }
@@ -183,7 +188,7 @@ fn pascal_main() {
         3..=7 => {
             what = pstr("first");
         }
-        // 7..=10 overlapped an earlier label, which wins: only the rest is here.
+        // 7..=10 overlapped a label before; the first one wins, so only the rest is here.
         8..=10 => {
             what = pstr("second");
         }
@@ -197,6 +202,63 @@ fn pascal_main() {
         }
     }
     check(&mut checks, &mut failures, what == "either", pstr("a Boolean range"));
+    d = LAST;
+    match d {
+        Day::Mon => {
+            what = pstr("first");
+        }
+        Day::Sun => {
+            what = pstr("last");
+        }
+        _ => {
+            what = pstr("between");
+        }
+    }
+    check(&mut checks, &mut failures, what == "last", pstr("enum constants as labels"));
+    d = Day::Wed;
+    match d {
+        Day::Tue | Day::Wed | Day::Thu | Day::Fri | Day::Sat => {
+            what = pstr("middle");
+        }
+        _ => {
+            what = pstr("an end");
+        }
+    }
+    check(&mut checks, &mut failures, what == "middle", pstr("Succ and Pred in a label"));
+    c = b'B';
+    i = 4;
+    match c {
+        b'B' => {
+            what = pstr("B");
+        }
+        _ => {
+            what = pstr("other");
+        }
+    }
+    check(&mut checks, &mut failures, what == "B", pstr("Succ of a char"));
+    match i {
+        3 => {
+            what = pstr("three");
+        }
+        4 => {
+            what = pstr("four");
+        }
+        1 => {
+            what = pstr("one");
+        }
+        7 => {
+            what = pstr("seven");
+        }
+        _ => {}
+    }
+    check(&mut checks, &mut failures, what == "four", pstr("Abs, Length, Hi and Lo in labels"));
+    w_ = 9;
+    match w_ {
+        0..=65535 => {
+            what = pstr("all");
+        }
+    } // 9 appeared before; the first one wins.
+    check(&mut checks, &mut failures, what == "all", pstr("a last arm that can't be reached"));
     pwriteln!(checks - failures, " of ", checks, " checks passed");
     if failures > 0 {
         halt(1);

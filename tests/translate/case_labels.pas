@@ -5,6 +5,10 @@ program CaseLabels;
   is built from the checks, by hand.) }
 type
   Day = (Mon, Tue, Wed, Thu, Fri, Sat, Sun);
+const
+  First = Mon;
+  Last = Sun;
+  Word4 = 'abcd';
 var
   checks, failures: Integer;
   l: LongInt;
@@ -15,6 +19,7 @@ var
   d: Day;
   what: string;
   flag: Boolean;
+  c: Char;
 
 procedure Check(ok: Boolean; what: string);
 begin
@@ -105,6 +110,42 @@ begin
     False..True: what := 'either';
   end;
   Check(what = 'either', 'a Boolean range');
+  d := Last;
+  case d of
+    First: what := 'first';
+    Last: what := 'last';
+  else
+    what := 'between';
+  end;
+  Check(what = 'last', 'enum constants as labels');
+  d := Wed;
+  case d of
+    Succ(First)..Pred(Last): what := 'middle';
+  else
+    what := 'an end';
+  end;
+  Check(what = 'middle', 'Succ and Pred in a label');
+  c := 'B';
+  i := 4;
+  case c of
+    Succ('A'): what := 'B';
+  else
+    what := 'other';
+  end;
+  Check(what = 'B', 'Succ of a char');
+  case i of
+    Abs(-3): what := 'three';
+    Length(Word4): what := 'four';
+    Hi($0105): what := 'one';
+    Lo($0107): what := 'seven';
+  end;
+  Check(what = 'four', 'Abs, Length, Hi and Lo in labels');
+  w := 9;
+  case w of
+    0..65535: what := 'all';
+    9: what := 'never';
+  end;
+  Check(what = 'all', 'a last arm that can''t be reached');
   WriteLn(checks - failures, ' of ', checks, ' checks passed');
   if failures > 0 then
     Halt(1);

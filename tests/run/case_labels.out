@@ -10,4 +10,9 @@ ok: enum ranges that overlap: the first wins
 ok: and the second has the rest
 ok: ranges sharing an end: the first wins
 ok: a Boolean range
-12 of 12 checks passed
+ok: enum constants as labels
+ok: Succ and Pred in a label
+ok: Succ of a char
+ok: Abs, Length, Hi and Lo in labels
+ok: a last arm that can't be reached
+17 of 17 checks passed
