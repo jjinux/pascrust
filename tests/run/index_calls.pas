@@ -2,7 +2,8 @@ program IndexCalls;
 { An index that calls a function: in an assignment's target it's worked
   out first (Pick reads the array the target indexes), on both sides it
   runs twice, as in TP and Free Pascal, and in a method an index that
-  calls a method reads fine. }
+  calls a method reads fine. The same goes for other places that are
+  written: Inc, and a var argument. }
 type
   Bag = object
     items: array[1..3] of Char;
@@ -10,6 +11,7 @@ type
     procedure Init;
     function Count: Integer;
     function Last: Char;
+    procedure Grow;
   end;
 var
   arr: array[1..3] of Integer;
@@ -46,6 +48,16 @@ begin
   Last := items[Count];
 end;
 
+procedure Bag.Grow;
+begin
+  Inc(items[Count]);
+end;
+
+procedure Touch(var v: Integer);
+begin
+  v := v + 100;
+end;
+
 begin
   arr[1] := 2;
   arr[2] := 0;
@@ -60,4 +72,9 @@ begin
   WriteLn(counts[1], ' ', counts[2], ' ', counts[3], ' ', calls);
   b.Init;
   WriteLn(b.Last);
+  b.Grow;
+  WriteLn(b.Last);
+  Inc(arr[Pick]);
+  Touch(arr[Pick]);
+  WriteLn(arr[1], ' ', arr[2], ' ', arr[3]);
 end.

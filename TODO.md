@@ -155,7 +155,7 @@ chosen so each step is testable with the previous ones.
 
 ## Requests from the user, 2026-10-28
 
-- [ ] Evaluation order where a function has side effects (the user: follow Free Pascal). Done: `Write(F, G)` writes F before running G; `n := n + Bump` reads `n` first. Not yet, and worth asking whether to chase: on aarch64 Free Pascal calls the function first for reals, strings and sets (`t := t + Ext` where `Ext` changes `t` gives `ayz`, PascRust `az`), and works out an assignment's target index before the right side (`a[Idx] := F` runs Idx first; Rust runs F first). These are Free Pascal code-generator details, and may differ on x86.
+- [ ] Evaluation order where a function has side effects (the user: follow Free Pascal). Done: `Write(F, G)` writes F before running G; `n := n + Bump` reads `n` first. Not yet, and worth asking whether to chase: on aarch64 Free Pascal calls the function first for reals, strings and sets (`t := t + Ext` where `Ext` changes `t` gives `ayz`, PascRust `az`), and works out an assignment's target index before the right side (now done: such an index goes into a `let` first). These are Free Pascal code-generator details, and may differ on x86.
 - [x] Rename the project to "PascRust" wherever a friendly name fits: the README, the other docs, `Cargo.toml` descriptions, the GitHub repo description, CLI help text and messages, comments and generated-code headers. The directory, the crates, the binary (`pascrust`), the repo name and other identifiers stay `pascrust`.
 
 ## Phase 5: Dos and Graph, then the graphics examples

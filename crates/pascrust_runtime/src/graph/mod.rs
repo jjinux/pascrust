@@ -352,8 +352,6 @@ pub fn get_bk_color() -> u16 {
     with(|s| u16::from(s.bk_color))
 }
 
-/// `SetPalette(ColorNum, Color)`: show colour number `n` as EGA colour
-/// `ega` (0..63).
 /// `SetPalette(ColorNum, Color)`: colour number 0..15 shows EGA colour
 /// 0..63. Anything else was an error in the BGI (`grError`), which changed
 /// nothing; so it changes nothing here.

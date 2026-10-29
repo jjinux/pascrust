@@ -24,7 +24,7 @@ to do instead.
   So "this variable as TP's bytes" exists for records, arrays, strings and
   numbers.
 - Typed pointers are `Ptr<T>`, a shared, nullable box
-  (`Rc<RefCell<Option<T>>>`); `New`/`Dispose` work on them.
+  (`Option<Rc<RefCell<...>>>`); `New`/`Dispose` work on them.
 
 ## Proposal
 
@@ -35,8 +35,10 @@ to do instead.
    (`procedure Save(var Data; Size: Word)`, `BlockRead(f, Buf, ...)`)
    becomes `&mut dyn ByteView`. A routine that takes one copies the bytes
    in, works on them, and copies them back. This is not aliasing (a
-   change through the view only appears when the routine returns), but no
-   TP program can tell, since nothing else runs in between.
+   change through the view only appears when the routine returns). A
+   program can only tell if the routine also reaches the variable another
+   way (as a global, or the same variable passed twice), the same case
+   `var` parameters already have to handle (architecture.md, §15).
 
 2. **`Pointer` and `GetMem`.** An untyped `Pointer` becomes `PBuf`: a
    shared byte buffer (`Rc<RefCell<Vec<u8>>>`) plus an offset, and `nil`.

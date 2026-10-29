@@ -370,7 +370,10 @@ pub struct Ptr<T>(Option<Rc<RefCell<T>>>);
   `let next = p.get().next.clone(); p = next;`). This is the one codegen rule
   that keeps `RefCell` panics away from ordinary list and tree code; the
   Rust-level reason (a temporary borrow living until the end of the statement)
-  gets a comment in the output.
+  gets a comment in the output. The exception is `p^.x := p^.x + 1`, which
+  borrows once as `p.get_mut().x += 1`; and in `p^.x := p^.x + F`, `p^.x`
+  is read into its own `let` before `F` runs, since `F` may change the
+  record.
 - Untyped `Pointer`, `GetMem`/`FreeMem`, pointer arithmetic, `Addr`/`@` on
   variables, `Seg`/`Ofs`/`Ptr(...)` and `Mem[]` are out of scope.
 
@@ -705,9 +708,15 @@ window meanwhile (§19).
   Free Pascal: `n := n + Bump` reads `n` first, so when a call could change
   `n` (it's passed `n`, receives it as a global or outer variable, or is a
   method) it stays `n = n + bump(&mut n)` rather than `n += ...`, which
-  calls first. Otherwise (`total := total + Price(i)`) it's `+=`. (Free Pascal calls first for
-  reals, strings and sets, and works out an assignment's target index
-  first; PascRust doesn't yet. See TODO.md.)
+  calls first. Otherwise (`total := total + Price(i)`) it's `+=`. A target
+  through a pointer keeps the long form whenever the right side calls
+  anything, since another pointer may reach the same record. An index
+  that calls a function, in any place that's written (`a[Pick] := ...`,
+  `Inc(a[Pick])`, a `var` argument), is worked out into a `let` first, as
+  Free Pascal works out the target's index before the value; and the
+  `let`s the right side of `and`/`or` needs go inside it, in a block, so
+  they only run when that side does. (Free Pascal calls first for reals,
+  strings and sets; PascRust doesn't. See TODO.md.)
 - **`Read`/`Readln`** → `preadln!(x, y)`, with TP's lenient numeric parsing
   (leading blanks, stops at the first bad character).
 - **Files**: `PText` wraps a buffered reader/writer; `PFile<T>` serializes

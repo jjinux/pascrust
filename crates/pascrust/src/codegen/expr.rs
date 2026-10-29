@@ -402,6 +402,12 @@ impl<'a> Codegen<'a> {
         // the `.clone()` that `coerce` gives a pointer it copies.
         let compare_pointers = matches!(op, Eq | NotEq) && matches!(operand_ty, Type::Pointer(_));
         let left = if compare_pointers { self.expr(lhs) } else { self.coerce(lhs, &operand_ty) };
+        // The right side of `and`/`or` only runs if it has to: in
+        // `(p <> nil) and (Show(p^.value) > 0)`, `p^.value` mustn't be read
+        // when `p` is nil. So the `let`s it needs go inside it, in a block,
+        // rather than before the whole statement.
+        let short_circuit = matches!(op, And | Or) && ty == Type::Bool;
+        let mark = self.pending.len();
         let right = match (op, &operand_ty, &rt) {
             _ if compare_pointers => self.expr(rhs),
             // `PString` implements `+` and `==` for string literals and
@@ -411,6 +417,14 @@ impl<'a> Codegen<'a> {
             }
             (Shl | Shr, _, _) => self.expr(rhs),
             _ => self.coerce(rhs, &operand_ty),
+        };
+        let right = if short_circuit && self.pending.len() > mark {
+            let (comments, lets): (Vec<String>, Vec<String>) =
+                self.pending.split_off(mark).into_iter().partition(|line| line.starts_with("//"));
+            self.pending.extend(comments);
+            (format!("{{ {} {} }}", lets.join(" "), right.0), prec::ATOM)
+        } else {
+            right
         };
         if let (Shl | Shr, Type::Int(kind)) = (op, operand_ty.concrete()) {
             return self.shift(op, kind, (left, &lt), (right, &rt));
@@ -489,6 +503,7 @@ impl<'a> Codegen<'a> {
 
     /// The Rust place expression for an assignment target.
     pub(super) fn place(&mut self, e: &Expr) -> String {
+        self.hoist_target_indexes(e);
         if let Some((self_sym, path)) = self.a.self_fields.get(&e.id) {
             return format!("{}.{}", self.self_place(*self_sym), path.join("."));
         }
@@ -586,6 +601,7 @@ impl<'a> Codegen<'a> {
     /// A mutable reference to a place, for a `var` argument: `&mut x`, or
     /// just `x` if we already hold `x` as a reference (Rust "reborrows" it).
     pub(super) fn place_mut(&mut self, e: &Expr) -> String {
+        self.hoist_target_indexes(e);
         // `Report(Output)` or `Report(Lst)` with `procedure Report(var f: Text)`.
         match self.std_text(e) {
             Some(crate::sema::StdFile::Printer) => return "&mut PText::printer()".to_string(),

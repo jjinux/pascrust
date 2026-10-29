@@ -1638,17 +1638,17 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    /// An index in the target that calls a function (`a[Pick] := ...`) is
-    /// worked out first, into a `let`: the function may need the array
-    /// itself (as a global it receives), which the place `a[...]` has
-    /// borrowed, and Free Pascal works out the target's index before the
-    /// value too.
-    fn hoist_target_indexes(&mut self, target: &Expr) {
+    /// An index in a place that's written (`a[Pick] := ...`, `Inc(a[Pick])`,
+    /// a `var` argument) that calls a function is worked out first, into a
+    /// `let`: the function may need the array itself (as a global it
+    /// receives), which the place `a[...]` has borrowed, and Free Pascal
+    /// works out the target's index before the value too.
+    pub(super) fn hoist_target_indexes(&mut self, target: &Expr) {
         match &target.kind {
             ExprKind::Index(base, indexes) => {
                 self.hoist_target_indexes(base);
                 for index in indexes {
-                    if self.has_call(index) {
+                    if self.has_call(index) && !self.hoisted.contains_key(&index.id) {
                         let code = self.expr(index).0;
                         let name = self.temp_name("index");
                         self.pending.push(format!("let {name} = {code};"));
@@ -1780,6 +1780,22 @@ impl<'a> Codegen<'a> {
                     && self.a.self_fields.get(&a.id) == self.a.self_fields.get(&b.id)
             }
             (ExprKind::Int(x), ExprKind::Int(y)) => x == y,
+            (ExprKind::Str(x), ExprKind::Str(y)) => x == y,
+            // `a[i + 1]`, `a[-i]`: the same arithmetic on the same values.
+            (ExprKind::Unary { op: x_op, operand: x }, ExprKind::Unary { op: y_op, operand: y }) => {
+                x_op == y_op && self.same_place(x, y)
+            }
+            (ExprKind::Binary { op: x_op, lhs: xl, rhs: xr }, ExprKind::Binary { op: y_op, lhs: yl, rhs: yr }) => {
+                x_op == y_op && self.same_place(xl, yl) && self.same_place(xr, yr)
+            }
+            // `a[Ord(c)]`, `a[Succ(i)]`: a builtin or a cast gives the same
+            // answer for the same arguments (a user function might not).
+            (ExprKind::Call { callee: x_callee, args: x_args }, ExprKind::Call { callee: y_callee, args: y_args }) => {
+                !self.has_call(a)
+                    && self.a.refs.get(&x_callee.id) == self.a.refs.get(&y_callee.id)
+                    && x_args.len() == y_args.len()
+                    && x_args.iter().zip(y_args).all(|(x, y)| self.same_place(x, y))
+            }
             (ExprKind::Field(a_base, a_field), ExprKind::Field(b_base, b_field)) => {
                 a_field.key() == b_field.key() && self.same_place(a_base, b_base)
             }

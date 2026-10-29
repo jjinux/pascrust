@@ -15,7 +15,8 @@ use pascrust_runtime::prelude::*;
 // An index that calls a function: in an assignment's target it's worked
 // out first (Pick reads the array the target indexes), on both sides it
 // runs twice, as in TP and Free Pascal, and in a method an index that
-// calls a method reads fine.
+// calls a method reads fine. The same goes for other places that are
+// written: Inc, and a var argument.
 /// Pascal: `Bag = object ... end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Bag {
@@ -43,6 +44,11 @@ fn next(calls: &mut i16) -> i16 {
     result
 }
 
+/// Pascal: `procedure Touch(var v: Integer);`
+fn touch(v: &mut i16) {
+    *v += 100;
+}
+
 // A Pascal object's methods go in an `impl` block. Each takes `&mut self`,
 // which is Pascal's implicit `Self` parameter.
 impl Bag {
@@ -68,6 +74,12 @@ impl Bag {
         result = self.items[index];
         result
     }
+
+    /// Pascal: `procedure Bag.Grow;`
+    fn grow(&mut self) {
+        let index = self.count();
+        self.items[index] += 1;
+    }
 }
 
 /// The main program: the `begin ... end.` block of `IndexCalls`.
@@ -92,6 +104,13 @@ fn pascal_main() {
     pwriteln!(counts[1], " ", counts[2], " ", counts[3], " ", calls);
     b.init();
     pwriteln!(b.last());
+    b.grow();
+    pwriteln!(b.last());
+    let index = pick(arr);
+    arr[index] += 1;
+    let index = pick(arr);
+    touch(&mut arr[index]);
+    pwriteln!(arr[1], " ", arr[2], " ", arr[3]);
 }
 
 fn main() {
