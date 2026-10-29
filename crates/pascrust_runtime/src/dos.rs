@@ -263,13 +263,17 @@ struct Found {
 /// How many searches stay open at once. DOS kept a search's state in the
 /// `SearchRec` itself, so a program never closes one (and a copy of a
 /// `SearchRec` can carry on with it any time). So pascrust keeps every
-/// search, up to this many, and then forgets the one used longest ago: a
-/// search a program is still walking is used all the time.
-const OPEN_SEARCHES: usize = 100;
+/// search, up to this many. Past that it forgets one that has run out, or
+/// if none has, the one used longest ago. A recursive directory walk
+/// leaves each level's search idle while it searches the levels below,
+/// but those have all run out by the time it goes on.
+const OPEN_SEARCHES: usize = 10_000;
 
-/// One `FindFirst`'s matches, and when it was last used.
+/// One `FindFirst`'s matches, when it was last used, and whether
+/// `FindNext` has gone past its last match.
 struct Search {
     last_used: u64,
+    run_out: bool,
     matches: std::rc::Rc<Vec<Found>>,
 }
 
@@ -332,9 +336,13 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
     // doesn't list them.
     // `\`, `A:` and `A:\` are roots whatever directory a drive maps to.
     let drive_or_root = dir.trim_end_matches(['\\', '/']);
+    let canonical = dir_path.canonicalize().ok();
+    // `A:\SUB\..` is the root of `A:` too.
+    let drive_root = |drive: &str| dos_path(&format!("{drive}\\")).canonicalize().ok();
     let is_root = (!dir.is_empty() && drive_or_root.is_empty())
         || (drive_or_root.len() == 2 && drive_or_root.ends_with(':'))
-        || dir_path.canonicalize().is_ok_and(|p| p.parent().is_none());
+        || canonical.as_ref().is_some_and(|p| p.parent().is_none())
+        || (dir.get(1..2) == Some(":") && canonical.is_some() && canonical == drive_root(&dir[..2]));
     if attr & DIRECTORY != 0 && !is_root {
         for name in [".", ".."] {
             if dos_match(pattern, name) {
@@ -370,10 +378,13 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
     // Handles are 32 bits, in `Fill`; four billion searches is plenty.
     let id = now as u32;
     SEARCHES.with_borrow_mut(|searches| {
-        searches.insert(id, Search { last_used: now, matches: std::rc::Rc::new(found) });
+        searches.insert(id, Search { last_used: now, run_out: false, matches: std::rc::Rc::new(found) });
         if searches.len() > OPEN_SEARCHES {
-            let oldest = searches.iter().min_by_key(|(_, search)| search.last_used).map(|(&id, _)| id);
-            searches.remove(&oldest.unwrap_or_default());
+            // `false` sorts before `true`, so this prefers one that has run
+            // out, and then the one used longest ago.
+            let forget =
+                searches.iter().min_by_key(|(_, search)| (!search.run_out, search.last_used)).map(|(&id, _)| id);
+            searches.remove(&forget.unwrap_or_default());
         }
     });
     set_search_state(s, id, 0);
@@ -387,6 +398,7 @@ pub fn find_next(s: &mut SearchRec) {
     let matches = SEARCHES.with_borrow_mut(|searches| {
         let search = searches.get_mut(&id)?;
         search.last_used = tick();
+        search.run_out = position as usize >= search.matches.len();
         Some(search.matches.clone())
     });
     let Some(found) = matches.as_ref().and_then(|m| m.get(position as usize)) else {
@@ -740,13 +752,33 @@ mod find_tests {
         // new SearchRec, and only so many stay open.
         let mut outer = SearchRec::default();
         find_first(pattern.as_str(), ARCHIVE, &mut outer);
+        let (handle, _) = search_state(&outer);
         for _ in 0..OPEN_SEARCHES + 50 {
             find_first(pattern.as_str(), ARCHIVE, &mut SearchRec::default());
-            // Walking the outer search (here, past its end) uses it.
+            // Walking the outer search uses it. (Back to its start each
+            // time, so it never runs out.)
+            set_search_state(&mut outer, handle, 0);
             find_next(&mut outer);
         }
         assert_eq!(SEARCHES.with_borrow(|s| s.len()), OPEN_SEARCHES);
-        let (handle, _) = search_state(&outer);
+        assert!(SEARCHES.with_borrow(|searches| searches.contains_key(&handle)));
+    }
+
+    #[test]
+    fn a_walk_keeps_the_idle_parent_search() {
+        let dir = scratch("walk");
+        std::fs::write(dir.join("one.txt"), "1").unwrap();
+        let pattern = format!("{}/*.txt", dir.display());
+        // The parent's search waits, unused, while each subdirectory's
+        // search is started and walked to its end.
+        let mut parent = SearchRec::default();
+        find_first(pattern.as_str(), ARCHIVE, &mut parent);
+        let (handle, _) = search_state(&parent);
+        for _ in 0..OPEN_SEARCHES + 50 {
+            let mut child = SearchRec::default();
+            find_first(pattern.as_str(), ARCHIVE, &mut child);
+            find_next(&mut child);
+        }
         assert!(SEARCHES.with_borrow(|searches| searches.contains_key(&handle)));
     }
 

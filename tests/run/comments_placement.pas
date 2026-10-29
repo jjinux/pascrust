@@ -10,6 +10,7 @@ const
     (2, 3, 5);   { the first primes }
 
 type
+  Color = (Red, Green);
   TCount = Integer;   { an alias makes no Rust }
   Counter = object
     total: Integer;
@@ -20,6 +21,7 @@ type
 var
   c: Counter;
   t: TCount;
+  hue: Color;
   x, y: Integer;   { both coordinates }
   n: Integer;
 
@@ -105,6 +107,19 @@ begin
   c.total := 0;
   c.Bump;
   t := c.total;
+  hue := Green;
+  case hue of
+    Red: y := y + 0;
+    Green: y := y + 0;
+    { every colour covered }
+  end;
+  case hue of
+    Red: y := y + 0;
+    Green: y := y + 0;
+  else
+    { an else that can't happen }
+    y := 0;
+  end;
   Outer;
   WriteLn(x, ' ', y, ' ', n, ' ', Ready, ' ', t, ' ', Primes[3] + Two);
 end. { end of program }

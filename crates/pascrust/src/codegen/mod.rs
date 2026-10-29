@@ -1366,8 +1366,16 @@ impl<'a> Codegen<'a> {
         // `else` arm, or before the `_ => {}` that stands for no `else`.
         let end_at = comments::end_keyword(self.map, span);
         match else_body {
-            Some(body) if !exhaustive => {
+            Some(body) => {
+                if exhaustive {
+                    // Rust warns about an arm that can't be reached; it's
+                    // kept because the Pascal has it.
+                    self.line("#[allow(unreachable_patterns)]");
+                }
                 self.line("_ => {");
+                if exhaustive {
+                    self.line("    // The arms above cover every value, so Pascal's `else` never runs.");
+                }
                 self.indent += 1;
                 self.stmts(body);
                 if let Some(at) = end_at {
@@ -1385,9 +1393,24 @@ impl<'a> Codegen<'a> {
                 }
                 self.line("_ => {}");
             }
-            _ => {}
+            None => {}
         }
-        let end_comment = self.block_end_comments(span);
+        // With every value covered, there's no arm to put the comments
+        // before `end` in front of, so they join the closing brace's.
+        let mut end_comment = None;
+        if exhaustive
+            && else_body.is_none()
+            && let Some(at) = end_at
+        {
+            let lines = self.comments.take_leading(at);
+            if !lines.is_empty() {
+                end_comment = Some(lines.join(" ").replace(" // ", " "));
+            }
+        }
+        let end_comment = match (end_comment, self.block_end_comments(span)) {
+            (Some(before), Some(after)) => Some(format!("{before} {after}")),
+            (before, after) => before.or(after),
+        };
         self.indent -= 1;
         self.line("}");
         if let Some(comment) = end_comment {

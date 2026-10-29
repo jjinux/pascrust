@@ -245,7 +245,8 @@ Dos unit
   finds nothing (there's no volume label). A copy of a `SearchRec` goes on
   from the same place by itself. `SearchRec.Name` is a full string (TP's
   was `string[12]`), so long names fit. Nothing tells pascrust when a
-  program is done with a search, so it keeps the 100 used most recently
+  program is done with a search, so it keeps 10,000, forgetting first
+  those that have run out and then those used longest ago
 - Faked: `DosVersion` (DOS 6.22), `DiskFree`/`DiskSize` (512 MB free of a
   1 GB disk on every drive: real disks are too big for a `LongInt`),
   `SetDate`/`SetTime` (don't change the computer's clock),

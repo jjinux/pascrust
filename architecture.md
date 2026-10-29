@@ -655,7 +655,10 @@ window meanwhile (§19).
   `b < a`, exactly TP); `downto` → `(a..=b).rev()`; enum loops go through
   `Ordinal`. **`repeat ... until c`** → `loop { ...; if c { break } }`.
   **`case`** → `match` with `|` alternatives, `..=` ranges and `_ => {}` when
-  there is no `else`. `Break`/`Continue` map directly, except `Continue` in
+  there is no `else` (none when the labels cover every value, as they can
+  for an enum or `Boolean`; an `else` then can't run, and is kept under
+  `#[allow(unreachable_patterns)]` with a comment saying so).
+  `Break`/`Continue` map directly, except `Continue` in
   a `repeat`, which must still run the `until` test: the body goes in a
   labeled block, `'repeat_body: { ... }`, and `Continue` is
   `break 'repeat_body;`. `goto` is unsupported.
@@ -799,8 +802,12 @@ sense; only what can't be real is faked.
   a table, with the handle and position in `SearchRec.Fill`. A copy of a
   `SearchRec` can carry on with a search at any time, so none is dropped
   when it runs out; instead, past 100 open searches the one used longest
-  ago goes. (A loop over `*.PAS` that checks whether each `.BAK` exists
-  starts a search per file; the loop's own search stays in use.)
+  ago goes, preferring one that has run out. (A loop over `*.PAS` that
+  checks whether each `.BAK` exists starts a search per file, while the
+  loop's own search stays in use; a recursive directory walk leaves each
+  level's search idle while it searches below, but those searches have
+  run out by then.) It keeps 10,000, which costs little: a search is a
+  list of names and numbers.
 - **System and Crt** (`MemAvail`/`MaxAvail` report 512,000 bytes,
   `Mark`/`Release` and `SetTextBuf` become comments, `Test8087` is 3,
   `DirectVideo`/`CheckSnow`/`CheckEOF` are remembered and ignored): see
@@ -836,7 +843,8 @@ sense; only what can't be real is faked.
   end of that statement's line. The comment after an `end` goes after the
   `}` that closes the block, except `end else begin {otherwise}`, whose
   comment starts the else branch. Comments before a `case`'s `end` go
-  before the `_ => {}` arm (rustfmt would take them for the last arm's).
+  before the `_ => {}` arm (rustfmt would take them for the last arm's), or
+  onto the match's closing brace when there is no such arm.
   Comments before or on the `program`/`unit` line, and up to its `uses`
   clause, head the Rust file; one after a `program` line with no `uses`
   goes with the first declaration instead, since it may well be about

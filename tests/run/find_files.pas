@@ -8,7 +8,7 @@ var
   s, t: SearchRec;
   f: Text;
   found: string;
-  count, i, existing: Integer;
+  count, i, existing, walkedFiles, walkedDirs: Integer;
   number: string;
 
 procedure Check(ok: Boolean; what: string);
@@ -37,6 +37,26 @@ var
 begin
   FindFirst(name, AnyFile, t);
   Exists := DosError = 0;
+end;
+
+{ A recursive directory walk: each level's search waits while the levels
+  below are searched. }
+procedure Walk(path: string);
+var
+  t: SearchRec;
+begin
+  FindFirst(path + '\*.*', AnyFile, t);
+  while DosError = 0 do
+  begin
+    if t.Attr and Directory = 0 then
+      walkedFiles := walkedFiles + 1
+    else if (t.Name <> '.') and (t.Name <> '..') then
+    begin
+      walkedDirs := walkedDirs + 1;
+      Walk(path + '\' + t.Name);
+    end;
+    FindNext(t);
+  end;
 end;
 
 begin
@@ -98,6 +118,32 @@ begin
   Check((DosError = 0) and (s.Name = 'b.txt'), 'FindFirst on a copy leaves the original''s search alone');
   FindFirst('A:*.*', Directory, s);
   Check(s.Name <> '.', 'no . in the root of a drive');
+  FindFirst('A:\sub\..\*.*', Directory, s);
+  Check(s.Name <> '.', 'nor when the root is reached through ..');
+  MkDir('tree');
+  Make('tree\a.txt', 'a');
+  MkDir('tree\sub');
+  for i := 1 to 150 do
+  begin
+    Str(i, number);
+    MkDir('tree\sub\d' + number);
+  end;
+  Make('tree\z.txt', 'z');
+  walkedFiles := 0;
+  walkedDirs := 0;
+  Walk('tree');
+  Check((walkedFiles = 2) and (walkedDirs = 151), 'a walk through 151 directories sees both files');
+  for i := 1 to 150 do
+  begin
+    Str(i, number);
+    RmDir('tree\sub\d' + number);
+  end;
+  RmDir('tree\sub');
+  Assign(f, 'tree\a.txt');
+  Erase(f);
+  Assign(f, 'tree\z.txt');
+  Erase(f);
+  RmDir('tree');
   MkDir('many');
   for i := 1 to 120 do
   begin
