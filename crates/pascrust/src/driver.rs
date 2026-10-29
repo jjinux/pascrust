@@ -82,7 +82,7 @@ pub fn transpile_source(source: &[u8], file_name: &str) -> Result<Generated, Str
 fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[String]) -> Result<Generated, String> {
     let mut map = SourceMap::new();
     let base = map.add(file_name, source.clone());
-    let (program, directives) = parser::parse_file(&source, base).map_err(|d| map.render(&d))?;
+    let (program, directives, comments) = parser::parse_file(&source, base).map_err(|d| map.render(&d))?;
     let program = match program {
         SourceFile::Program(program) => program,
         SourceFile::Unit(unit) => {
@@ -90,11 +90,11 @@ fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[Str
         }
     };
 
-    let mut loader = UnitLoader { dirs, map, loaded: Vec::new(), visiting: Vec::new(), directives };
+    let mut loader = UnitLoader { dirs, map, loaded: Vec::new(), visiting: Vec::new(), directives, comments };
     for name in &program.uses {
         loader.load(name)?;
     }
-    let UnitLoader { map, loaded, directives, .. } = loader;
+    let UnitLoader { map, loaded, directives, comments, .. } = loader;
     // Command-line switches act like directives at the start of each file.
     // (Their warnings, if any, are given once, at the start of the program.)
     let at_start = |file: usize| {
@@ -114,7 +114,7 @@ fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[Str
 
     let analysis = sema::analyze(&program, &units)
         .map_err(|errors| errors.iter().map(|d| map.render(d)).collect::<Vec<_>>().join("\n\n"))?;
-    let files = codegen::generate(&program, &units, &analysis, &map, &io_unchecked);
+    let files = codegen::generate(&program, &units, &analysis, &map, &io_unchecked, &comments);
     let files = files.into_iter().map(|(name, code)| (name, format_rust(&code))).collect();
 
     let mut features: Vec<String> = program
@@ -202,6 +202,8 @@ struct UnitLoader<'a> {
     visiting: Vec<String>,
     /// The compiler directives of every file loaded so far.
     directives: Vec<parser::Directive>,
+    /// The comments of every file loaded so far, for codegen.
+    comments: Vec<crate::lexer::Comment>,
 }
 
 impl UnitLoader<'_> {
@@ -227,8 +229,9 @@ impl UnitLoader<'_> {
         let source = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
         let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
         let base = self.map.add(file_name, source.clone());
-        let (unit, directives) = parser::parse_file(&source, base).map_err(|d| self.map.render(&d))?;
+        let (unit, directives, comments) = parser::parse_file(&source, base).map_err(|d| self.map.render(&d))?;
         self.directives.extend(directives);
+        self.comments.extend(comments);
         let unit = match unit {
             SourceFile::Unit(unit) => unit,
             SourceFile::Program(_) => return Err(format!("{} is a program, not a unit", path.display())),

@@ -12,6 +12,7 @@ input_file: tests/translate/set_file.pas
 
 use pascrust_runtime::prelude::*;
 
+// Sets as fields of records in a typed file: written and read back.
 /// Pascal: `Rec = record ... end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Rec {

@@ -12,6 +12,8 @@ input_file: tests/translate/temp_names.pas
 
 use pascrust_runtime::prelude::*;
 
+// Temporaries that pascrust introduces mustn't clash with each other or
+// with the program's own variables.
 /// Pascal: `^Node`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared

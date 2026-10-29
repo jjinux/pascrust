@@ -12,6 +12,8 @@ input_file: tests/translate/objects_by_value.pas
 
 use pascrust_runtime::prelude::*;
 
+// A descendant object assigned or passed by value where an ancestor is
+// expected: its ancestor part is copied.
 /// Pascal: `object x: Integer; procedure Show; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct TShape {

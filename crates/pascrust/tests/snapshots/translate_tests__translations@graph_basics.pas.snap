@@ -15,6 +15,9 @@ use pascrust_runtime::prelude::*;
 /// The main program: the `begin ... end.` block of `GraphBasics`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    // The Graph unit, drawn without a window (the tests run with
+    // PASCRUST_GRAPH=headless) and checked with GetPixel. The expected output is
+    // written by hand: Free Pascal's Graph unit needs a real screen.
     let mut driver: i16 = 0;
     let mut mode: i16 = 0;
     let mut pattern: FillPatternType = FillPatternType::default();

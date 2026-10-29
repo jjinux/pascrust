@@ -12,6 +12,8 @@ input_file: tests/translate/ptr_args.pas
 
 use pascrust_runtime::prelude::*;
 
+// A value argument read through a pointer (p^ or p^.field) is copied
+// before the call, so the callee may change or dispose the record.
 /// Pascal: `^Node`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared

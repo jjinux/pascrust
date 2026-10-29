@@ -15,6 +15,9 @@ use pascrust_runtime::prelude::*;
 /// The main program: the `begin ... end.` block of `ShiftRight`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    // shr is a logical shift: it fills with zeros, even for negative numbers.
+    // (Free Pascal computes in 64 bits here, so this test's .out is written by
+    // hand from Turbo Pascal's 16- and 32-bit results.)
     let mut i: i16 = 0;
     let mut l: i32 = 0;
     let mut s: i8 = 0;

@@ -12,6 +12,9 @@ input_file: tests/translate/virtual_via_pointers.pas
 
 use pascrust_runtime::prelude::*;
 
+// Through a pointer, the record's real type picks the method: when the
+// record is passed to a var parameter of an ancestor type, and for methods
+// first declared below the root of the hierarchy.
 /// Pascal: `^TShape`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared

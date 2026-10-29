@@ -12,6 +12,10 @@ input_file: tests/translate/system_misc.pas
 
 use pascrust_runtime::prelude::*;
 
+// GetDir, and the System routines pascrust fakes: MemAvail, MaxAvail,
+// Mark, Release, SetTextBuf, Test8087. Self-checking. (GetDir gives
+// pascrust's DOS paths, where drive C: is where the program started, so
+// this .out is written by hand.)
 /// Pascal: `^Node`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared

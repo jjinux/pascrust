@@ -15,6 +15,7 @@ use pascrust_runtime::prelude::*;
 /// The main program: the `begin ... end.` block of `RepeatContinue`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    // Continue in a repeat loop still tests the until condition.
     let mut i: i16 = 0;
     let mut j: i16 = 0;
     i = 0;

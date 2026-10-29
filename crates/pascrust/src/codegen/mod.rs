@@ -12,6 +12,7 @@
 //! - `builtins.rs`: calls to Turbo Pascal's built-in procedures
 
 mod builtins;
+mod comments;
 mod expr;
 
 use std::rc::Rc;
@@ -23,13 +24,15 @@ use crate::sema::{Access, Analysis, Builtin, CaptureMode, MAIN, ProcId, SymId, S
 
 /// Generate the Rust source for a program and its units: one file per
 /// Pascal source file, `main.rs` first.
-/// `io_unchecked` lists the parts of the source compiled with `{$I-}`.
+/// `io_unchecked` lists the parts of the source compiled with `{$I-}`;
+/// `comments` are the source's comments, carried into the Rust.
 pub fn generate(
     program: &Program,
     units: &[Unit],
     analysis: &Analysis,
     map: &SourceMap,
     io_unchecked: &[Span],
+    comments: &[crate::lexer::Comment],
 ) -> Vec<(String, String)> {
     let mut files = Vec::new();
     let mut g = Codegen {
@@ -46,6 +49,8 @@ pub fn generate(
         loops: Vec::new(),
         io_unchecked,
         self_expr: None,
+        comments: comments::Comments::new(map, program, units, comments),
+        decl_starts: analysis.decls.iter().map(|(&start, &sym)| (sym, start)).collect(),
     };
     g.program(program);
     files.push(("main.rs".to_string(), std::mem::take(&mut g.out)));
@@ -89,6 +94,10 @@ struct Codegen<'a> {
     /// the body reaches its own object's fields, `self.t_shape()`, since
     /// `self` there is any object descended from it.
     self_expr: Option<String>,
+    /// The Pascal comments, waiting to be written (see `comments.rs`).
+    comments: comments::Comments,
+    /// Where each variable was declared: its comments' anchor.
+    decl_starts: std::collections::HashMap<SymId, usize>,
 }
 
 /// Labels for a `repeat ... until` loop whose body uses `Continue`.
@@ -104,6 +113,33 @@ impl<'a> Codegen<'a> {
     /// True the first time it's called for `topic`.
     fn first_time(&mut self, topic: &'static str) -> bool {
         self.explained.insert(topic)
+    }
+
+    /// Write the Pascal comments that come before the construct at `at`.
+    fn leading_comments(&mut self, at: usize) {
+        for line in self.comments.take_leading(at) {
+            self.line(line);
+        }
+    }
+
+    /// Add the Pascal comment that ended the construct's line (at `at`) to
+    /// the end of the last line written.
+    fn trailing_comment(&mut self, at: usize) {
+        if let Some(comment) = self.comments.take_trailing(at)
+            && self.out.ends_with('\n')
+        {
+            self.out.pop();
+            self.out.push(' ');
+            self.out.push_str(&comment);
+            self.out.push('\n');
+        }
+    }
+
+    /// The comments before the `end` that closes a block.
+    fn block_end_comments(&mut self, span: Span) {
+        if let Some(at) = comments::end_keyword(self.map, span) {
+            self.leading_comments(at);
+        }
     }
 
     /// Write one line at the current indentation.
@@ -202,6 +238,7 @@ impl<'a> Codegen<'a> {
             }
         }
         self.stmts(&program.block.body);
+        self.block_end_comments(program.block.body_span);
         self.indent -= 1;
         self.line("}");
 
@@ -287,7 +324,29 @@ impl<'a> Codegen<'a> {
             };
             let value = self.const_value(value, ty);
             let name = &self.a.sym(sym).rust_name;
+            self.leading_comments(c.name.span.start);
             self.line(format!("{}const {name}: {rust_ty} = {value};", self.vis));
+            self.trailing_comment(c.name.span.start);
+        }
+    }
+
+    /// A field of a record or object struct, with the comments of its
+    /// declaration (`x, y: Integer; {position}`): those before it go before
+    /// the group's first field, the one after it on its last field's line.
+    fn field_line(&mut self, field: &crate::sema::types::Field, groups: &[(Vec<String>, usize)]) {
+        let group = groups.iter().find(|(names, _)| names.iter().any(|n| n.eq_ignore_ascii_case(&field.name)));
+        if let Some((names, at)) = group
+            && names[0].eq_ignore_ascii_case(&field.name)
+        {
+            self.indent += 1;
+            self.leading_comments(*at);
+            self.indent -= 1;
+        }
+        self.line(format!("    {}{}: {},", self.vis, field.rust_name, field.ty.rust()));
+        if let Some((names, at)) = group
+            && names.last().is_some_and(|n| n.eq_ignore_ascii_case(&field.name))
+        {
+            self.trailing_comment(*at);
         }
     }
 
@@ -298,6 +357,7 @@ impl<'a> Codegen<'a> {
                 continue;
             }
             self.blank();
+            self.leading_comments(span.start);
             // Quote short declarations whole; for records and objects, just
             // the opening.
             let text = self.pascal_text(*span);
@@ -310,6 +370,10 @@ impl<'a> Codegen<'a> {
                 _ => text,
             };
             self.line(format!("/// Pascal: `{text}`"));
+            if let Some(comment) = self.comments.take_trailing(span.start) {
+                self.line(comment);
+            }
+            let groups = self.comments.field_groups.get(&span.start).cloned().unwrap_or_default();
             match ty {
                 Type::Enum(e) => {
                     self.line("#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]");
@@ -341,7 +405,7 @@ impl<'a> Codegen<'a> {
                     self.line(format!("#[derive({derives})]"));
                     self.line(format!("{}struct {} {{", self.vis, r.rust_name));
                     for field in &r.fields {
-                        self.line(format!("    {}{}: {},", self.vis, field.rust_name, field.ty.rust()));
+                        self.field_line(field, &groups);
                     }
                     self.line("}");
                 }
@@ -363,7 +427,7 @@ impl<'a> Codegen<'a> {
                         self.line(format!("    {}base: {},", self.vis, parent.rust_name));
                     }
                     for field in &o.fields {
-                        self.line(format!("    {}{}: {},", self.vis, field.rust_name, field.ty.rust()));
+                        self.field_line(field, &groups);
                     }
                     self.line("}");
                 }
@@ -866,6 +930,10 @@ impl<'a> Codegen<'a> {
         self.proc = pid;
 
         self.blank();
+        self.leading_comments(decl.span.start);
+        if let Some(comment) = self.comments.take_trailing(decl.span.start) {
+            self.line(comment);
+        }
         self.line(format!("/// Pascal: `{}`", self.pascal_text(decl.header_span)));
         if let Some(parent) = info.parent.filter(|&p| p != MAIN) {
             self.line("///");
@@ -916,6 +984,7 @@ impl<'a> Codegen<'a> {
         self.indent += 1;
         self.locals(pid);
         self.stmts(&body.body);
+        self.block_end_comments(body.body_span);
         if info.result.is_some() {
             self.line("result");
         }
@@ -969,7 +1038,14 @@ impl<'a> Codegen<'a> {
                 _ => default_value(&var.ty),
             };
             let line = format!("let {mutable}{name}: {} = {init};", var.ty.rust());
+            let at = self.decl_starts.get(&sym).copied();
+            if let Some(at) = at {
+                self.leading_comments(at);
+            }
             self.line(line);
+            if let Some(at) = at {
+                self.trailing_comment(at);
+            }
         }
     }
 
@@ -986,13 +1062,29 @@ impl<'a> Codegen<'a> {
     fn block_body(&mut self, s: &Stmt) {
         self.indent += 1;
         match &s.kind {
-            StmtKind::Compound(body) => self.stmts(body),
+            StmtKind::Compound(body) => {
+                self.leading_comments(s.span.start);
+                self.stmts(body);
+                self.block_end_comments(s.span);
+            }
             _ => self.stmt(s),
         }
         self.indent -= 1;
     }
 
+    /// A statement, with its Pascal comments.
     fn stmt(&mut self, s: &Stmt) {
+        if s.kind != StmtKind::Empty {
+            self.leading_comments(s.span.start);
+        }
+        self.stmt_code(s);
+        if let StmtKind::Compound(_) = s.kind {
+            self.block_end_comments(s.span);
+        }
+        self.trailing_comment(s.span.start);
+    }
+
+    fn stmt_code(&mut self, s: &Stmt) {
         match &s.kind {
             StmtKind::Empty => {}
             StmtKind::Assign { target, value } => {

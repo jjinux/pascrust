@@ -14,6 +14,7 @@ use pascrust_runtime::prelude::*;
 
 const TAB: u8 = b'\t';
 
+// ^T is a pointer to T where a type can appear, and Ctrl-T elsewhere.
 /// Pascal: `record value: Integer; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct T {

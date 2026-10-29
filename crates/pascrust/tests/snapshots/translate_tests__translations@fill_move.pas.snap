@@ -12,6 +12,7 @@ input_file: tests/translate/fill_move.pas
 
 use pascrust_runtime::prelude::*;
 
+// FillChar and Move in the common, safe cases. Self-checking.
 /// Pascal: `record x, y: Integer; name: string[10]; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Point {

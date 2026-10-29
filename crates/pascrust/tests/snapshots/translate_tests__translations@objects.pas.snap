@@ -12,6 +12,7 @@ input_file: tests/translate/objects.pas
 
 use pascrust_runtime::prelude::*;
 
+// Turbo Pascal 5.5 objects: fields, methods, inheritance.
 const MAX_SIZE: i16 = 5;
 
 /// Pascal: `Queue = object ... end`
@@ -84,6 +85,7 @@ impl Queue {
 /// their caller's local variables, so this one was "lifted" to the top level
 /// and any outer variables it uses are passed in as extra parameters.
 fn queue_total_add_all(this: &Queue, sum: &mut i16) {
+    // A procedure nested inside a method still sees the object's fields.
     for j in 1..=this.count {
         *sum += this.items[j];
     }
@@ -92,7 +94,7 @@ fn queue_total_add_all(this: &Queue, sum: &mut i16) {
 impl NamedQueue {
     /// Pascal: `procedure NamedQueue.Init(n: string);`
     fn init(&mut self, n: PString) {
-        self.base.create();
+        self.base.create(); // an inherited method
         self.name = n.truncated(10);
     }
 
@@ -105,7 +107,7 @@ impl NamedQueue {
 /// The main program: the `begin ... end.` block of `Objects`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    let mut log: i16 = 0;
+    let mut log: i16 = 0; // a global that methods update
     let mut q: Queue = Queue::default();
     let mut nq: NamedQueue = NamedQueue::default();
     log = 0;

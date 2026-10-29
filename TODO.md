@@ -200,7 +200,7 @@ something harmless and plausible, so the program runs, and list the fake in
 `fpc -Mtp` where FPC matches TP.
 
 Next up (moved here from Phase 6 at the user's request)
-- [ ] Carry Pascal comments into the Rust output at statement boundaries.
+- [x] Carry Pascal comments into the Rust output at statement boundaries: anchored to statements, declarations, record fields, procedures and block ends (`codegen/comments.rs`, architecture.md §20).
 
 System, the small routines
 - [x] `SizeOf` with TP's sizes (`Integer` 2, `LongInt` 4, `Real` 6, `Char` and `Boolean` 1, `string[n]` n+1, records unpadded, arrays), so `FillChar(a, SizeOf(a), 0)` and record-size arithmetic work.

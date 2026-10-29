@@ -36,6 +36,9 @@ fn check(checks: &mut i16, failures: &mut i16, ok: bool, what: PString) {
 /// Its local variables are the Pascal program's global variables.
 /// (Including the global variables of every unit.)
 fn pascal_main() {
+    // The Overlay unit, faked: there's nothing to load, so it reports success
+    // and remembers its settings. Self-checking. (Free Pascal has no overlay
+    // manager, so this .out is built from the checks, by hand.)
     let mut checks: i16 = 0;
     let mut failures: i16 = 0;
     checks = 0;

@@ -12,6 +12,8 @@ input_file: tests/translate/with_stmt.pas
 
 use pascrust_runtime::prelude::*;
 
+// with r do ... lets the body use r's fields (and an object's methods) by
+// their bare names.
 /// Pascal: `record x, y: Integer; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Point {
@@ -71,7 +73,7 @@ fn pascal_main() {
     x = 100;
     // Pascal `with`: Rust has no equivalent, so each field is written out in full.
     r.name = pstr("box");
-    r.top_left.x = 1;
+    r.top_left.x = 1; // the field: the innermost with wins
     r.top_left.y = 2;
     r.size.x = 30;
     r.size.y = 40;
@@ -82,6 +84,8 @@ fn pascal_main() {
         pts[i].y = i * i;
     }
     pwriteln!(pts[3].x, " ", pts[3].y);
+    // A list built with with p^ do: the body changes p, but the with still
+    // means the record p pointed to when it started.
     head = Ptr::nil();
     for i in 1_i16..=3 {
         p = Ptr::alloc();

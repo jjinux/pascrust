@@ -44,8 +44,8 @@ pub struct ParsedProgram {
 /// Lex and parse a complete program.
 pub fn parse_program(source: &[u8]) -> PResult<ParsedProgram> {
     match parse_file(source, 0)? {
-        (SourceFile::Program(program), directives) => Ok(ParsedProgram { program, directives }),
-        (SourceFile::Unit(unit), _) => Err(Diagnostic::new(unit.name.span, "expected a program, found a unit")),
+        (SourceFile::Program(program), directives, _) => Ok(ParsedProgram { program, directives }),
+        (SourceFile::Unit(unit), ..) => Err(Diagnostic::new(unit.name.span, "expected a program, found a unit")),
     }
 }
 
@@ -59,10 +59,12 @@ pub enum SourceFile {
 /// Lex and parse a program or unit. `base` is added to every span, so that
 /// spans from different files don't overlap (see [`crate::diag::SourceMap`]).
 /// Node ids start at `base` too, which keeps them unique across files.
-pub fn parse_file(source: &[u8], base: usize) -> PResult<(SourceFile, Vec<Directive>)> {
+pub fn parse_file(source: &[u8], base: usize) -> PResult<(SourceFile, Vec<Directive>, Vec<lexer::Comment>)> {
     let shift = |span: Span| Span::new(span.start + base, span.end + base);
-    let tokens = lexer::tokenize(source).map_err(|d| Diagnostic::new(shift(d.span), d.message))?;
+    let (tokens, comments) =
+        lexer::tokenize_with_comments(source).map_err(|d| Diagnostic::new(shift(d.span), d.message))?;
     let tokens = tokens.into_iter().map(|t| Token { span: shift(t.span), ..t }).collect();
+    let comments = comments.into_iter().map(|c| lexer::Comment { span: shift(c.span), ..c }).collect();
     let mut parser = Parser::new(tokens);
     parser.next_id = base as NodeId;
     let file = if parser.at_keyword(Keyword::Unit) {
@@ -70,7 +72,7 @@ pub fn parse_file(source: &[u8], base: usize) -> PResult<(SourceFile, Vec<Direct
     } else {
         SourceFile::Program(parser.program()?)
     };
-    Ok((file, parser.directives))
+    Ok((file, parser.directives, comments))
 }
 
 pub(crate) struct Parser {

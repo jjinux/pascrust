@@ -12,6 +12,8 @@ input_file: tests/translate/type_of.pas
 
 use pascrust_runtime::prelude::*;
 
+// TypeOf tells which object type something really is: through a pointer,
+// a var parameter, or Self, it's the real object's type.
 /// Pascal: `^TShape`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared

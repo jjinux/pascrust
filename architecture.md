@@ -800,8 +800,19 @@ sense; only what can't be real is faked.
   named `Exit` and a type named `ShortString`; sema's scoping handles both
   (user declarations shadow builtins, as in TP).
 - Every generated declaration carries a `///` comment with the original
-  Pascal header line. Pascal block comments are carried across as Rust
-  comments where they sit at statement boundaries (tier 2).
+  Pascal header line.
+- The program's own comments are carried across as `//` comments
+  (`codegen/comments.rs`). Codegen reorders things (constants to module
+  level, locals to the top of the function, nested procedures out), so the
+  lexer keeps each comment's position and codegen attaches it to an
+  *anchor*: a statement, a declaration, a record field, a procedure, or a
+  block's `end`. A comment ending the line an anchor ends on stays at the
+  end of that anchor's Rust line (`a: Integer; {pos of ch}` →
+  `let mut a: i16 = 0; // pos of ch`); any other comment goes on its own
+  lines before the next anchor, wherever that's written. A comment at the
+  end of a loop or `if` header (`for ... do {each row}`) becomes the first
+  line inside the Rust block, since rustfmt puts comments after a `{` there
+  anyway. Comments inside an expression are dropped.
 - Codegen emits teaching comments at the first use of each notable construct
   in a file (`Rc<RefCell>`, const generics, lifted parameters, `catch_unwind`),
   not at every use, to avoid noise.

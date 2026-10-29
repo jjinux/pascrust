@@ -29,6 +29,8 @@ fn check(checks: &mut i16, failures: &mut i16, ok: bool, what: PString) {
 /// The main program: the `begin ... end.` block of `SystemVars`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    // The System unit's variables: RandSeed, ExitCode, FileMode, and Input
+    // and Output as files. Self-checking; ends with exit code 3 from ExitCode.
     let mut checks: i16 = 0;
     let mut failures: i16 = 0;
     let mut first: i16 = 0;

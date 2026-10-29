@@ -12,6 +12,8 @@ input_file: tests/translate/read_short_string.pas
 
 use pascrust_runtime::prelude::*;
 
+// Read into a string[n] takes at most n characters; the rest of the line is
+// left for the next Read.
 /// Pascal: `record code: string[2]; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Rec {

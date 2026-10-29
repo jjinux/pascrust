@@ -15,6 +15,9 @@ use pascrust_runtime::prelude::*;
 const GRID_BYTES: i16 = 40;
 const LAST_DIGIT: i16 = 9;
 
+// SizeOf (with Turbo Pascal's sizes), High, Low, Swap and Assigned.
+// Self-checking: prints each failed check, then a count. (Free Pascal's
+// sizes differ, e.g. its Real is 8 bytes, so this .out is written by hand.)
 /// Pascal: `(Red, Green, Blue)`
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 enum Color {

@@ -12,6 +12,8 @@ input_file: tests/translate/method_args.pas
 
 use pascrust_runtime::prelude::*;
 
+// A method call whose arguments call methods of the same object: the
+// arguments are computed before the object is borrowed for the call.
 /// Pascal: `Counter = object ... end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Counter {

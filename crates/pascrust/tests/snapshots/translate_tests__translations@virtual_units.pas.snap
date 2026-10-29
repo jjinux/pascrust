@@ -18,6 +18,8 @@ mod shapes;
 use crate::shapes::*;
 use pascrust_runtime::prelude::*;
 
+// A descendant declared in the program of an object whose unit has the
+// virtual method.
 /// Pascal: `^TCircle`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared
@@ -95,6 +97,8 @@ fn main() {
 #[allow(unused_imports)]
 use pascrust_runtime::prelude::*;
 
+// The root of an object hierarchy with a virtual method, for
+// virtual_units.pas, which declares a descendant.
 /// Pascal: `^TShape`
 pub type PShape = Ptr<AnyShape>;
 

@@ -27,6 +27,8 @@ struct Point2 {
     z: i16,
 }
 
+// Variables of anonymous record types become structs named after the
+// variable; two variables with the same name get `Point` and `Point2`.
 /// Pascal: `procedure First;`
 fn first() {
     let mut point: Point = Point::default();

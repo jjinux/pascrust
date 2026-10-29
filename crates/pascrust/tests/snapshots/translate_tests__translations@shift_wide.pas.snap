@@ -15,6 +15,9 @@ use pascrust_runtime::prelude::*;
 /// The main program: the `begin ... end.` block of `ShiftWide`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    // Shifting by the integer's width or more shifts every bit out. (Free Pascal
+    // computes in 64 bits here, so this test's .out is written by hand from
+    // Turbo Pascal's 16- and 32-bit results.)
     let mut i: i16 = 0;
     let mut w_: u16 = 0;
     let mut l: i32 = 0;

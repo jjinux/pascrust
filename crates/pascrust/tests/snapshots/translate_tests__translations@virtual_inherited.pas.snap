@@ -12,6 +12,8 @@ input_file: tests/translate/virtual_inherited.pas
 
 use pascrust_runtime::prelude::*;
 
+// Each object's constructor and destructor calls its parent's with
+// inherited, three levels deep, on plain variables and through pointers.
 /// Pascal: `^TBase`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared

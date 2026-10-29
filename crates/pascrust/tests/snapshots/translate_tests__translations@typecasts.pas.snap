@@ -12,6 +12,7 @@ input_file: tests/translate/typecasts.pas
 
 use pascrust_runtime::prelude::*;
 
+// Value typecasts: Type(x) converts between ordinal types.
 /// Pascal: `(Red, Green, Blue)`
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 enum Color {

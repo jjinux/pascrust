@@ -12,6 +12,8 @@ input_file: tests/translate/ptr_compare.pas
 
 use pascrust_runtime::prelude::*;
 
+// Comparing pointers compares what they point at, not the records. And a
+// path through two pointers changes only the last record.
 /// Pascal: `^Node`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared

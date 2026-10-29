@@ -15,6 +15,8 @@ use pascrust_runtime::prelude::*;
 /// The main program: the `begin ... end.` block of `SeekEofTest`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    // SeekEof and SeekEoln skip blanks first, so a loop reading numbers stops
+    // cleanly at trailing blanks and empty lines.
     let mut n: i16 = 0;
     let mut sum: i16 = 0;
     let mut count: i16 = 0;

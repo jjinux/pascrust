@@ -12,6 +12,8 @@ input_file: tests/translate/virtual_pointers.pas
 
 use pascrust_runtime::prelude::*;
 
+// Pointers to a base object type can point to descendants; a virtual
+// method called through them runs the version for the real object.
 /// Pascal: `^TShape`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared

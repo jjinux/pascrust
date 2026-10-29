@@ -12,6 +12,8 @@ input_file: tests/translate/pointers.pas
 
 use pascrust_runtime::prelude::*;
 
+// Pointers and the heap: a linked list, and the binary search tree
+// algorithm from examples/database/bstunit.pas.
 /// Pascal: `^Node`
 ///
 /// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared

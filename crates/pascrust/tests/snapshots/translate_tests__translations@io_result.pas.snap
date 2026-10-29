@@ -29,14 +29,18 @@ fn exists(f: &mut PText, name: PString) -> bool {
 /// The main program: the `begin ... end.` block of `IOCheck`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    // With $I-, an I/O error sets IOResult instead of stopping the program.
     let mut f: PText = PText::default();
     let mut n: i16 = 0;
     let mut code: i16 = 0;
     pwriteln!("missing: ", exists(&mut f, pstr("no_such_file.txt")));
     code = io_result();
     pwriteln!("after reading it: ", code);
+    // While an error waits to be read, more I/O does nothing.
     io_unchecked(|| f.reset());
     io_unchecked(|| f.close());
+    // Read IOResult before the next checked I/O: TP would stop on the error
+    // that's still waiting.
     code = io_result();
     pwriteln!("close was skipped: ", code);
     io_unchecked(|| preadln!(&mut n));

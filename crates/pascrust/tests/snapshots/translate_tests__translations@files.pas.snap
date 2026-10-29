@@ -12,6 +12,7 @@ input_file: tests/translate/files.pas
 
 use pascrust_runtime::prelude::*;
 
+// Text files and typed files (file of record) with random access.
 /// Pascal: `record name: string[20]; age: integer; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Person {
@@ -53,6 +54,7 @@ fn pascal_main() {
         pwrite!(p.name, " ");
     }
     pwriteln!();
+    // Change a record in place.
     f.seek(2);
     p.name = pstr("Dave");
     p.age = 50;

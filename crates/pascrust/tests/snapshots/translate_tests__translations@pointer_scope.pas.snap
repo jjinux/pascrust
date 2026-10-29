@@ -12,6 +12,8 @@ input_file: tests/translate/pointer_scope.pas
 
 use pascrust_runtime::prelude::*;
 
+// ^Node means the Node declared in the same type section, even when an
+// outer scope has a Node too.
 /// Pascal: `record a: integer; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Node {

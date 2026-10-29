@@ -12,6 +12,7 @@ input_file: tests/translate/var_fields.pas
 
 use pascrust_runtime::prelude::*;
 
+// Two different fields of one record can be passed as two var arguments.
 /// Pascal: `record x, y: Integer; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Point {

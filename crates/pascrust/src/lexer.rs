@@ -18,8 +18,22 @@
 use crate::diag::{Diagnostic, Span};
 use crate::token::{Keyword, Token, TokenKind};
 
+/// A comment (not a directive), kept so codegen can carry it into the Rust.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Comment {
+    pub span: Span,
+    /// The text between the comment markers, as written.
+    pub text: String,
+}
+
 /// Tokenize a whole source file. The last token is always [`TokenKind::Eof`].
 pub fn tokenize(source: &[u8]) -> Result<Vec<Token>, Diagnostic> {
+    tokenize_with_comments(source).map(|(tokens, _)| tokens)
+}
+
+/// [`tokenize`], also returning the comments, which aren't tokens: they can
+/// appear anywhere, and the lexer's own rules look at the previous token.
+pub fn tokenize_with_comments(source: &[u8]) -> Result<(Vec<Token>, Vec<Comment>), Diagnostic> {
     let mut lexer = Lexer {
         src: source,
         pos: 0,
@@ -28,9 +42,10 @@ pub fn tokenize(source: &[u8]) -> Result<Vec<Token>, Diagnostic> {
         nesting: 0,
         const_type: false,
         parens: 0,
+        comments: Vec::new(),
     };
     lexer.run()?;
-    Ok(lexer.tokens)
+    Ok((lexer.tokens, lexer.comments))
 }
 
 struct Lexer<'a> {
@@ -47,6 +62,7 @@ struct Lexer<'a> {
     /// In a `const` section: between a typed constant's `:` and its `=`.
     const_type: bool,
     parens: u32,
+    comments: Vec<Comment>,
 }
 
 /// The kind of declaration section the lexer is in.
@@ -161,7 +177,7 @@ impl<'a> Lexer<'a> {
                     }
                     let body_end = self.pos;
                     self.pos += 1;
-                    self.maybe_directive(start, body_start, body_end);
+                    self.directive_or_comment(start, body_start, body_end);
                 }
                 (b'(', b'*') => {
                     self.pos += 2;
@@ -174,24 +190,30 @@ impl<'a> Lexer<'a> {
                     }
                     let body_end = self.pos;
                     self.pos += 2;
-                    self.maybe_directive(start, body_start, body_end);
+                    self.directive_or_comment(start, body_start, body_end);
                 }
                 (b'/', b'/') => {
                     while self.pos < self.src.len() && self.peek() != b'\n' {
                         self.pos += 1;
                     }
+                    let text = String::from_utf8_lossy(&self.src[start + 2..self.pos]).trim_end().to_string();
+                    self.comments.push(Comment { span: Span::new(start, self.pos), text });
                 }
                 _ => return Ok(()),
             }
         }
     }
 
-    /// A comment whose body starts with `$` is a compiler directive.
-    fn maybe_directive(&mut self, start: usize, body_start: usize, body_end: usize) {
+    /// A comment whose body starts with `$` is a compiler directive; any
+    /// other is kept for codegen.
+    fn directive_or_comment(&mut self, start: usize, body_start: usize, body_end: usize) {
         let body = &self.src[body_start..body_end];
         if let Some(rest) = body.strip_prefix(b"$") {
             let text = String::from_utf8_lossy(rest).trim().to_string();
             self.push(TokenKind::Directive(text), start);
+        } else {
+            let text = String::from_utf8_lossy(body).into_owned();
+            self.comments.push(Comment { span: Span::new(start, self.pos), text });
         }
     }
 

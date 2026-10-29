@@ -12,6 +12,8 @@ input_file: tests/translate/virtual_self.pas
 
 use pascrust_runtime::prelude::*;
 
+// A static method that calls a virtual one runs the version for the object
+// it's really called on.
 /// Pascal: `TShape = object ... end`
 #[derive(Clone, Copy, Debug, Default)]
 struct TShape {

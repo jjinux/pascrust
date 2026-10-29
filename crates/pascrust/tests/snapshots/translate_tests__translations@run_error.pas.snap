@@ -11,6 +11,9 @@ use pascrust_runtime::prelude::*;
 /// The main program: the `begin ... end.` block of `RunErrorTest`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    // RunError stops the program with a runtime error of its own choosing.
+    // (Free Pascal prints its runtime errors on standard output, so this .out
+    // is written by hand.)
     pwriteln!("before");
     run_error(42);
     pwriteln!("not reached");

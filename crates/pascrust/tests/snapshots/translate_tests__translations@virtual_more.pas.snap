@@ -12,6 +12,9 @@ input_file: tests/translate/virtual_more.pas
 
 use pascrust_runtime::prelude::*;
 
+// Virtual methods with parameters and results, one first declared in a
+// descendant, an object with no methods of its own, and objects in a
+// record. (Turbo Pascal needs a constructor call before any virtual call.)
 /// Pascal: `TAnimal = object ... end`
 #[derive(Clone, Copy, Debug, Default)]
 struct TAnimal {
