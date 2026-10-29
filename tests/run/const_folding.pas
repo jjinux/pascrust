@@ -43,8 +43,9 @@ end;
 begin
   checks := 0;
   failures := 0;
+  Check((SwapNeg = 65535) and (Swap(1000) = 59395), 'Swap of a constant is a Word, as TP folds it');
   i := -1;
-  Check(SwapNeg = Swap(i), 'Swap(-1) folded as at run time');
+  Check(Swap(i) = -1, 'Swap of an Integer variable -1');
   w := 255;
   Check(Swap255 = Swap(w), 'Swap(255) works on a Word, as in Free Pascal');
   i := 255;

@@ -45,12 +45,14 @@ impl IntKind {
         }
     }
 
-    /// The same for a constant, by its value: 0 to 255 (a Byte) and 32768
-    /// to 65535 are Words, other values up to 32767 Integers.
+    /// The same for a constant. TP's compiler folds `Swap` of a constant as
+    /// its low 16 bits, unsigned (`Swap(Value.Word)`, as reconstructed at
+    /// turbopascal.org), so the result is a Word: `Swap(255)` is 65280 and
+    /// `Swap(-1)` 65535. Beyond 16 bits, a LongInt's halves swap, as Free
+    /// Pascal does (TP took only Integer and Word).
     pub fn for_swap_value(n: i64) -> IntKind {
         match n {
-            0..=255 | 32768..=65535 => IntKind::Word,
-            -32768..=32767 => IntKind::Integer,
+            -32768..=65535 => IntKind::Word,
             _ => IntKind::LongInt,
         }
     }
@@ -59,7 +61,6 @@ impl IntKind {
     pub fn swap_value(n: i64) -> i64 {
         match IntKind::for_swap_value(n) {
             IntKind::Word => i64::from((n as u16).swap_bytes()),
-            IntKind::Integer => i64::from((n as u16).swap_bytes() as i16),
             _ => i64::from((n as u32).rotate_left(16) as i32),
         }
     }

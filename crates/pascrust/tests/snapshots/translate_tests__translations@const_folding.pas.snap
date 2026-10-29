@@ -14,7 +14,7 @@ use pascrust_runtime::prelude::*;
 
 const LAST: Day = Day::Sun;
 const BEFORE_LAST: Day = Day::Sat;
-const SWAP_NEG: i16 = -1;
+const SWAP_NEG: i32 = 65535;
 const SWAP255: i32 = 65280;
 const SWAP_WORD: i16 = 255;
 const HI_NEG: i16 = 255;
@@ -83,8 +83,14 @@ fn pascal_main() {
     let mut d: Day = Day::Mon;
     checks = 0;
     failures = 0;
+    check(
+        &mut checks,
+        &mut failures,
+        SWAP_NEG == 65535 && 59395_u16 == 59395,
+        pstr("Swap of a constant is a Word, as TP folds it"),
+    );
     i = -1;
-    check(&mut checks, &mut failures, SWAP_NEG == i.swap_bytes(), pstr("Swap(-1) folded as at run time"));
+    check(&mut checks, &mut failures, i.swap_bytes() == -1, pstr("Swap of an Integer variable -1"));
     w_ = 255;
     check(
         &mut checks,

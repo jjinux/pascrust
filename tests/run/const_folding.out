@@ -1,4 +1,5 @@
-ok: Swap(-1) folded as at run time
+ok: Swap of a constant is a Word, as TP folds it
+ok: Swap of an Integer variable -1
 ok: Swap(255) works on a Word, as in Free Pascal
 ok: Swap of an Integer variable stays an Integer
 ok: a Byte swaps as a Word, a ShortInt as an Integer
@@ -16,4 +17,4 @@ ok: Pred of an enum constant
 ok: an enum range in a set test
 ok: and one ending in a constant
 ok: a Boolean range
-18 of 18 checks passed
+19 of 19 checks passed
