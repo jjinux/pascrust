@@ -81,3 +81,48 @@ to do instead.
    a program only sees it if it reads the buffer's bytes itself?
 3. Which first: untyped files with `BlockRead`/`BlockWrite`, or
    `GetImage`/`PutImage`? Both need parts 1 and 2.
+
+## Fable's review (2026-10-29)
+
+Verdict: the shape is right (TP's bytes through a runtime trait,
+copy-in/copy-out at the untyped `var`, a byte buffer for `GetMem`, a block
+file over it), buildable without `unsafe`. But:
+
+1. The byte view must match TP's `SizeOf`, not `FileRecord`'s current
+   layout (which writes a `string[10]` as 256 bytes and a `Real` as 8).
+   So first make `FileRecord` TP-exact: `string[n]` as n+1 bytes (codegen
+   passes capacities to `file_record!`), TP's 6-byte `Real`, 4/8/10/8 for
+   `Single`/`Double`/`Extended`/`Comp`, sets by byte range. That also makes
+   `examples/database/mark.dat` readable.
+2. `Pointer` is also TP's `void*`: lists of `Pointer`, `PNode(p)^.x`. Make
+   it an enum: `Nil`, `Bytes(PBuf)` (from untyped `GetMem`), `Any(Rc<dyn
+   Any>)` (from a typed pointer), with `p.cast::<Node>()` checked at run
+   time.
+3. Views must be able to start inside a variable: `BlockWrite(f, s[1],
+   Length(s))`, `BlockRead(f, Buf[pos], n)`.
+4. A typed `GetMem(p, n)` with `n < SizeOf(T)` is the dynamic-array idiom:
+   allocate the full declared type, and indexes past `n` are range errors.
+5. `BlockRead` may read short: write back only the bytes read, and
+   `decode` must accept any bytes (clamp a string's length byte, an enum
+   out of range).
+6. Copy out on every exit, including `Exit`: a guard whose `Drop` writes
+   back.
+7. `var f: file` takes an untyped or typed file, not `Text`.
+
+Answers to the questions:
+
+1. Yes, copy-in/copy-out, under those conditions: an untyped parameter
+   is only used through casts, `Move`/`FillChar` or runtime routines, and
+   the other ways to reach the variable (a global, the heap) are already
+   caught.
+2. No: use TP's own layout (two `Word`s, width-1 and height-1, then the
+   VGA's four bit planes), so hand-sized static buffers, programs that
+   read the header, and sprite files from the original programs all
+   work.
+3. Untyped files first: they need only the layout and byte views, not
+   `Pointer`, and they're the most common.
+
+Build order: (0) TP-exact layout; (1) byte views, untyped `var`,
+`Move`/`FillChar` between types; (2) untyped files and `BlockRead`/
+`BlockWrite`; (3) `Pointer`, `GetMem`/`FreeMem`; (4) `GetImage`/
+`PutImage`; (5) `PChar` and `Strings`.
