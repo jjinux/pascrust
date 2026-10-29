@@ -12,6 +12,13 @@ implementation. The opening prompt is in `README.md` before it was removed
   deviate from it, update it in the same commit (and say why).
 - `language_spec.md`: which Pascal constructs are supported, by tier.
 - `notes/`: research (p2c, Free Pascal) and answered questions for the user.
+- `README.md`: what a user needs: what Pascrust is, how to run it (`pascrust`,
+  `tpc`, `fmt`), the environment variables, what's supported, the examples.
+
+Keep these up to date as you go: whenever a change adds or changes a
+feature, a command, an option or a limitation, update `README.md`,
+`language_spec.md` and `architecture.md` (and check off `TODO.md`) in the
+same commit, not later. They drift quickly otherwise.
 
 ## Layout
 
