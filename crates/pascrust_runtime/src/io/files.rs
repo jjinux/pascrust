@@ -47,6 +47,8 @@ enum TextMode {
     /// After `AssignCrt(f)` and `Reset`/`Rewrite`: the screen and keyboard,
     /// shared with plain `Write` and `Read`.
     Console,
+    /// The printer, `Lst`, passed as a `Text` parameter.
+    Printer,
 }
 
 impl PText {
@@ -62,6 +64,18 @@ impl PText {
         self.close_quietly();
         self.name = Some(name.into());
         self.crt = false;
+    }
+
+    /// `Output` or `Input` passed as a `var f: Text` parameter: a file that's
+    /// already open on the console.
+    pub fn console() -> PText {
+        PText { name: None, mode: TextMode::Console, crt: true }
+    }
+
+    /// `Lst` passed as a `var f: Text` parameter: a file that's already open
+    /// on the printer.
+    pub fn printer() -> PText {
+        PText { name: None, mode: TextMode::Printer, crt: false }
     }
 
     /// Crt's `AssignCrt(f)`: like `Assign`, but for the screen and keyboard.
@@ -136,6 +150,7 @@ impl PText {
                 let _ = writer.flush();
             }
             TextMode::Console => super::flush_stdout(),
+            TextMode::Printer => crate::printer::Lst.flush(),
             _ => {}
         }
     }
@@ -163,6 +178,7 @@ impl PText {
             TextMode::Closed => crate::rte(103, "File not open"),
             TextMode::Writing(_) => crate::rte(104, "File not open for input"),
             TextMode::Console => unreachable!("console reads go to standard input"),
+            TextMode::Printer => crate::rte(104, "File not open for input: the printer"),
         }
     }
 
@@ -217,6 +233,7 @@ impl PText {
                 }
             }
             TextMode::Console => super::write_stdout(bytes),
+            TextMode::Printer => crate::printer::Lst.write_bytes(bytes),
             TextMode::Closed => crate::rte(103, "File not open"),
             TextMode::Reading(_) => crate::rte(105, "File not open for output"),
         }

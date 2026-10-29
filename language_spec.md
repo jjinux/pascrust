@@ -108,8 +108,9 @@ Built-ins (System unit)
   pascrust can't copy raw bytes between unrelated types
 - System variables `ExitCode` (the exit code when the program ends),
   `RandSeed`, `FileMode` (how `Reset` opens typed files), and `Input` and
-  `Output` as file arguments (`Writeln(Output, x)`); they're always the
-  console, so `Assign`/`Reset`/`Rewrite` on them is an error
+  `Output` as file arguments (`Writeln(Output, x)`), also passed to a
+  `var f: Text` parameter (`Report(Output)`); they're always the console,
+  so `Assign`/`Reset`/`Rewrite` on them is an error
 - `GetDir` (drive C: is where the program started, as for `FExpand`)
 - Faked, so old programs run: `MemAvail`/`MaxAvail` (512,000 bytes),
   `Mark`/`Release` (records are freed when nothing points to them, so they
@@ -202,7 +203,8 @@ Crt unit (the whole examples set uses it)
 Printer unit
 
 - `Lst`, a text file always open on the printer: `Write(Lst, ...)`,
-  `Writeln(Lst, ...)`, `Flush(Lst)`. Faked: it appends to `printer.txt`,
+  `Writeln(Lst, ...)`, `Flush(Lst)`, and passed to a `var f: Text`
+  parameter (`Report(Lst)`). Faked: it appends to `printer.txt`,
   another file, or a command such as `lp`, as `PASCRUST_PRINTER` says (see
   the README). Reading from `Lst`, or reopening it, is an error
 

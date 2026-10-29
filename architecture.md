@@ -656,6 +656,9 @@ window meanwhile (§19).
   `FileMode` are atomics, since the main thread reads `ExitCode` when the
   program's thread ends. `Input`/`Output` (`SymKind::StdText`) as a file
   argument just mean the console: `Writeln(Output, x)` is `pwriteln!(x)`.
+  Passed to a `var f: Text` parameter, they're `&mut PText::console()`
+  (and `Lst` is `&mut PText::printer()`): a fresh `Text` value already
+  open on the console or printer, which shares the real one's state.
 - **`and`/`or`** → `&&`/`||` (TP defaults to short-circuit, `{$B-}`); on
   integers they are `&`/`|`. `xor` and `shl` map directly, with two TP
   details: `shr` is a logical shift (`-300 shr 4` is 4077), so a signed

@@ -139,7 +139,9 @@ by `sh`, starts the first time the program prints, and gets the output on
 its standard input. When the program ends, its input is closed and Pascrust
 waits for it to finish, so the whole job is sent. A program that never
 prints creates no file and runs no command. Output goes through exactly as
-written, form feeds (`Write(Lst, #12)`) included. Old programs often wrote
+written, form feeds (`Write(Lst, #12)`) included. A procedure that writes
+to a `var f: Text` parameter can be handed `Lst` (or `Output`) to print a
+report instead of showing it. Old programs often wrote
 printer control codes for an Epson or IBM printer, and those reach your
 printer unchanged too.
 

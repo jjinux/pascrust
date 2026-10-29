@@ -508,7 +508,7 @@ impl Codegen<'_> {
 
 impl Codegen<'_> {
     /// Which standard file `e` is, if it's `Input`, `Output` or `Lst`.
-    fn std_text(&self, e: &Expr) -> Option<StdFile> {
+    pub(super) fn std_text(&self, e: &Expr) -> Option<StdFile> {
         match self.a.refs.get(&e.id).map(|&sym| &self.a.sym(sym).kind) {
             Some(SymKind::StdText(file)) => Some(*file),
             _ => None,

@@ -493,6 +493,12 @@ impl<'a> Codegen<'a> {
     /// A mutable reference to a place, for a `var` argument: `&mut x`, or
     /// just `x` if we already hold `x` as a reference (Rust "reborrows" it).
     pub(super) fn place_mut(&mut self, e: &Expr) -> String {
+        // `Report(Output)` or `Report(Lst)` with `procedure Report(var f: Text)`.
+        match self.std_text(e) {
+            Some(crate::sema::StdFile::Printer) => return "&mut PText::printer()".to_string(),
+            Some(_) => return "&mut PText::console()".to_string(),
+            None => {}
+        }
         match &e.kind {
             ExprKind::Name(_) if !self.a.self_fields.contains_key(&e.id) => {
                 let sym = self.a.refs[&e.id];
