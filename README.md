@@ -146,11 +146,18 @@ printer unchanged too.
 ### What's supported
 
 Most of Turbo Pascal 5.5/6.0 as students used it: the usual types, strings,
-arrays, records, enums, pointers, nested procedures, units, objects (without
-virtual methods yet), text and typed files, and the `Crt`, `Dos` and `Graph`
-units. See `language_spec.md` for the details and `TODO.md` for what's next.
-Runtime errors print Turbo Pascal's message and exit code
-(e.g. `Runtime error 201: Range check error ...`).
+arrays, records, enums, sets, pointers, nested procedures, `with`, units,
+objects with inheritance and virtual methods (constructors, destructors,
+`inherited`, polymorphic pointers, `TypeOf`), text and typed files with
+`{$I-}`/`IOResult`, and the `Crt`, `Dos`, `Graph`, `Printer` and `Overlay`
+units. Some things a modern machine doesn't have are faked so old programs
+still run: `Lst` prints to a file or a command (see [Printing](#printing)),
+overlays need no `.OVR` file, `MemAvail` reports plenty of memory.
+
+Not supported yet: variant records, procedural types, `goto`, untyped files,
+and `PChar` with the `Strings` unit. See `language_spec.md` for the details
+and `TODO.md` for what's next. Runtime errors print Turbo Pascal's message
+and exit code (e.g. `Runtime error 201: Range check error ...`).
 
 ## Examples
 
