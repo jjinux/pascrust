@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/enum_past_end.pas
+---
+enum_past_end.pas:7:11: error: `Succ` here goes past the last value of Day
+  After = Succ(Wed);
+          ^^^^^^^^^
+
+enum_past_end.pas:8:12: error: `Pred` here goes before the first value of Day
+  Before = Pred(Mon);
+           ^^^^^^^^^
+
+enum_past_end.pas:16:17: error: expected a constant expression
+  NotConstant = Succ(2);
+                ^^^^^^^

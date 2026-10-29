@@ -76,7 +76,8 @@ Expressions
   with TP 7's constant functions: `Abs`, `Chr`, `Hi`, `High`, `Length`,
   `Lo`, `Low`, `Odd`, `Ord`, `Pred`, `Round`, `SizeOf`, `Succ`, `Swap`,
   `Trunc`. A constant that is an enum value (`const Last = Sun`) has the
-  enum's type
+  enum's type, and `Succ`/`Pred` of one must stay in the enum. A call
+  with constant arguments (`Hi(-1)`) is written as its value
 - Function calls, including calling a function name as the result variable
   inside its own body
 - Operator precedence exactly as TP (`not` > `* / div mod and shl shr` > `+ -

@@ -40,6 +40,11 @@ impl<'a> Codegen<'a> {
     pub(super) fn expr(&mut self, e: &Expr) -> Code {
         if let Some(value) = self.a.folded.get(&e.id) {
             let ty = self.a.type_of(e.id).clone();
+            // A folded `Hi(-1)` is a Byte: `255_u8`, so it converts like one.
+            if let (ConstVal::Int(n), Type::Int(kind)) = (value, &ty) {
+                let precedence = if *n < 0 { prec::UNARY } else { prec::ATOM };
+                return (format!("{n}_{}", kind.rust()), precedence);
+            }
             return (self.const_value(value, &ty), prec::ATOM);
         }
         match &e.kind {
@@ -92,6 +97,13 @@ impl<'a> Codegen<'a> {
         match elem {
             SetElem::Single(x) => self.coerce(x, elem_ty).0,
             SetElem::Range(lo, hi) => {
+                // Rust ranges are for numbers and chars: in `d in [Sat..Sun]`
+                // an enum's (or Boolean's) values are listed instead.
+                if matches!(elem_ty, Type::Enum(_) | Type::Bool)
+                    && let (Some(lo), Some(hi)) = (self.const_ordinal(lo), self.const_ordinal(hi))
+                {
+                    return self.ord_range_pattern(elem_ty, lo, hi);
+                }
                 let (lo, hi) = (self.coerce(lo, elem_ty), self.coerce(hi, elem_ty));
                 // Any binary operator binds tighter than `..=`.
                 format!("{}..={}", paren(lo, prec::OR), paren(hi, prec::OR))
@@ -144,6 +156,16 @@ impl<'a> Codegen<'a> {
 
     /// Can this set element be a `match` pattern: a literal, a named
     /// constant or an enum value?
+    /// The ordinal of a named constant (an enum value or `True`).
+    fn const_ordinal(&self, e: &Expr) -> Option<i64> {
+        let sym = *self.a.refs.get(&e.id)?;
+        match &self.a.sym(sym).kind {
+            SymKind::Const { value: ConstVal::Int(n), .. } => Some(*n),
+            SymKind::Const { value: ConstVal::Bool(b), .. } => Some(*b as i64),
+            _ => None,
+        }
+    }
+
     fn constant_item(&self, elem: &SetElem) -> bool {
         let constant = |e: &Expr| match &e.kind {
             ExprKind::Int(_) | ExprKind::Str(_) => true,

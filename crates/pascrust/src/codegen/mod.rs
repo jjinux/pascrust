@@ -1325,9 +1325,9 @@ impl<'a> Codegen<'a> {
         // Turbo Pascal doesn't object to a label appearing twice; the first
         // arm wins. Rust warns about the unreachable second one, so drop it.
         let mut seen = Covered::default();
-        // Notes about arms dropped whole wait for the next arm: after the
-        // last one, rustfmt would take them for that arm's.
-        let mut waiting: Vec<String> = Vec::new();
+        // The labels dropped whole or trimmed, for a note before the next
+        // arm: after the last one, rustfmt would take it for that arm's.
+        let (mut all_dropped, mut all_trimmed): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
         for arm in arms {
             let mut labels = Vec::new();
             let mut dropped = Vec::new();
@@ -1350,26 +1350,16 @@ impl<'a> Codegen<'a> {
                 }
                 seen.add(lo, hi);
             }
-            // TP lets labels repeat, and the first one wins.
-            let mut notes = Vec::new();
-            if !dropped.is_empty() {
-                notes.push(format!("// {} appeared before; the first one wins.", dropped.join(", ")));
-            }
-            if !trimmed.is_empty() {
-                notes.push(format!(
-                    "// {} overlapped a label before; the first one wins, so only the rest is here.",
-                    trimmed.join(", ")
-                ));
-            }
-            for note in notes {
-                if !waiting.contains(&note) {
-                    waiting.push(note);
+            for label in dropped {
+                if !all_dropped.contains(&label) {
+                    all_dropped.push(label);
                 }
             }
+            all_trimmed.extend(trimmed);
             if labels.is_empty() {
                 continue;
             }
-            for note in std::mem::take(&mut waiting) {
+            for note in label_notes(&mut all_dropped, &mut all_trimmed) {
                 self.line(note);
             }
             self.line(format!("{} => {{", labels.join(" | ")));
@@ -1392,7 +1382,7 @@ impl<'a> Codegen<'a> {
         let end_at = comments::end_keyword(self.map, span);
         // With a `_` arm to come, the waiting notes go before it.
         if else_body.is_some() || !exhaustive {
-            for note in std::mem::take(&mut waiting) {
+            for note in label_notes(&mut all_dropped, &mut all_trimmed) {
                 self.line(note);
             }
         }
@@ -1433,14 +1423,17 @@ impl<'a> Codegen<'a> {
             && else_body.is_none()
             && let Some(at) = end_at
         {
-            let mut lines = std::mem::take(&mut waiting);
+            let mut lines = label_notes(&mut all_dropped, &mut all_trimmed);
             lines.extend(self.comments.take_leading(at));
             if !lines.is_empty() {
                 end_comment = Some(lines.join(" ").replace(" // ", " "));
             }
         }
         let end_comment = match (end_comment, self.block_end_comments(span)) {
-            (Some(before), Some(after)) => Some(format!("{before}; {}", after.trim_start_matches("// "))),
+            (Some(before), Some(after)) => {
+                let joint = if before.ends_with('.') { " " } else { "; " };
+                Some(format!("{before}{joint}{}", after.trim_start_matches("// ")))
+            }
             (before, after) => before.or(after),
         };
         self.indent -= 1;
@@ -1662,6 +1655,22 @@ impl<'a> Codegen<'a> {
             _ => unreachable!("sema checked the initializer's shape"),
         }
     }
+}
+
+/// The notes about `case` labels that repeat earlier ones (TP allows it, and
+/// the first one wins), taking the labels.
+fn label_notes(dropped: &mut Vec<String>, trimmed: &mut Vec<String>) -> Vec<String> {
+    let mut notes = Vec::new();
+    if !dropped.is_empty() {
+        notes.push(format!("// {} appeared before; the first one wins.", std::mem::take(dropped).join(", ")));
+    }
+    if !trimmed.is_empty() {
+        notes.push(format!(
+            "// {} overlapped a label before; the first one wins, so only the rest is here.",
+            std::mem::take(trimmed).join(", ")
+        ));
+    }
+    notes
 }
 
 /// The values a `case`'s labels cover so far, as sorted, separate ranges.

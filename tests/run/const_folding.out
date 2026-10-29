@@ -1,0 +1,13 @@
+ok: Swap(-1) folded as at run time
+ok: Swap(255) folded as at run time
+ok: Swap($FF00) is a Word
+ok: Hi(-256)
+ok: Lo(-1)
+ok: Hi and Lo of negative literals
+ok: Length of a string constant
+ok: Odd(-3)
+ok: Pred of an enum constant
+ok: an enum range in a set test
+ok: and one ending in a constant
+ok: a Boolean range
+12 of 12 checks passed

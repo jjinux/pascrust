@@ -955,6 +955,7 @@ impl Checker {
     fn subrange(&mut self, t: &TypeExpr) -> Option<(Type, i64, i64)> {
         let TypeExpr::Subrange { lo, hi, span } = t else { return None };
         let lo_ty = self.expr(lo);
+        self.expr(hi);
         let (Some(ConstVal::Int(l)), Some(ConstVal::Int(h))) = (self.ordinal_const(lo), self.ordinal_const(hi)) else {
             self.error(*span, "subrange bounds must be ordinal constants");
             return None;
@@ -1016,6 +1017,16 @@ impl Checker {
                 self.error(t.span(), format!("{other} is too big to be an array index type"));
                 None
             }
+        }
+    }
+
+    /// If the call `e` has constant arguments, record its value for codegen
+    /// to write instead (`Hi(-1)` is just `255`).
+    fn fold(&mut self, e: &Expr, ty: &Type) {
+        if *ty != Type::Error
+            && let Some(value) = self.eval_const(e)
+        {
+            self.a.folded.insert(e.id, value);
         }
     }
 
@@ -1110,6 +1121,10 @@ impl Checker {
                 let ExprKind::Name(id) = &callee.kind else {
                     return None;
                 };
+                // Only the real builtins: a program may have its own `Succ`.
+                if !matches!(self.a.symbols[self.lookup(&id.key())?].kind, SymKind::Builtin(_)) {
+                    return None;
+                }
                 match (id.key().as_str(), self.eval_const(&args[0])?) {
                     ("chr", Int(n)) if (0..=255).contains(&n) => Some(Str(vec![n as u8])),
                     ("ord", Str(s)) if s.len() == 1 => Some(Int(s[0] as i64)),
@@ -1127,7 +1142,12 @@ impl Checker {
                     ("pred", Bool(true)) => Some(Bool(false)),
                     ("hi", Int(n)) => Some(Int((n >> 8) & 0xFF)),
                     ("lo", Int(n)) => Some(Int(n & 0xFF)),
-                    ("swap", Int(n)) => Some(Int(((n & 0xFF) << 8) | ((n >> 8) & 0xFF))),
+                    // As the run-time `Swap`: on a Word above 32767, otherwise
+                    // on an Integer, so `Swap(255)` is -256.
+                    ("swap", Int(n)) => {
+                        let swapped = (n as u16).swap_bytes();
+                        Some(Int(if n > 32767 { i64::from(swapped) } else { i64::from(swapped as i16) }))
+                    }
                     ("length", Str(s)) => Some(Int(s.len() as i64)),
                     ("odd", Int(n)) => Some(Bool(n % 2 != 0)),
                     ("round", Real(x)) => Some(Int(x.round() as i64)),
@@ -2641,8 +2661,23 @@ impl Checker {
             ),
             Chr => self.unary_builtin(span, args, &name, |t| t.is_integer(), |_| Type::Char),
             Odd => self.unary_builtin(span, args, &name, |t| t.is_integer(), |_| Type::Bool),
-            Succ | Pred => self.unary_builtin(span, args, &name, |t| t.is_ordinal(), |t| t.concrete()),
-            Hi | Lo => self.unary_builtin(span, args, &name, |t| t.is_integer(), |_| Type::Int(IntKind::Byte)),
+            Succ | Pred => {
+                let ty = self.unary_builtin(span, args, &name, |t| t.is_ordinal(), |t| t.concrete());
+                // `Succ(Sun)` of a constant: TP checks it's still a `Day`.
+                if let Type::Enum(en) = &ty
+                    && let Some(ConstVal::Int(n)) = self.eval_const(e)
+                    && !(0..en.variants.len() as i64).contains(&n)
+                {
+                    let side = if n < 0 { "before the first" } else { "past the last" };
+                    self.error(span, format!("`{name}` here goes {side} value of {ty}"));
+                }
+                ty
+            }
+            Hi | Lo => {
+                let ty = self.unary_builtin(span, args, &name, |t| t.is_integer(), |_| Type::Int(IntKind::Byte));
+                self.fold(e, &ty);
+                ty
+            }
             // Worked out now, as TP does: they're constants.
             SizeOf | High | Low => {
                 if !arity(&mut self.errors, span, args.len(), 1..=1, &name) {
@@ -2705,20 +2740,24 @@ impl Checker {
                 }
                 Type::Void
             }
-            Swap => self.unary_builtin(
-                span,
-                args,
-                &name,
-                // TP's `Swap(X: Word)` also takes literals up to $FFFF.
-                |t| {
-                    matches!(t, Type::IntLit(n) if (0..=65535).contains(n))
-                        || matches!(t.concrete(), Type::Int(IntKind::Integer | IntKind::Word))
-                },
-                |t| match t {
-                    Type::IntLit(n) if *n > 32767 => Type::Int(IntKind::Word),
-                    t => t.concrete(),
-                },
-            ),
+            Swap => {
+                let ty = self.unary_builtin(
+                    span,
+                    args,
+                    &name,
+                    // TP's `Swap(X: Word)` also takes literals up to $FFFF.
+                    |t| {
+                        matches!(t, Type::IntLit(n) if (0..=65535).contains(n))
+                            || matches!(t.concrete(), Type::Int(IntKind::Integer | IntKind::Word))
+                    },
+                    |t| match t {
+                        Type::IntLit(n) if *n > 32767 => Type::Int(IntKind::Word),
+                        t => t.concrete(),
+                    },
+                );
+                self.fold(e, &ty);
+                ty
+            }
             Assigned => self.unary_builtin(span, args, &name, |t| matches!(t, Type::Pointer(_)), |_| Type::Bool),
             RunError => {
                 if arity(&mut self.errors, span, args.len(), 0..=1, &name) && args.len() == 1 {
