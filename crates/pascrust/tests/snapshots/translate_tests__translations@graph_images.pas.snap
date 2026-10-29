@@ -158,16 +158,20 @@ fn pascal_main() {
         get_pixel(200, 100) == u16::from(LIGHT_BLUE) && get_pixel(209, 109) == u16::from(BROWN),
         pstr("an image from a file"),
     );
-    // The viewport moves the image but doesn't clip it.
+    // The viewport moves the image, and clips it if it's set to.
     set_view_port(300, 300, 302, 302, CLIP_ON);
     put_image(0, 0, &buf.to_bytes(), NORMAL_PUT);
     set_view_port(0, 0, get_max_x(), get_max_y(), CLIP_ON);
     check(
         &mut checks,
         &mut failures,
-        get_pixel(309, 309) == u16::from(BROWN),
-        pstr("PutImage ignores the viewport's clipping"),
+        get_pixel(300, 300) == u16::from(LIGHT_BLUE) && get_pixel(309, 309) == u16::from(BLACK),
+        pstr("PutImage clips to the viewport"),
     );
+    set_view_port(400, 400, 402, 402, CLIP_OFF);
+    put_image(0, 0, &buf.to_bytes(), NORMAL_PUT);
+    set_view_port(0, 0, get_max_x(), get_max_y(), CLIP_ON);
+    check(&mut checks, &mut failures, get_pixel(409, 409) == u16::from(BROWN), pstr("but not with ClipOff"));
     p.free();
     close_graph();
     pwriteln!(checks - failures, " of ", checks, " checks passed");

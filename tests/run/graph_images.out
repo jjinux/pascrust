@@ -12,5 +12,6 @@ ok: NotPut
 ok: row 0: planes 3 down to 0
 ok: the last row
 ok: an image from a file
-ok: PutImage ignores the viewport's clipping
-15 of 15 checks passed
+ok: PutImage clips to the viewport
+ok: but not with ClipOff
+16 of 16 checks passed

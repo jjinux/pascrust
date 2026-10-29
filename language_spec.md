@@ -367,7 +367,7 @@ Graph unit (BGI, as used in the examples)
   each row as bit planes 3 down to 0, 8 pixels a byte. So sprites saved by
   the original programs still draw. `ImageSize` of 64K or more is 0 with
   `GraphResult` `grError`. A buffer too small is runtime error 201.
-  `PutImage` isn't clipped to the viewport
+  `PutImage` is clipped to the viewport (with `ClipOn`)
 
 ## Tier 3: later, or never
 

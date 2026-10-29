@@ -239,8 +239,8 @@ impl Screen {
 
     /// `PutImage(X, Y, BitMap, BitBlt)`: draw an image from `GetImage` with
     /// its top left corner at `(x, y)`, combining each pixel with the
-    /// screen's as `BitBlt` says. Pixels off the screen are dropped; the
-    /// viewport doesn't clip (TP's didn't either).
+    /// screen's as `BitBlt` says. Pixels outside the viewport (when it
+    /// clips) or off the screen are dropped.
     pub fn put_image(&mut self, x: i32, y: i32, image: &[u8], bit_blt: i32) {
         let word = |i: usize| i32::from(u16::from_le_bytes([image[i], image[i + 1]]));
         let (width, height) = (word(0) + 1, word(2) + 1);
@@ -256,11 +256,8 @@ impl Screen {
                         color |= 1 << plane;
                     }
                 }
-                let (ax, ay) = (x + col + self.view.0, y + row + self.view.1);
-                if ax < 0 || ay < 0 || ax >= WIDTH as i32 || ay >= HEIGHT as i32 {
-                    continue;
-                }
-                let pixel = &mut self.pixels[ay as usize * WIDTH + ax as usize];
+                let Some(i) = self.index(x + col, y + row) else { continue };
+                let pixel = &mut self.pixels[i];
                 *pixel = match bit_blt {
                     1 => *pixel ^ color, // XORPut
                     2 => *pixel | color, // OrPut

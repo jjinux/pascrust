@@ -243,7 +243,7 @@ Dos, the rest
 Graph, the rest
 - [x] `DrawPoly`/`FillPoly` (arrays of `PointType`), `GetArcCoords`, and the `Get*Settings` records (`GetLineSettings`, `GetFillSettings`, `GetTextSettings`, `GetViewSettings`).
 - [x] `GetImage`/`PutImage`/`ImageSize` with the `PutImage` modes, in TP's own buffer layout (step 4 of `notes/untyped_memory.md`).
-- [ ] Check `GetImage`/`PutImage` against real TP (DOSBox) if it's ever at hand: the plane order (3 first?), and whether `PutImage` clips at the viewport or skips an image that doesn't fit.
+- [ ] Check `GetImage`/`PutImage` against real TP (DOSBox) if it's ever at hand: the plane order (3 first?). (`PutImage` clips at the viewport: the user's call.)
 - [x] Palettes: `GetPalette`, `GetDefaultPalette`, `SetAllPalette`, `SetRGBPalette`, `GetPaletteSize`; `GraphDefaults`; `SetAspectRatio`; `SetUserCharSize`; `GetDriverName`/`GetModeName`/`GetMaxMode`/`GetModeRange`.
 - [x] `SetActivePage`/`SetVisualPage` (two framebuffers, for flicker-free animation).
 - [x] Fake: `InstallUserFont` and `SetGraphBufSize` succeed and change nothing (there are no `.CHR` files to load). `RegisterBGIdriver`, `RegisterBGIfont` and `InstallUserDriver` are refused instead, with the reason: they take `@DriverProc` (code linked in from an `.OBJ` file) or a driver file, and the call can simply go.

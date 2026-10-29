@@ -77,11 +77,15 @@ begin
    ClearDevice;
    PutImage(200, 100, buf, NormalPut);
    Check((GetPixel(200, 100) = LightBlue) and (GetPixel(209, 109) = Brown), 'an image from a file');
-   { The viewport moves the image but doesn't clip it. }
+   { The viewport moves the image, and clips it if it's set to. }
    SetViewPort(300, 300, 302, 302, ClipOn);
    PutImage(0, 0, buf, NormalPut);
    SetViewPort(0, 0, GetMaxX, GetMaxY, ClipOn);
-   Check(GetPixel(309, 309) = Brown, 'PutImage ignores the viewport''s clipping');
+   Check((GetPixel(300, 300) = LightBlue) and (GetPixel(309, 309) = Black), 'PutImage clips to the viewport');
+   SetViewPort(400, 400, 402, 402, ClipOff);
+   PutImage(0, 0, buf, NormalPut);
+   SetViewPort(0, 0, GetMaxX, GetMaxY, ClipOn);
+   Check(GetPixel(409, 409) = Brown, 'but not with ClipOff');
    FreeMem(p, size);
    CloseGraph;
    WriteLn(checks - failures, ' of ', checks, ' checks passed');
