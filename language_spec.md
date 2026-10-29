@@ -170,7 +170,8 @@ More language
 - Sets: `set of T` (`T` with ordinals 0 to 255: `Char`, `Byte`, `Boolean`,
   an enumeration, a subrange like `0..9`), literals with ranges
   (`['a'..'z', '_']`), `in`, `+ - *`, `= <> <= >=`, `Include`/`Exclude`,
-  set constants and typed constants, sets in records and parameters
+  set constants and typed constants, sets in records (also in `file of`
+  records, as 32 bytes) and parameters
 - `with` statements (single and multiple record expressions, records and
   objects, through pointers). A body may not change an array index that
   chooses the record (`with a[i] do ... i := 2` is an error), and a field

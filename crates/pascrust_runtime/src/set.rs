@@ -198,6 +198,29 @@ impl<T> Default for PSet<T> {
     }
 }
 
+/// A set in a `file of` record: 32 bytes, bit `n % 8` of byte `n / 8` for
+/// element `n`, as TP stores a set of 256 elements.
+impl<T> crate::io::FileRecord for PSet<T> {
+    fn encode(&self, out: &mut Vec<u8>) {
+        for word in self.bits {
+            out.extend_from_slice(&word.to_le_bytes());
+        }
+    }
+
+    fn decode(input: &mut &[u8]) -> PSet<T> {
+        let mut set = PSet::new();
+        for word in set.bits.iter_mut() {
+            // `split_at` cuts off the next 8 bytes; a short file gives zeros.
+            let (bytes, rest) = input.split_at(input.len().min(8));
+            let mut buf = [0u8; 8];
+            buf[..bytes.len()].copy_from_slice(bytes);
+            *word = u64::from_le_bytes(buf);
+            *input = rest;
+        }
+        set
+    }
+}
+
 impl<T> fmt::Debug for PSet<T> {
     /// The ordinals in the set: `{1, 3, 4, 5}`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -229,5 +252,12 @@ mod tests {
         assert_eq!(DIGITS, pset![b'0'..=b'9']);
         const ODD: PSet<u8> = PSet::of(&[1, 3, 5]);
         assert_eq!(ODD, pset![1, 3, 5]);
+        // In a file record: 32 bytes, and back.
+        use crate::io::FileRecord;
+        let mut bytes = Vec::new();
+        letters.encode(&mut bytes);
+        assert_eq!(bytes.len(), 32);
+        assert_eq!(bytes[b'a' as usize / 8], 0b1111_1110);
+        assert_eq!(PSet::<u8>::decode(&mut bytes.as_slice()), letters);
     }
 }
