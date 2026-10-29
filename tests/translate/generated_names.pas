@@ -2,7 +2,10 @@ program GeneratedNames;
 { A program's own names that match names the generated Rust uses by
   itself: a type Vec (typed files encode into a Vec<u8>), a type Default
   (object hierarchies implement Default), and a method TypeName (TypeOf
-  adds a type_name method). }
+  adds a type_name method); object methods Clone and Default (objects
+  derive Clone and Default), a field Base in a descendant (which keeps
+  its parent's part in base), and a type AnyShape (the enum of a
+  hierarchy rooted at TShape). }
 type
   Vec = record
     x, y: Real;
@@ -21,7 +24,13 @@ type
     function TypeName: string; virtual;
   end;
   TSquare = object(TShape)
+    base: Integer;
     function TypeName: string; virtual;
+    procedure Clone;
+    procedure Default;
+  end;
+  AnyShape = record
+    kind: Integer;
   end;
 
 constructor TShape.Init(s: Integer);
@@ -39,11 +48,23 @@ begin
   TypeName := 'square';
 end;
 
+procedure TSquare.Clone;
+begin
+  side := side * 2;
+end;
+
+procedure TSquare.Default;
+begin
+  base := 10;
+end;
+
 var
   f: file of Rec;
   r: Rec;
   d: Default;
   p: PShape;
+  sq: TSquare;
+  any: AnyShape;
 begin
   r.a := 7;
   r.v.x := 1.5;
@@ -62,4 +83,9 @@ begin
   p := New(PShape, Init(4));
   WriteLn(d.n, ' ', p^.TypeName, ' ', TypeOf(p^) = TypeOf(TShape), ' ', p^.side);
   Dispose(p);
+  sq.Init(3);
+  sq.Clone;
+  sq.Default;
+  any.kind := 2;
+  WriteLn(sq.side, ' ', sq.base, ' ', any.kind, ' ', Pi:0:2);
 end.

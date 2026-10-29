@@ -15,7 +15,10 @@ use pascrust_runtime::prelude::*;
 // A program's own names that match names the generated Rust uses by
 // itself: a type Vec (typed files encode into a Vec<u8>), a type Default
 // (object hierarchies implement Default), and a method TypeName (TypeOf
-// adds a type_name method).
+// adds a type_name method); object methods Clone and Default (objects
+// derive Clone and Default), a field Base in a descendant (which keeps
+// its parent's part in base), and a type AnyShape (the enum of a
+// hierarchy rooted at TShape).
 /// Pascal: `record x, y: Real; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Vec {
@@ -55,13 +58,20 @@ struct TShape {
     side: i16,
 }
 
-/// Pascal: `object(TShape) function TypeName: string; virtual; end`
+/// Pascal: `TSquare = object(TShape) ... end`
 #[derive(Clone, Copy, Debug, Default)]
 struct TSquare {
     /// The inherited part: `TSquare` descends from `TShape`. Rust has no struct
     /// inheritance, so the parent object is embedded as a field, and inherited
     /// fields and methods are reached through it (`self.base.x`).
     base: TShape,
+    base_: i16,
+}
+
+/// Pascal: `record kind: Integer; end`
+#[derive(Clone, Copy, Debug, Default)]
+struct AnyShape_ {
+    kind: i16,
 }
 
 // A Pascal object's methods go in an `impl` block. Each takes `&mut self`,
@@ -164,6 +174,18 @@ impl TShapeMethods for TShape {
     }
 }
 
+impl TSquare {
+    /// Pascal: `procedure TSquare.Clone;`
+    fn clone_(&mut self) {
+        self.base.side *= 2;
+    }
+
+    /// Pascal: `procedure TSquare.Default;`
+    fn default_(&mut self) {
+        self.base_ = 10;
+    }
+}
+
 trait TSquareMethods: TShapeMethods {
     /// The `TSquare` part of the object, for its fields.
     fn t_square(&mut self) -> &mut TSquare;
@@ -201,6 +223,8 @@ fn pascal_main() {
     let mut r: Rec = Rec::default();
     let mut d: Default_ = Default_::default();
     let mut p: PShape = Ptr::nil();
+    let mut sq: TSquare = TSquare::default();
+    let mut any: AnyShape_ = AnyShape_::default();
     let mut shape: PShape = Ptr::nil();
     r.a = 7;
     r.v.x = 1.5;
@@ -221,6 +245,11 @@ fn pascal_main() {
     p = shape.clone();
     pwriteln!(d.n, " ", p.get_mut().type_name_(), " ", p.get().type_name() == "TShape", " ", p.get().as_t_shape().side);
     p.dispose();
+    sq.base.init(3);
+    sq.clone_();
+    sq.default_();
+    any.kind = 2;
+    pwriteln!(sq.base.side, " ", sq.base_, " ", any.kind, " ", wd(::std::f64::consts::PI, 0, 2));
 }
 
 fn main() {

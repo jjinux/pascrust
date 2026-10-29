@@ -843,7 +843,13 @@ sense; only what can't be real is faked.
   at the declaration, and codegen converts: types and enum variants to
   `CamelCase`, functions/variables/fields to `snake_case`, constants to
   `SCREAMING_SNAKE`. Rust keywords and runtime names get a trailing
-  underscore (`type_`, `move_`, `self_`). The examples declare a procedure
+  underscore (`type_`, `move_`, `self_`), as do the names the generated
+  code uses by itself: runtime types (`PSet_`), helpers the Rust calls
+  (`random_real_`, `set_rand_seed_`, `enum_range_`), `Default`, an
+  object's methods named after derived traits (`clone_`, `default_`,
+  `fmt_`, `encode_`, `decode_`), an object field `base_` (a descendant
+  keeps its parent's part in `base`), and types shaped like a hierarchy's
+  generated enum and traits (`AnyShape_`, `TShapeMethods_`). The examples declare a procedure
   named `Exit` and a type named `ShortString`; sema's scoping handles both
   (user declarations shadow builtins, as in TP).
 - Every generated declaration carries a `///` comment with the original

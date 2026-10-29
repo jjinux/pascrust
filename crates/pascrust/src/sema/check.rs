@@ -629,7 +629,12 @@ impl Checker {
         for group in fields {
             let ty = self.resolve_type(&group.ty);
             for n in &group.names {
-                resolved.push(Field { name: n.name.clone(), rust_name: snake_case(&n.name), ty: ty.clone() });
+                // A descendant keeps its parent's part in a field `base`.
+                let mut rust_name = snake_case(&n.name);
+                if rust_name == "base" {
+                    rust_name.push('_');
+                }
+                resolved.push(Field { name: n.name.clone(), rust_name, ty: ty.clone() });
             }
         }
         let object = Rc::new(ObjectType { rust_name: rust_name.clone(), parent, fields: resolved });
@@ -662,6 +667,13 @@ impl Checker {
             // globally unique names that free functions do.
             self.used_fn_names.remove(&info.rust_name);
             info.rust_name = snake_case(&method.name.name);
+            // Objects derive `Clone`, `Default` and `Debug` (whose method is
+            // `fmt`), and file records implement `encode`/`decode`; a method
+            // of the same name would lose to them (`a.clone()` picks the
+            // derived one) or clash.
+            if ["clone", "default", "fmt", "encode", "decode"].contains(&info.rust_name.as_str()) {
+                info.rust_name.push('_');
+            }
             if self.a.methods.insert((rust_name.clone(), method.name.key()), pid).is_some() {
                 self.error(method.name.span, format!("`{}` is declared twice in `{}`", method.name.name, name.name));
             }
@@ -948,7 +960,15 @@ impl Checker {
 
     /// A unique Rust type name (`CamelCase`) for a Pascal name.
     fn type_name(&mut self, pascal: &str) -> String {
-        Self::unique_in(&mut self.used_type_names, names::camel_case(pascal))
+        let mut name = names::camel_case(pascal);
+        // Object hierarchies get an enum `AnyShape` and traits
+        // `TShapeMethods`; a program's own type of that shape is renamed.
+        let generated_shape = name.ends_with("Methods")
+            || name.strip_prefix("Any").is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_uppercase()));
+        if generated_shape {
+            name.push('_');
+        }
+        Self::unique_in(&mut self.used_type_names, name)
     }
 
     /// The host type and bounds of a subrange type expression `lo..hi`.

@@ -250,7 +250,8 @@ impl<'a> Codegen<'a> {
                 let method = if b == Trunc { "trunc" } else { "round" };
                 format!("{}.{method}() as i32", self.postfix(&args[0], &Type::Real))
             }
-            Pi => "std::f64::consts::PI".to_string(),
+            // `::std`: a program's unit named `Std` becomes a module `std`.
+            Pi => "::std::f64::consts::PI".to_string(),
             Random => match args.first() {
                 Some(n) if self.a.random_word.contains(&call_id) => format!("random_word({})", self.expr(n).0),
                 Some(n) => format!("random({})", self.expr(n).0),
