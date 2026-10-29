@@ -117,6 +117,10 @@ impl<'a> Codegen<'a> {
                 return (format!("matches!({}, {})", x.0, patterns.join(" | ")), prec::POSTFIX);
             }
             let set = self.expr(rhs);
+            // `contains` takes any ordinal, so an integer is passed as it
+            // is: `300 in s` is false for a set of bytes, rather than
+            // testing 300 cut down to a byte (44).
+            let x = if self.a.type_of(lhs.id).is_integer() { self.expr(lhs) } else { x };
             return (format!("{}.contains({})", paren(set, prec::POSTFIX), x.0), prec::POSTFIX);
         }
         let (l, r) = (self.expr(lhs), self.expr(rhs));

@@ -1,0 +1,6 @@
+ok: a constant above 255 is not in a set of Byte
+ok: an Integer variable above 255 is not in it either
+ok: nor a Word variable
+ok: an Integer variable in range is
+ok: a negative value is not in a set of Byte
+5 of 5 checks passed

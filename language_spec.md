@@ -173,7 +173,9 @@ More language
   an enumeration, a subrange like `0..9`), literals with ranges
   (`['a'..'z', '_']`), `in`, `+ - *`, `= <> <= >=`, `Include`/`Exclude`,
   set constants and typed constants, sets in records (also in `file of`
-  records, as 32 bytes) and parameters
+  records, as 32 bytes) and parameters. A value outside the element range
+  is never in a set (`300 in s` is False for a `set of Byte`, for a
+  constant or a variable; Free Pascal cuts a variable down to a byte)
 - `with` statements (single and multiple record expressions, records and
   objects, through pointers). A body may not change an array index that
   chooses the record (`with a[i] do ... i := 2` is an error), and a field
