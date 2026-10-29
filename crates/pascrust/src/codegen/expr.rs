@@ -38,6 +38,23 @@ pub(super) fn paren(code: Code, min: u8) -> String {
 impl<'a> Codegen<'a> {
     /// An expression in its natural Rust type.
     pub(super) fn expr(&mut self, e: &Expr) -> Code {
+        if let Some(name) = self.hoisted_indexes.get(&e.id) {
+            return (name.clone(), prec::ATOM);
+        }
+        // `items[Count]` in a method is `self.items[self.count()]`, which
+        // borrows `self.items` while `count` needs all of `self`. An index
+        // whose call can reach the array is worked out first, into a `let`.
+        if let ExprKind::Index(base, indexes) = &e.kind {
+            let root = super::root_expr(base);
+            for index in indexes {
+                if !self.hoisted_indexes.contains_key(&index.id) && self.call_reaches(index, root) {
+                    let code = self.expr(index).0;
+                    let name = self.temp_name("index");
+                    self.pending.push(format!("let {name} = {code};"));
+                    self.hoisted_indexes.insert(index.id, name);
+                }
+            }
+        }
         if let Some(value) = self.a.folded.get(&e.id) {
             let ty = self.a.type_of(e.id).clone();
             // A folded `Hi(-1)` is a Byte: `255_u8`, so it converts like one.

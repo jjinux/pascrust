@@ -44,6 +44,7 @@ pub fn generate(
         proc: MAIN,
         explained: Default::default(),
         end_comment: None,
+        hoisted_indexes: HashMap::new(),
         file: 0,
         vis: "",
         mutable_place: false,
@@ -83,6 +84,9 @@ struct Codegen<'a> {
     /// The comment after the `end` of an `if` or loop body (`end; {loop}`),
     /// for the line that closes the Rust block. See [`Codegen::line`].
     end_comment: Option<String>,
+    /// Indexes of an assignment's target that were worked out first into a
+    /// `let` (see [`Codegen::hoist_target_indexes`]), by node.
+    hoisted_indexes: HashMap<NodeId, String>,
     /// The source file (index in the source map) being translated.
     file: usize,
     /// Visibility for items: `pub ` in a unit's module, nothing in `main.rs`.
@@ -1462,7 +1466,7 @@ impl<'a> Codegen<'a> {
     /// Can a call in `e` reach the variable `root` names without naming
     /// it: a method call (every method takes all of `self`), or a function
     /// that receives the variable as a global or outer variable?
-    fn call_reaches(&self, e: &Expr, root: &Expr) -> bool {
+    pub(super) fn call_reaches(&self, e: &Expr, root: &Expr) -> bool {
         if self.a.method_calls.contains_key(&e.id) {
             return true;
         }
@@ -1633,6 +1637,29 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// An index in the target that calls a function (`a[Pick] := ...`) is
+    /// worked out first, into a `let`: the function may need the array
+    /// itself (as a global it receives), which the place `a[...]` has
+    /// borrowed, and Free Pascal works out the target's index before the
+    /// value too.
+    fn hoist_target_indexes(&mut self, target: &Expr) {
+        match &target.kind {
+            ExprKind::Index(base, indexes) => {
+                self.hoist_target_indexes(base);
+                for index in indexes {
+                    if self.has_call(index) {
+                        let code = self.expr(index).0;
+                        let name = self.temp_name("index");
+                        self.pending.push(format!("let {name} = {code};"));
+                        self.hoisted_indexes.insert(index.id, name);
+                    }
+                }
+            }
+            ExprKind::Field(base, _) | ExprKind::Deref(base) => self.hoist_target_indexes(base),
+            _ => {}
+        }
+    }
+
     /// `x := x + n` reads better as Rust's compound assignment `x += n`,
     /// when it means the same.
     fn compound_assignment(&mut self, target: &Expr, value: &Expr, place: &str) -> Option<String> {
@@ -1669,6 +1696,7 @@ impl<'a> Codegen<'a> {
     }
 
     fn assignment(&mut self, target: &Expr, value: &Expr) -> String {
+        self.hoist_target_indexes(target);
         let target_ty = self.a.type_of(target.id).clone();
         // `RandSeed := 42` → `set_rand_seed(42);`.
         if let Some(&sym) = self.a.refs.get(&target.id)
@@ -1724,8 +1752,11 @@ impl<'a> Codegen<'a> {
     /// reading and writing (`p.get().x`, `p.get_mut().x`).
     fn same_place(&self, a: &Expr, b: &Expr) -> bool {
         match (&a.kind, &b.kind) {
+            // A function named without arguments (`a[Next]`) is a call, and
+            // each call can give something else.
             (ExprKind::Name(x), ExprKind::Name(y)) => {
-                x.key() == y.key()
+                !self.has_call(a)
+                    && x.key() == y.key()
                     && self.a.refs.get(&a.id) == self.a.refs.get(&b.id)
                     && self.a.self_fields.get(&a.id) == self.a.self_fields.get(&b.id)
             }
@@ -1904,7 +1935,7 @@ fn deref_roots(e: &Expr) -> Vec<String> {
 
 /// The name of the variable a place expression starts from.
 /// The variable at the root of a place: `a` in `a[i].x`.
-fn root_expr(e: &Expr) -> &Expr {
+pub(super) fn root_expr(e: &Expr) -> &Expr {
     match &e.kind {
         ExprKind::Field(base, _) | ExprKind::Index(base, _) | ExprKind::Deref(base) => root_expr(base),
         _ => e,
