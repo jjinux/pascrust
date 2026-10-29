@@ -140,7 +140,11 @@ Built-ins (System unit)
   `Mark`/`Release` (records are freed when nothing points to them, so they
   do nothing), `SetTextBuf` (files are buffered already), `Test8087` (3)
 - `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`,
-  `Val`
+  `Val` (as Free Pascal: a number too big for the variable wraps with code
+  0, a minus sign is an error for a Byte or Word, and after an error the
+  variable is 0)
+- `div` and `mod` of the most negative Integer by -1: runtime error 200,
+  as TP's divide trap gave
 - `High`, `Low`, `SizeOf` (of types with a defined Rust size)
 
 ## Tier 2: needed to run every program in `examples/`

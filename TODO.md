@@ -148,9 +148,9 @@ chosen so each step is testable with the previous ones.
   - [x] `{$I-}` and a real `IOResult`.
   - [x] `SeekEof`/`SeekEoln`.
   - [ ] `LastMode` (was listed as done; it isn't).
-  - [ ] `Val` corner cases: `Val('40000', i, code)` for an `Integer` is an error for us, wraps (code 0) in TP/FPC.
+  - [x] `Val` corner cases: a number that doesn't fit wraps with code 0, as in Free Pascal (TP left it undefined); a minus sign is an error for a Byte or Word; after an error the variable is 0.
   - [ ] Graph: should `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners in the real BGI? `FExpand` ignores `ChDir`.
-  - [ ] `i16::MIN div -1` panics (runtime error 255); TP wraps.
+  - [x] `i16::MIN div -1` panicked (runtime error 255). TP doesn't wrap: its 16-bit divide traps, which it reported as runtime error 200, and so does PascRust now.
   - Not changed: `Round(2.5)` is 3. The reviewer suggested ties-to-even to match Free Pascal, but Turbo Pascal's documentation says halves round away from zero. `Eof` on a text file being written stays runtime error 104, as in Free Pascal (the reviewer thought TP returns True).
 
 ## Requests from the user, 2026-10-28

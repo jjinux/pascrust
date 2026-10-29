@@ -161,7 +161,12 @@ fn to_runtime_error(payload: Box<dyn Any + Send>) -> RuntimeError {
     } else {
         "unknown error".to_string()
     };
-    let code = if message.contains("divide by zero") || message.contains("remainder with a divisor of zero") {
+    // Dividing the most negative Integer by -1 doesn't fit either; the
+    // CPU's divide instruction trapped on it, and TP reported that as
+    // error 200 too.
+    let division =
+        ["divide by zero", "remainder with a divisor of zero", "divide with overflow", "remainder with overflow"];
+    let code = if division.iter().any(|d| message.contains(d)) {
         200
     } else if message.contains("already borrowed") || message.contains("already mutably borrowed") {
         204

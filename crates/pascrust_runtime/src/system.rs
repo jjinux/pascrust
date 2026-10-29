@@ -107,25 +107,34 @@ pub fn pas_str(value: impl PasWrite) -> PString {
     PString::from_bytes(&out)
 }
 
-/// A type `Val` can parse a string into.
-pub trait ValTarget: Sized {
+/// A type `Val` can parse a string into. (`Default`: after an error the
+/// variable is 0, as in Free Pascal.)
+pub trait ValTarget: Sized + Default {
     fn parse_pascal(text: &str) -> Option<Self>;
 }
 
 macro_rules! impl_val_int {
-    ($($t:ty),*) => {
+    ($($t:ty: $unsigned:expr),*) => {
         $( impl ValTarget for $t {
             fn parse_pascal(text: &str) -> Option<$t> {
-                // Turbo Pascal accepts `$FF` hex notation in `Val`.
-                match text.strip_prefix('$') {
-                    Some(hex) => <$t>::from_str_radix(hex, 16).ok(),
-                    None => text.parse().ok(),
+                // As Free Pascal does (TP leaves it undefined): the number
+                // is read as a 64-bit integer (hex, `$FF`, too), then stored
+                // in the variable's type, wrapping if it doesn't fit:
+                // `Val('40000', i, code)` for an Integer is -25536, with code
+                // 0. A minus sign is an error for an unsigned type.
+                if $unsigned && text.starts_with('-') {
+                    return None;
                 }
+                let wide = match text.strip_prefix('$') {
+                    Some(hex) => u64::from_str_radix(hex, 16).ok()? as i64,
+                    None => text.parse::<i64>().ok()?,
+                };
+                Some(wide as $t)
             }
         } )*
     };
 }
-impl_val_int!(i8, i16, i32, u8, u16);
+impl_val_int!(i8: false, i16: false, i32: false, u8: true, u16: true);
 
 impl ValTarget for f64 {
     fn parse_pascal(text: &str) -> Option<f64> {
@@ -157,6 +166,7 @@ pub fn val<T: ValTarget>(s: impl Into<PString>, x: &mut T, code: &mut i16) {
                 .find(|&n| T::parse_pascal(&text[..n]).is_none() && !matches!(&text[..n], "-" | "+" | "$"))
                 .unwrap_or(text.len() + 1);
             *code = (leading + bad) as i16;
+            *x = T::default();
         }
     }
 }
