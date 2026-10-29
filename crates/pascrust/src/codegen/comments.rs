@@ -26,11 +26,15 @@ pub(super) struct Comments {
     /// offset: each group's field names (lowercase) and its anchor. Codegen
     /// writes record fields from sema's types, which have no positions.
     pub(super) field_groups: HashMap<usize, Vec<(Vec<String>, usize)>>,
+    /// For `x, y: Integer; {position}`: each variable's name start, its
+    /// group's anchor, and whether it's the group's last variable, whose
+    /// `let` gets the group's comment.
+    var_names: HashMap<usize, (usize, bool)>,
 }
 
 impl Comments {
     pub(super) fn new(map: &SourceMap, program: &Program, units: &[Unit], comments: &[Comment]) -> Comments {
-        let mut walker = Anchors { map, anchors: Vec::new(), field_groups: HashMap::new() };
+        let mut walker = Anchors { map, anchors: Vec::new(), field_groups: HashMap::new(), var_names: HashMap::new() };
         walker.block(&program.block);
         for unit in units {
             walker.decls(&unit.interface);
@@ -41,7 +45,8 @@ impl Comments {
         let mut anchors = walker.anchors;
         anchors.sort();
         anchors.dedup_by_key(|&mut (start, _)| start);
-        let mut result = Comments { field_groups: walker.field_groups, ..Comments::default() };
+        let mut result =
+            Comments { field_groups: walker.field_groups, var_names: walker.var_names, ..Comments::default() };
         // Finding an offset's line by counting newlines from the start of
         // the file is slow when it's done for every comment and anchor, so
         // the newlines' offsets are listed once and searched.
@@ -95,6 +100,16 @@ impl Comments {
     pub(super) fn take_trailing(&mut self, at: usize) -> Option<String> {
         self.trailing.remove(&at)
     }
+
+    /// The trailing comment for the variable (or typed constant) declared
+    /// at `at`. In a group of variables, the last one gets it.
+    pub(super) fn take_decl_trailing(&mut self, at: usize) -> Option<String> {
+        match self.var_names.get(&at) {
+            Some(&(anchor, true)) => self.trailing.remove(&anchor),
+            Some(&(_, false)) => None,
+            None => self.trailing.remove(&at),
+        }
+    }
 }
 
 /// Every line of every source file, numbered across the whole source map.
@@ -126,6 +141,7 @@ struct Anchors<'a> {
     map: &'a SourceMap,
     anchors: Vec<(usize, usize)>,
     field_groups: HashMap<usize, Vec<(Vec<String>, usize)>>,
+    var_names: HashMap<usize, (usize, bool)>,
 }
 
 impl Anchors<'_> {
@@ -154,7 +170,11 @@ impl Anchors<'_> {
                     self.type_expr(&t.ty);
                 }
                 Decl::Var(v) => {
-                    self.anchors.push((v.names[0].span.start, v.ty.span().end));
+                    let at = v.names[0].span.start;
+                    self.anchors.push((at, v.ty.span().end));
+                    for (i, name) in v.names.iter().enumerate() {
+                        self.var_names.insert(name.span.start, (at, i == v.names.len() - 1));
+                    }
                     self.type_expr(&v.ty);
                 }
                 Decl::Proc(p) => {

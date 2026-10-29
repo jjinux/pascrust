@@ -15,6 +15,7 @@ mod builtins;
 mod comments;
 mod expr;
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::ast::*;
@@ -51,8 +52,14 @@ pub fn generate(
         io_unchecked,
         self_expr: None,
         comments: comments::Comments::new(map, program, units, comments),
-        decl_starts: analysis.decls.iter().map(|(&start, &sym)| (sym, start)).collect(),
+        decl_starts: HashMap::new(),
     };
+    // `decls` also maps a `for` statement's variable to its symbol, so keep
+    // the earliest place each symbol is named: its declaration.
+    for (&start, &sym) in &analysis.decls {
+        let first = g.decl_starts.entry(sym).or_insert(start);
+        *first = (*first).min(start);
+    }
     g.program(program);
     files.push(("main.rs".to_string(), std::mem::take(&mut g.out)));
     for (unit, info) in units.iter().zip(&analysis.units) {
@@ -101,7 +108,7 @@ struct Codegen<'a> {
     /// The Pascal comments, waiting to be written (see `comments.rs`).
     comments: comments::Comments,
     /// Where each variable was declared: its comments' anchor.
-    decl_starts: std::collections::HashMap<SymId, usize>,
+    decl_starts: HashMap<SymId, usize>,
 }
 
 /// Labels for a `repeat ... until` loop whose body uses `Continue`.
@@ -1058,7 +1065,16 @@ impl<'a> Codegen<'a> {
     /// `let` statements for a procedure's local variables.
     fn locals(&mut self, pid: ProcId) {
         for &sym in &self.a.procs[pid].locals {
+            let at = self.decl_starts.get(&sym).copied();
             if self.a.elided_vars.contains(&sym) {
+                // No `let` (a `for` loop declares it), but keep its comments,
+                // which often describe the whole procedure.
+                if let Some(at) = at {
+                    self.leading_comments(at);
+                    if let Some(comment) = self.comments.take_decl_trailing(at) {
+                        self.line(comment);
+                    }
+                }
                 continue;
             }
             let var = self.a.var(sym);
@@ -1069,13 +1085,14 @@ impl<'a> Codegen<'a> {
                 _ => default_value(&var.ty),
             };
             let line = format!("let {mutable}{name}: {} = {init};", var.ty.rust());
-            let at = self.decl_starts.get(&sym).copied();
             if let Some(at) = at {
                 self.leading_comments(at);
             }
             self.line(line);
-            if let Some(at) = at {
-                self.trailing_comment(at);
+            if let Some(at) = at
+                && let Some(comment) = self.comments.take_decl_trailing(at)
+            {
+                self.append_comment(&comment);
             }
         }
     }

@@ -15,6 +15,9 @@ use pascrust_runtime::prelude::*;
 /// The main program: the `begin ... end.` block of `ForWidth`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    // A loop variable declared as Integer is 16 bits even when both bounds are
+    // literals, so i * 3000 wraps as it does in Turbo Pascal. (Free Pascal
+    // computes in 32 bits here, so this test's .out is written by hand.)
     for i in 10_i16..=12 {
         pwriteln!(i * 3000);
     }

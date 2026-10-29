@@ -18,6 +18,16 @@ mod cmt_unit;
 use crate::cmt_unit::*;
 use pascrust_runtime::prelude::*;
 
+/// Pascal: `procedure Count;`
+fn count() {
+    // Counts to three.
+    // the counter
+    for i in 1_i16..=3 {
+        pwrite!(i);
+    }
+    pwriteln!();
+}
+
 /// Pascal: `procedure Foo;`
 ///
 /// The global variables this procedure uses are passed in as parameters,
@@ -36,12 +46,13 @@ fn pascal_main() {
     // before until, on loop variables, on declarations with no Rust of
     // their own.
     let mut x: i16 = 0;
-    let mut y: i16 = 0;
+    let mut y: i16 = 0; // both coordinates
     let mut n: i16 = 0;
     // The initialization part of unit `CmtUnit`.
     cmt_unit_init(&mut ready);
     n = 0;
     foo(&mut x);
+    count();
     if x > 0 {
         y = 1;
         // then branch

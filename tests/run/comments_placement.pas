@@ -5,7 +5,17 @@ program CommentsPlacement;
 uses CmtUnit;
 
 var
-  x, y, n: Integer;
+  x, y: Integer;   { both coordinates }
+  n: Integer;
+
+procedure Count;
+var {Counts to three.}
+  i: Integer;   { the counter }
+begin
+  for i := 1 to 3 do
+    Write(i);
+  WriteLn;
+end;
 
 procedure Foo;
 begin
@@ -15,6 +25,7 @@ end; { of Foo }
 begin
   n := 0;
   Foo;
+  Count;
   if x > 0 then
   begin
     y := 1;
