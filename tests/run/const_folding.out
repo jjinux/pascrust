@@ -2,6 +2,7 @@ ok: Swap(-1) folded as at run time
 ok: Swap(255) folded as at run time
 ok: Swap($FF00) is a Word
 ok: Swap of a Word stays a Word
+ok: Swap of a named Word constant
 ok: a negated negation
 ok: Hi(-256)
 ok: Lo(-1)
@@ -12,4 +13,4 @@ ok: Pred of an enum constant
 ok: an enum range in a set test
 ok: and one ending in a constant
 ok: a Boolean range
-14 of 14 checks passed
+15 of 15 checks passed

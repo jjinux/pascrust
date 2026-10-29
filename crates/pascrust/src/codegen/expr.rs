@@ -128,10 +128,21 @@ impl<'a> Codegen<'a> {
             if let ExprKind::Set(elems) = &rhs.kind
                 && elems.iter().all(|elem| self.constant_item(elem))
             {
+                // A backwards range (`[Fri..Mon]`) is empty, as in TP; Rust
+                // rejects it as a pattern.
+                let elems: Vec<&SetElem> = elems
+                    .iter()
+                    .filter(|elem| match elem {
+                        SetElem::Range(lo, hi) => {
+                            !matches!((self.const_ordinal(lo), self.const_ordinal(hi)), (Some(l), Some(h)) if l > h)
+                        }
+                        SetElem::Single(_) => true,
+                    })
+                    .collect();
                 if elems.is_empty() {
                     return ("false".to_string(), prec::POSTFIX);
                 }
-                let patterns: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty, true)).collect();
+                let patterns: Vec<String> = elems.into_iter().map(|elem| self.set_item(elem, &elem_ty, true)).collect();
                 return (format!("matches!({}, {})", x.0, patterns.join(" | ")), prec::POSTFIX);
             }
             // A literal tested at once has nothing else to say what it holds.
@@ -167,12 +178,21 @@ impl<'a> Codegen<'a> {
         (format!("{} {rust_op} {}", paren(l, left_min), paren(r, p + 1)), p)
     }
 
-    /// The ordinal of a named constant (an enum value or `True`).
+    /// The ordinal of a literal or a named constant (`5`, `'a'`, an enum
+    /// value, `True`).
     fn const_ordinal(&self, e: &Expr) -> Option<i64> {
-        let sym = *self.a.refs.get(&e.id)?;
-        match &self.a.sym(sym).kind {
-            SymKind::Const { value: ConstVal::Int(n), .. } => Some(*n),
-            SymKind::Const { value: ConstVal::Bool(b), .. } => Some(*b as i64),
+        let value = match &e.kind {
+            ExprKind::Int(n) => return Some(*n),
+            ExprKind::Str(bytes) if bytes.len() == 1 => return Some(i64::from(bytes[0])),
+            _ => match &self.a.sym(*self.a.refs.get(&e.id)?).kind {
+                SymKind::Const { value, .. } => value,
+                _ => return None,
+            },
+        };
+        match value {
+            ConstVal::Int(n) => Some(*n),
+            ConstVal::Bool(b) => Some(*b as i64),
+            ConstVal::Str(bytes) if bytes.len() == 1 => Some(i64::from(bytes[0])),
             _ => None,
         }
     }

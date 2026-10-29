@@ -1586,6 +1586,10 @@ impl<'a> Codegen<'a> {
             && *self.a.type_of(lhs.id) == target_ty
             && !matches!(target_ty, Type::Str { .. })
             && self.same_as_place(lhs, &place)
+            // `s[i] |= s[1]` borrows `s` mutably for the place before reading
+            // `s[1]` (the operator is a trait method, unlike `+=` on
+            // numbers), which the borrow checker rejects.
+            && !(matches!(target_ty, Type::Set(_)) && mentions(rhs, &root_name(target)))
         {
             // For sets, Pascal's `+` and `*` are Rust's `|` and `&`.
             let set = matches!(target_ty, Type::Set(_));
@@ -1733,6 +1737,24 @@ fn contains_deref(e: &Expr) -> bool {
         ExprKind::Unary { operand, .. } => contains_deref(operand),
         ExprKind::Binary { lhs, rhs, .. } => contains_deref(lhs) || contains_deref(rhs),
         ExprKind::Call { args, .. } => args.iter().any(contains_deref),
+        _ => false,
+    }
+}
+
+/// Does `e` use the variable `name` (lowercase) anywhere?
+fn mentions(e: &Expr, name: &str) -> bool {
+    let item = |elem: &SetElem| match elem {
+        SetElem::Single(x) => mentions(x, name),
+        SetElem::Range(lo, hi) => mentions(lo, name) || mentions(hi, name),
+    };
+    match &e.kind {
+        ExprKind::Name(id) => id.key() == name,
+        ExprKind::Field(base, _) | ExprKind::Deref(base) => mentions(base, name),
+        ExprKind::Index(base, indexes) => mentions(base, name) || indexes.iter().any(|i| mentions(i, name)),
+        ExprKind::Unary { operand, .. } => mentions(operand, name),
+        ExprKind::Binary { lhs, rhs, .. } => mentions(lhs, name) || mentions(rhs, name),
+        ExprKind::Call { args, .. } => args.iter().any(|a| mentions(a, name)),
+        ExprKind::Set(elems) => elems.iter().any(item),
         _ => false,
     }
 }

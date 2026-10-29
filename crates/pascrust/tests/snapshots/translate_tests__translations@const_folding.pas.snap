@@ -22,6 +22,8 @@ const LO_NEG: i16 = 255;
 const LEN: i16 = 4;
 const ODD_NEG: bool = true;
 const SWAP_TWICE: i32 = 65280;
+const HIGH_WORD: i32 = 65280;
+const SWAP_NAMED: i16 = 255;
 
 // TP 7's constant functions, worked out when the program is translated,
 // agree with the same calls at run time; and enum ranges in set tests.
@@ -82,6 +84,7 @@ fn pascal_main() {
     check(&mut checks, &mut failures, SWAP255 == i.swap_bytes(), pstr("Swap(255) folded as at run time"));
     check(&mut checks, &mut failures, SWAP_WORD == 255, pstr("Swap($FF00) is a Word"));
     check(&mut checks, &mut failures, SWAP_TWICE == 65280 && 65280_u16 == 65280, pstr("Swap of a Word stays a Word"));
+    check(&mut checks, &mut failures, SWAP_NAMED == 255 && 255_u16 == 255, pstr("Swap of a named Word constant"));
     i = -5;
     check(&mut checks, &mut failures, -(-i) == -5, pstr("a negated negation"));
     i = -256;

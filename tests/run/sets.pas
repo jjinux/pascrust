@@ -27,6 +27,7 @@ var
   warm: Colors;
   hue, other: Color;
   flags: set of Boolean;
+  charSets: array[1..2] of CharSet;
 
 procedure Show(s: CharSet);
 var
@@ -102,4 +103,12 @@ begin
   hue := Blue;
   other := Yellow;
   WriteLn(hue in [Red..Green, other], ' ', Yellow in [Red..Green, other]);
+  { one element of a set array from another }
+  charSets[1] := ['a'];
+  charSets[2] := ['b'];
+  i := 2;
+  charSets[i] := charSets[i] + charSets[1];
+  Show(charSets[2]);
+  { backwards ranges are empty }
+  WriteLn(hue in [Yellow..Red], ' ', True in [True..False], ' ', i in [5..1, 2], ' ', 'm' in ['z'..'a']);
 end.

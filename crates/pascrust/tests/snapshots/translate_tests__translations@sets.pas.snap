@@ -94,6 +94,7 @@ fn pascal_main() {
     let mut hue: Color = Color::Red;
     let mut other: Color = Color::Red;
     let mut flags: PSet<bool> = PSet::new();
+    let mut char_sets: PArray<PSet<u8>, 1, 2> = PArray::default();
     letters = pset![b'a'..=b'f', b'x', b'q'];
     show(letters);
     show(letters & VOWELS);
@@ -173,6 +174,14 @@ fn pascal_main() {
         " ",
         pset![set of Color; Color::Red..=Color::Green, other].contains(Color::Yellow)
     );
+    // one element of a set array from another
+    char_sets[1] = pset![b'a'];
+    char_sets[2] = pset![b'b'];
+    i = 2;
+    char_sets[i] = char_sets[i] | char_sets[1];
+    show(char_sets[2]);
+    // backwards ranges are empty
+    pwriteln!(false, " ", false, " ", matches!(i, 2), " ", false);
 }
 
 fn main() {

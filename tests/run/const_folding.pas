@@ -16,6 +16,8 @@ const
   Len = Length('abcd');
   OddNeg = Odd(-3);
   SwapTwice = Swap(Swap($FF00));
+  HighWord = $FF00;
+  SwapNamed = Swap(HighWord);
 var
   checks, failures: Integer;
   i: Integer;
@@ -42,6 +44,7 @@ begin
   Check(Swap255 = Swap(i), 'Swap(255) folded as at run time');
   Check(SwapWord = 255, 'Swap($FF00) is a Word');
   Check((SwapTwice = 65280) and (Swap(Swap($FF00)) = 65280), 'Swap of a Word stays a Word');
+  Check((SwapNamed = 255) and (Swap(HighWord) = 255), 'Swap of a named Word constant');
   i := -5;
   Check(-(-i) = -5, 'a negated negation');
   i := -256;
