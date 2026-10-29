@@ -42,6 +42,7 @@ pub fn generate(
         indent: 0,
         proc: MAIN,
         explained: Default::default(),
+        end_comment: None,
         file: 0,
         vis: "",
         mutable_place: false,
@@ -72,6 +73,9 @@ struct Codegen<'a> {
     /// Teaching comments already written. Each explanation appears in full
     /// only the first time, so the output doesn't drown in them.
     explained: std::collections::HashSet<&'static str>,
+    /// The comment after the `end` of an `if` or loop body (`end; {loop}`),
+    /// for the line that closes the Rust block. See [`Codegen::line`].
+    end_comment: Option<String>,
     /// The source file (index in the source map) being translated.
     file: usize,
     /// Visibility for items: `pub ` in a unit's module, nothing in `main.rs`.
@@ -125,25 +129,42 @@ impl<'a> Codegen<'a> {
     /// Add the Pascal comment that ended the construct's line (at `at`) to
     /// the end of the last line written.
     fn trailing_comment(&mut self, at: usize) {
-        if let Some(comment) = self.comments.take_trailing(at)
-            && self.out.ends_with('\n')
-        {
+        if let Some(comment) = self.comments.take_trailing(at) {
+            self.append_comment(&comment);
+        }
+    }
+
+    /// Add `comment` to the end of the last line written.
+    fn append_comment(&mut self, comment: &str) {
+        if self.out.ends_with('\n') {
             self.out.pop();
             self.out.push(' ');
-            self.out.push_str(&comment);
+            self.out.push_str(comment);
             self.out.push('\n');
         }
     }
 
-    /// The comments before the `end` that closes a block.
-    fn block_end_comments(&mut self, span: Span) {
-        if let Some(at) = comments::end_keyword(self.map, span) {
-            self.leading_comments(at);
-        }
+    /// Write the comments before the `end` that closes a block, and return
+    /// the comment after it (`end; {of Foo}`) for the caller to place.
+    fn block_end_comments(&mut self, span: Span) -> Option<String> {
+        let at = comments::end_keyword(self.map, span)?;
+        self.leading_comments(at);
+        self.comments.take_trailing(at)
     }
 
     /// Write one line at the current indentation.
     fn line(&mut self, text: impl AsRef<str>) {
+        // The comment after a body's `end` goes on the `}` that closes it,
+        // or, if that line goes on (`} else {`), as the body's last line.
+        if let Some(comment) = self.end_comment.take() {
+            if text.as_ref() == "}" {
+                self.line(format!("}} {comment}"));
+                return;
+            }
+            self.indent += 1;
+            self.line(comment);
+            self.indent -= 1;
+        }
         // Temporaries that the code on this line needs come first.
         for pending in std::mem::take(&mut self.pending) {
             for _ in 0..self.indent {
@@ -238,9 +259,12 @@ impl<'a> Codegen<'a> {
             }
         }
         self.stmts(&program.block.body);
-        self.block_end_comments(program.block.body_span);
+        let end_comment = self.block_end_comments(program.block.body_span);
         self.indent -= 1;
         self.line("}");
+        if let Some(comment) = end_comment {
+            self.append_comment(&comment);
+        }
 
         self.blank();
         self.line("fn main() {");
@@ -984,12 +1008,15 @@ impl<'a> Codegen<'a> {
         self.indent += 1;
         self.locals(pid);
         self.stmts(&body.body);
-        self.block_end_comments(body.body_span);
+        let end_comment = self.block_end_comments(body.body_span);
         if info.result.is_some() {
             self.line("result");
         }
         self.indent -= 1;
         self.line("}");
+        if let Some(comment) = end_comment {
+            self.append_comment(&comment);
+        }
     }
 
     /// The parameter list of a procedure's Rust function: captured outer
@@ -1065,7 +1092,7 @@ impl<'a> Codegen<'a> {
             StmtKind::Compound(body) => {
                 self.leading_comments(s.span.start);
                 self.stmts(body);
-                self.block_end_comments(s.span);
+                self.end_comment = self.block_end_comments(s.span);
             }
             _ => self.stmt(s),
         }
@@ -1078,8 +1105,11 @@ impl<'a> Codegen<'a> {
             self.leading_comments(s.span.start);
         }
         self.stmt_code(s);
-        if let StmtKind::Compound(_) = s.kind {
-            self.block_end_comments(s.span);
+        // A `begin ... end` statement has no lines of its own in Rust.
+        if let StmtKind::Compound(_) = s.kind
+            && let Some(comment) = self.block_end_comments(s.span)
+        {
+            self.append_comment(&comment);
         }
         self.trailing_comment(s.span.start);
     }
