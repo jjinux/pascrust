@@ -28,9 +28,36 @@ pub enum Param {
     VarStr,
     /// A `var` parameter of type `Boolean`.
     VarBool,
+    /// A `var` parameter of the `Dos` unit's `SearchRec`.
+    VarSearchRec,
     /// `Graph`'s `FillPatternType`, by value and as a `var` parameter.
     FillPattern,
     VarFillPattern,
+}
+
+/// The `Dos` unit's `SearchRec`, filled in by `FindFirst`/`FindNext`. The
+/// runtime defines the matching Rust struct. `Name` is a full `string`
+/// rather than TP's `string[12]`, so long file names aren't cut off.
+pub fn search_rec_type() -> Type {
+    use super::types::{ArrayType, Field, RecordType};
+    let field = |name: &str, ty: Type| Field { name: name.to_string(), rust_name: name.to_ascii_lowercase(), ty };
+    let fill = Type::Array(std::rc::Rc::new(ArrayType {
+        index: Type::Int(IntKind::Integer),
+        lo: 1,
+        hi: 21,
+        elem: Type::Int(IntKind::Byte),
+        alias: None,
+    }));
+    Type::Record(std::rc::Rc::new(RecordType {
+        rust_name: "SearchRec".to_string(),
+        fields: vec![
+            field("Fill", fill),
+            field("Attr", Type::Int(IntKind::Byte)),
+            field("Time", Type::Int(IntKind::LongInt)),
+            field("Size", Type::Int(IntKind::LongInt)),
+            field("Name", Type::Str { cap: 255 }),
+        ],
+    }))
 }
 
 /// `Graph`'s `FillPatternType = array[1..8] of Byte`: an 8x8 bit pattern.
@@ -144,6 +171,8 @@ pub static DOS: &[UnitRoutine] = &[
     routine!("fexpand" => "f_expand"(Str) -> Str),
     routine!("getenv" => "get_env"(Str) -> Str),
     routine!("fsplit" => "f_split"(Str, VarStr, VarStr, VarStr)),
+    routine!("findfirst" => "find_first"(Str, Int, VarSearchRec)),
+    routine!("findnext" => "find_next"(VarSearchRec)),
     routine!("envcount" => "env_count"() -> Integer),
     routine!("envstr" => "env_str"(Int) -> Str),
     routine!("dosversion" => "dos_version"() -> Word),
@@ -185,6 +214,19 @@ pub static COLORS: &[UnitConst] = &[
     ("yellow", "YELLOW", 14),
     ("white", "WHITE", 15),
 ];
+
+/// The `Dos` unit's file attributes, for `FindFirst` and `GetFAttr`.
+pub static DOS_CONSTS: &[UnitConst] = &[
+    ("readonly", "READ_ONLY", 0x01),
+    ("hidden", "HIDDEN", 0x02),
+    ("sysfile", "SYS_FILE", 0x04),
+    ("volumeid", "VOLUME_ID", 0x08),
+    ("directory", "DIRECTORY", 0x10),
+    ("archive", "ARCHIVE", 0x20),
+    ("anyfile", "ANY_FILE", 0x3F),
+];
+
+static DOS_GROUPS: &[&[UnitConst]] = &[DOS_CONSTS];
 
 pub static CRT_CONSTS: &[UnitConst] = &[
     ("blink", "BLINK", 128),
@@ -384,6 +426,7 @@ pub fn unit_types(name: &str) -> Vec<(&'static str, Type)> {
             ("dirstr", Type::Str { cap: 67 }),
             ("namestr", Type::Str { cap: 8 }),
             ("extstr", Type::Str { cap: 4 }),
+            ("searchrec", search_rec_type()),
         ],
         "graph" => vec![("fillpatterntype", fill_pattern_type())],
         _ => Vec::new(),
@@ -399,7 +442,7 @@ static GRAPH_GROUPS: &[&[UnitConst]] = &[COLORS, GRAPH_CONSTS];
 pub fn unit(name: &str) -> Option<(&'static [UnitRoutine], &'static [&'static [UnitConst]])> {
     match name {
         "crt" => Some((CRT, CRT_GROUPS)),
-        "dos" => Some((DOS, &[])),
+        "dos" => Some((DOS, DOS_GROUPS)),
         "graph" => Some((GRAPH, GRAPH_GROUPS)),
         // `Printer` only declares the `Lst` text file; nothing to add yet.
         "printer" => Some((&[], &[])),

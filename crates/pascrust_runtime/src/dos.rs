@@ -209,3 +209,174 @@ mod tests {
         assert_eq!(f_expand("c:\\tp\\..\\bin"), "C:\\BIN");
     }
 }
+
+// ----- FindFirst / FindNext ---------------------------------------------------
+
+/// File attributes, for `FindFirst` and `SearchRec.Attr`.
+pub const READ_ONLY: u8 = 0x01;
+pub const HIDDEN: u8 = 0x02;
+pub const SYS_FILE: u8 = 0x04;
+pub const VOLUME_ID: u8 = 0x08;
+pub const DIRECTORY: u8 = 0x10;
+pub const ARCHIVE: u8 = 0x20;
+pub const ANY_FILE: u8 = 0x3F;
+
+/// The `Dos` unit's `SearchRec`. TP kept DOS's search state in `Fill`; we
+/// keep a handle there to the matches not yet returned (see `SEARCHES`).
+/// `name` is a full string, not TP's `string[12]`, so long names fit.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SearchRec {
+    pub fill: crate::array::PArray<u8, 1, 21>,
+    pub attr: u8,
+    /// The modification time, packed as `PackTime` does.
+    pub time: i32,
+    pub size: i32,
+    pub name: PString,
+}
+
+/// One file `FindFirst` found.
+struct Found {
+    name: String,
+    attr: u8,
+    time: i32,
+    size: i32,
+}
+
+thread_local! {
+    /// The matches each search still has to return, by the handle in its
+    /// `SearchRec.Fill`. `RefCell` because `FindNext` changes them.
+    static SEARCHES: std::cell::RefCell<std::collections::HashMap<u32, std::collections::VecDeque<Found>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    static NEXT_SEARCH: Cell<u32> = const { Cell::new(1) };
+}
+
+/// `FindFirst(path, attr, s)`: find the first file matching `path` (DOS
+/// wildcards: `*.PAS`, `DATA?.*`) with attributes allowed by `attr`. Plain
+/// files are always included; directories only if `attr` has `Directory`,
+/// hidden files (names starting with `.`) only if it has `Hidden`. Matches
+/// come in name order. `DosError` is 0 if one was found, 18 if none was,
+/// 3 if the directory doesn't exist.
+pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut SearchRec) {
+    let path = path.into().to_string();
+    let attr = attr.into() as u8;
+    let split = path.rfind(['\\', '/', ':']).map_or(0, |i| i + 1);
+    let (dir, pattern) = path.split_at(split);
+    let dir_path = if dir.is_empty() { std::path::PathBuf::from(".") } else { dos_path(dir) };
+    let Ok(entries) = std::fs::read_dir(&dir_path) else {
+        set_dos_error(3);
+        return;
+    };
+    let mut found: Vec<Found> = Vec::new();
+    // DOS listed `.` and `..` in subdirectories; `read_dir` doesn't.
+    if attr & DIRECTORY != 0 && matches!(pattern, "*.*" | "*") && !dir.is_empty() {
+        for name in [".", ".."] {
+            found.push(Found { name: name.to_string(), attr: DIRECTORY, time: 0, size: 0 });
+        }
+    }
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Ok(meta) = entry.metadata() else { continue };
+        let mut file_attr = if meta.is_dir() { DIRECTORY } else { ARCHIVE };
+        if meta.permissions().readonly() {
+            file_attr |= READ_ONLY;
+        }
+        if name.starts_with('.') {
+            file_attr |= HIDDEN;
+        }
+        let wanted =
+            (file_attr & DIRECTORY == 0 || attr & DIRECTORY != 0) && (file_attr & HIDDEN == 0 || attr & HIDDEN != 0);
+        if wanted && dos_match(pattern, &name) {
+            let time = meta.modified().map(|t| pack_system_time(t)).unwrap_or(0);
+            let size = i32::try_from(meta.len()).unwrap_or(i32::MAX);
+            found.push(Found { name, attr: file_attr, time, size });
+        }
+    }
+    found.sort_by_key(|f| f.name.to_ascii_lowercase());
+    let id = NEXT_SEARCH.with(|n| {
+        let id = n.get();
+        n.set(id.wrapping_add(1));
+        id
+    });
+    for (i, byte) in id.to_le_bytes().into_iter().enumerate() {
+        s.fill[i as i32 + 1] = byte;
+    }
+    SEARCHES.with_borrow_mut(|searches| searches.insert(id, found.into()));
+    find_next(s);
+}
+
+/// `FindNext(s)`: the next match of the search `s` started. `DosError` is
+/// 18 when there are no more.
+pub fn find_next(s: &mut SearchRec) {
+    let id = u32::from_le_bytes([s.fill[1], s.fill[2], s.fill[3], s.fill[4]]);
+    let next = SEARCHES.with_borrow_mut(|searches| {
+        let next = searches.get_mut(&id).and_then(|matches| matches.pop_front());
+        if next.is_none() {
+            searches.remove(&id);
+        }
+        next
+    });
+    match next {
+        Some(found) => {
+            s.name = PString::from(found.name.as_str());
+            s.attr = found.attr;
+            s.time = found.time;
+            s.size = found.size;
+            set_dos_error(0);
+        }
+        None => set_dos_error(18),
+    }
+}
+
+/// Does `name` match the DOS wildcard `pattern`? Case doesn't matter, and
+/// the name and the extension are matched separately, as DOS did: `*.*`
+/// matches every name (`README` too) and `DATA.*` matches `DATA`.
+fn dos_match(pattern: &str, name: &str) -> bool {
+    if pattern == "*" || pattern == "*.*" {
+        return true;
+    }
+    let split = |s: &str| match s.rfind('.') {
+        Some(i) if i > 0 => (s[..i].to_ascii_lowercase(), s[i + 1..].to_ascii_lowercase()),
+        _ => (s.to_ascii_lowercase(), String::new()),
+    };
+    let (pattern_base, pattern_ext) = split(pattern);
+    let (name_base, name_ext) = split(name);
+    glob(pattern_base.as_bytes(), name_base.as_bytes()) && glob(pattern_ext.as_bytes(), name_ext.as_bytes())
+}
+
+/// `*` matches any run of characters, `?` any one.
+fn glob(pattern: &[u8], text: &[u8]) -> bool {
+    match (pattern.first(), text.first()) {
+        (None, None) => true,
+        (Some(b'*'), _) => glob(&pattern[1..], text) || (!text.is_empty() && glob(pattern, &text[1..])),
+        (Some(b'?'), Some(_)) => glob(&pattern[1..], &text[1..]),
+        (Some(p), Some(t)) if p == t => glob(&pattern[1..], &text[1..]),
+        _ => false,
+    }
+}
+
+/// A file time as DOS packed it into a `LongInt`: the date in the high
+/// word (years since 1980, month, day) and the time in the low word (hour,
+/// minute, seconds / 2), in local time.
+fn pack_system_time(time: std::time::SystemTime) -> i32 {
+    let local: chrono::DateTime<Local> = time.into();
+    let year = (local.year() - 1980).clamp(0, 127) as u32;
+    let date = year << 9 | local.month() << 5 | local.day();
+    let clock = local.hour() << 11 | local.minute() << 5 | local.second() / 2;
+    (date << 16 | clock) as i32
+}
+
+#[cfg(test)]
+mod find_tests {
+    use super::*;
+
+    #[test]
+    fn dos_wildcards() {
+        assert!(dos_match("*.PAS", "life.pas"));
+        assert!(!dos_match("*.PAS", "life.pa"));
+        assert!(dos_match("*.*", "README"));
+        assert!(dos_match("DATA.*", "data"));
+        assert!(dos_match("DATA?.DAT", "data1.dat"));
+        assert!(!dos_match("DATA?.DAT", "data12.dat"));
+        assert!(dos_match("*", ".hidden"));
+    }
+}

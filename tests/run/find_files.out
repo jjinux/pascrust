@@ -1,0 +1,9 @@
+ok: FindFirst *.TXT finds both, in name order
+ok: DosError 18 after the last one
+ok: Size and Attr of a file
+ok: Time of a file
+ok: with Directory, *.* finds the subdirectory
+ok: without Directory, no directories
+ok: no match: DosError 18
+ok: missing directory: DosError 3
+8 of 8 checks passed

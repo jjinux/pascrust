@@ -222,7 +222,7 @@ Sets (a language feature, but `Include`/`Exclude` and `in` are everywhere in old
 - [x] `set of T` as a runtime `PSet` (a 256-bit set, as in TP), set literals with ranges, `in` (a `matches!` for a list of constants), `+ - *` as `| & -`, `= <> <= >=`, `Include`/`Exclude`, set constants (`PSet::of`/`from_ranges`, `const fn`s), sets in typed constants, records and parameters.
 
 Dos, the rest
-- [ ] `FindFirst`/`FindNext`/`SearchRec` with DOS wildcards (`*.PAS`, `?`), the attribute filter (`Directory`, `AnyFile`, ...), names shown as on disk.
+- [x] `FindFirst`/`FindNext`/`SearchRec` with DOS wildcards (`*.PAS`, `?`), the attribute filter (`Directory`, `AnyFile`, ...), names shown as on disk.
 - [x] `FSplit`, `EnvCount`/`EnvStr`, `DosVersion` (fake: DOS 6.22, `$1606`). `DosError` is now a variable.
 - [ ] `GetFTime`/`SetFTime` with `PackTime`/`UnpackTime` and the `DateTime` record; `GetFAttr`/`SetFAttr` (read-only from the file's permissions, directory from its type; hidden/system/archive faked from the name and kept in memory).
 - [x] `DiskFree`/`DiskSize`, faked (as the user suggested): real disks overflow a `LongInt`, so every drive is a 1 GB disk with 512 MB free; past Z: is -1.

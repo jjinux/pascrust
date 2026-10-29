@@ -232,6 +232,12 @@ Dos unit
   `DirStr`/`NameStr`/`ExtStr`), `PathStr`/`DirStr`/`NameStr`/`ExtStr`,
   `Exec`, `DosExitCode`, `DosError` (a variable), `GetEnv`, `EnvCount`,
   `EnvStr`; `ChDir`/`MkDir`/`RmDir`/`GetDir` are in System
+- `FindFirst`/`FindNext` with `SearchRec` and the attribute constants
+  (`Directory`, `AnyFile`, ...): DOS wildcards (`*.*` matches every name),
+  directories only with `Directory`, dot-files count as `Hidden`, matches
+  in name order, `DosError` 18 when there are no more and 3 for a missing
+  directory. `SearchRec.Name` is a full string (TP's was `string[12]`), so
+  long names fit
 - Faked: `DosVersion` (DOS 6.22), `DiskFree`/`DiskSize` (512 MB free of a
   1 GB disk on every drive: real disks are too big for a `LongInt`),
   `SetDate`/`SetTime` (don't change the computer's clock),
@@ -239,7 +245,7 @@ Dos unit
   `SwapVectors` (does nothing)
 - Refused with a clear error, since they need real DOS: `Intr`, `MsDos`,
   `Keep`, `GetIntVec`, `SetIntVec`
-- Not yet: `FindFirst`/`FindNext`, `GetFTime`/`SetFTime`,
+- Not yet: `GetFTime`/`SetFTime`,
   `PackTime`/`UnpackTime`, `GetFAttr`/`SetFAttr`
 - DOS path translation (`a:\tictac` → a configured directory)
 

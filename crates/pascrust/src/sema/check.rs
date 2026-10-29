@@ -2098,6 +2098,12 @@ impl Checker {
                         self.error(arg.span, format!("expected a string variable, found {ty}"));
                     }
                 }
+                Param::VarSearchRec => {
+                    let ty = self.place(arg, true);
+                    if ty != super::units::search_rec_type() && ty != Type::Error {
+                        self.error(arg.span, format!("expected a SearchRec variable, found {ty}"));
+                    }
+                }
                 Param::VarBool => {
                     let ty = self.place(arg, true);
                     if ty != Type::Bool && ty != Type::Error {
