@@ -49,6 +49,7 @@ fn main() {
 
 #[allow(unused_imports)]
 use crate::labels::*;
+#[allow(unused_imports)]
 use pascrust_runtime::prelude::*;
 
 pub const SIDES: i16 = 4;
@@ -98,6 +99,7 @@ pub fn geometry_init(created: &mut i16) {
 
 #[allow(unused_imports)]
 use crate::geometry::*;
+#[allow(unused_imports)]
 use pascrust_runtime::prelude::*;
 
 /// Pascal: `function Name: string;`

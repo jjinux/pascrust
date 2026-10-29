@@ -141,6 +141,10 @@ impl<'a> Codegen<'a> {
     /// `use` lines shared by every generated file.
     fn imports(&mut self, current_module: Option<&str>) {
         self.blank();
+        // A small unit may use nothing from the runtime.
+        if current_module.is_some() {
+            self.line("#[allow(unused_imports)]");
+        }
         self.line("use pascrust_runtime::prelude::*;");
         let others: Vec<&str> =
             self.a.units.iter().map(|u| u.module.as_str()).filter(|&m| Some(m) != current_module).collect();

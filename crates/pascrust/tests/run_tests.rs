@@ -68,7 +68,15 @@ fn run_tests() {
     std::fs::write(scratch.join("Cargo.toml"), toml).unwrap();
     std::fs::write(scratch.join("src/lib.rs"), "").unwrap();
 
-    let build = Command::new("cargo").args(["build", "--quiet"]).current_dir(&scratch).output().unwrap();
+    // Generated code must compile without warnings, so any warning fails the
+    // tests: `-D warnings` turns warnings into errors. (Cargo caps lints for
+    // dependencies from crates.io, so only our code is affected.)
+    let build = Command::new("cargo")
+        .args(["build", "--quiet"])
+        .env("RUSTFLAGS", "-D warnings")
+        .current_dir(&scratch)
+        .output()
+        .unwrap();
     if !build.status.success() {
         panic!("generated code failed to compile:\n{}", String::from_utf8_lossy(&build.stderr));
     }
