@@ -286,7 +286,7 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
         let wanted =
             (file_attr & DIRECTORY == 0 || attr & DIRECTORY != 0) && (file_attr & HIDDEN == 0 || attr & HIDDEN != 0);
         if wanted && dos_match(pattern, &name) {
-            let time = meta.modified().map(|t| pack_system_time(t)).unwrap_or(0);
+            let time = meta.modified().map(pack_system_time).unwrap_or(0);
             let size = i32::try_from(meta.len()).unwrap_or(i32::MAX);
             found.push(Found { name, attr: file_attr, time, size });
         }
