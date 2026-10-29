@@ -9,17 +9,22 @@
 //! - `|command`: piped to a shell command, such as `|lp` to really print.
 //!
 //! The destination is opened the first time something is printed, so a
-//! program that never prints creates nothing, and closed when the program
-//! ends (for a command, by waiting for it to finish).
+//! program that never prints creates nothing. Each `Write(Lst, ...)` goes
+//! straight to the file or command, unbuffered, as TP sent each byte to
+//! LPT1, so nothing printed is lost even if the program is killed. When the
+//! program ends (normally, by `Halt`, a runtime error or Ctrl-C) a command's
+//! input is closed and we wait for it to finish, so the whole job is sent.
+//! (If the process is killed outright, say by a signal Crt doesn't catch,
+//! the command gets what was printed but isn't waited for.)
 
 use std::fs::OpenOptions;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::Mutex;
 
 /// Where printed text goes.
 enum Destination {
-    File(BufWriter<std::fs::File>),
+    File(std::fs::File),
     Command { child: Child, stdin: ChildStdin },
 }
 
@@ -85,7 +90,7 @@ fn open(setting: &str) -> Destination {
         // the DOS drives (see `dos_path`).
         let path = crate::system::start_dir().join(setting);
         match OpenOptions::new().create(true).append(true).open(&path) {
-            Ok(file) => Destination::File(BufWriter::new(file)),
+            Ok(file) => Destination::File(file),
             Err(e) => crate::rte(160, format!("Device write fault: can't open {}: {e}", path.display())),
         }
     }

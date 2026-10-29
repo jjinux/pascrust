@@ -458,7 +458,9 @@ fn translate_key(key: KeyEvent) -> (u8, Option<u8>) {
         // own handling of it. (TP's equivalent was Ctrl-Break.) Unless the
         // program turned `CheckBreak` off: then it's just `#3`.
         KeyCode::Char('c') if ctrl && check_break() => {
-            restore();
+            // `shutdown` restores the terminal and also finishes anything
+            // printed, as every other way out of the program does.
+            crate::io::shutdown();
             std::process::exit(130);
         }
         KeyCode::Char(c) if ctrl && c.is_ascii_alphabetic() => (c.to_ascii_uppercase() as u8 - b'@', None),

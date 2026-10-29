@@ -54,8 +54,9 @@ pub fn io_unchecked<R: Default>(f: impl FnOnce() -> R) -> R {
     }
     // `catch_unwind` stops a panic (our runtime errors are panics, see
     // `rte`) and returns it as an `Err`. `AssertUnwindSafe` promises Rust
-    // that nothing is left half-changed when it does, which holds here: an
-    // I/O error is raised before the file's state changes.
+    // that nothing is left half-changed when it does. That holds here: a
+    // failed I/O call leaves its file in a consistent state (a failed
+    // `Reset` has closed the file first, as TP's does).
     match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
         Ok(value) => value,
         Err(payload) => {

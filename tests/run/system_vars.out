@@ -2,8 +2,9 @@ ok: RandSeed repeats a sequence
 ok: Random moves RandSeed on
 ok: FileMode starts at 2
 ok: Reset with FileMode 0 reads
+ok: FileMode $40 is read-only (sharing flags above)
 to Output
 ok: ReadLn(Input, ...)
 ok: Eof(Input)
 ok: ExitCode starts at 0
-7 of 7 checks passed
+8 of 8 checks passed

@@ -467,11 +467,14 @@ impl<T: FileRecord> PFile<T> {
         self.name = Some(name.into());
     }
 
-    /// Pascal `Reset(f)`: open an existing file for reading and writing.
+    /// Pascal `Reset(f)`: open an existing file, for reading and writing
+    /// unless `FileMode` says otherwise.
     pub fn reset(&mut self) {
         let name = self.name();
-        // `FileMode` says how: 0 read-only, 1 write-only, 2 both.
-        let mode = crate::system::file_mode();
+        // `FileMode`'s low two bits say how: 0 read-only, 1 write-only, 2
+        // both. (TP 7 programs add DOS sharing flags above them, like
+        // `FileMode := $40` for read-only, deny none.)
+        let mode = crate::system::file_mode() & 3;
         match OpenOptions::new().read(mode != 1).write(mode != 0).open(dos_path(&name.to_string())) {
             Ok(file) => self.file = Some(file),
             Err(e) => open_error(e, &name),

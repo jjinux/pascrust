@@ -53,9 +53,16 @@ fn pascal_main() {
     f.reset();
     f.read(&mut n);
     f.close();
+    check(&mut checks, &mut failures, n == 7, pstr("Reset with FileMode 0 reads"));
+    set_file_mode(64);
+    f.reset();
+    // `{$I-}`: an I/O error in `io_unchecked` sets `IOResult` instead of
+    // stopping the program.
+    io_unchecked(|| f.write(&n));
+    check(&mut checks, &mut failures, io_result() != 0, pstr("FileMode $40 is read-only (sharing flags above)"));
+    f.close();
     f.erase();
     set_file_mode(2);
-    check(&mut checks, &mut failures, n == 7, pstr("Reset with FileMode 0 reads"));
     pwrite!("to ");
     pwriteln!("Output");
     preadln!(&mut n);

@@ -38,9 +38,16 @@ begin
   Reset(f);
   Read(f, n);
   Close(f);
+  Check(n = 7, 'Reset with FileMode 0 reads');
+  FileMode := $40;
+  Reset(f);
+  {$I-}
+  Write(f, n);
+  {$I+}
+  Check(IOResult <> 0, 'FileMode $40 is read-only (sharing flags above)');
+  Close(f);
   Erase(f);
   FileMode := 2;
-  Check(n = 7, 'Reset with FileMode 0 reads');
   Write(Output, 'to ');
   WriteLn(Output, 'Output');
   ReadLn(Input, n);
