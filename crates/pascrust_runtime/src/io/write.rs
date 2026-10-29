@@ -282,9 +282,14 @@ fn round_digits(mut digits: Vec<u8>, mut exp: i32, keep: i32) -> (Vec<u8>, i32) 
 #[macro_export]
 macro_rules! pwrite {
     ($($arg:expr),* $(,)?) => {{
-        let mut buf: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
-        $( $crate::io::PasWrite::pas_write(&$arg, &mut buf); )*
-        $crate::io::write_stdout(&buf);
+        // Each value is written before the next is worked out, as TP
+        // defines `Write(a, b)`: `Write(a); Write(b)`. A function in the
+        // list that writes something itself comes out in its place.
+        $({
+            let mut buf: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
+            $crate::io::PasWrite::pas_write(&$arg, &mut buf);
+            $crate::io::write_stdout(&buf);
+        })*
     }};
 }
 
@@ -292,10 +297,8 @@ macro_rules! pwrite {
 #[macro_export]
 macro_rules! pwriteln {
     ($($arg:expr),* $(,)?) => {{
-        let mut buf: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
-        $( $crate::io::PasWrite::pas_write(&$arg, &mut buf); )*
-        buf.push(b'\n');
-        $crate::io::write_stdout(&buf);
+        $crate::pwrite!($($arg),*);
+        $crate::io::write_stdout(b"\n");
     }};
 }
 

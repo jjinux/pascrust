@@ -697,7 +697,15 @@ window meanwhile (§19).
   `wd(x, 8, 2)` for `x:8` and `x:8:2`; `writeln(f, ...)` → `pwriteln!(f; ...)`.
   Booleans print `TRUE`/`FALSE`, reals default to TP's `1.0000000000E+00`
   form, so output matches TP byte for byte. Output goes through the runtime
-  so that `Crt` can track the cursor.
+  so that `Crt` can track the cursor. Each value is written before the next
+  is worked out, as TP defines `Write(a, b)` to be `Write(a); Write(b)`: a
+  function in the list that writes something comes out in its place.
+- **Evaluation order** isn't defined by Pascal. Where it shows (a function
+  that changes a variable the expression also reads), PascRust follows
+  Free Pascal: `n := n + Bump` reads `n` first, so it stays `n = n + bump()`
+  rather than `n += bump()`, which calls first. (Free Pascal calls first for
+  reals, strings and sets, and works out an assignment's target index
+  first; PascRust doesn't yet. See TODO.md.)
 - **`Read`/`Readln`** → `preadln!(x, y)`, with TP's lenient numeric parsing
   (leading blanks, stops at the first bad character).
 - **Files**: `PText` wraps a buffered reader/writer; `PFile<T>` serializes

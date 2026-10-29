@@ -1627,12 +1627,15 @@ impl<'a> Codegen<'a> {
             && *self.a.type_of(lhs.id) == target_ty
             && !matches!(target_ty, Type::Str { .. })
             && self.same_as_place(lhs, &place)
+            // `n += f()` calls `f` before it reads `n`, but Pascal (as Free
+            // Pascal does it) reads `n` first, which matters when `f` changes
+            // `n`. So a right side with a call keeps `n = n + f()`, which
+            // Rust works out left to right.
+            && !self.has_call(rhs)
             // `s[i] |= s[1]` borrows `s` mutably for the place before reading
             // `s[1]` (the operator is a trait method, unlike `+=` on
-            // numbers), which the borrow checker rejects. A call can reach
-            // the target too, without naming it (a global the function uses,
-            // or `self`), so sets only take the short form without calls.
-            && !(matches!(target_ty, Type::Set(_)) && (mentions(rhs, &root_name(target)) || self.has_call(rhs)))
+            // numbers), which the borrow checker rejects.
+            && !(matches!(target_ty, Type::Set(_)) && mentions(rhs, &root_name(target)))
         {
             // For sets, Pascal's `+` and `*` are Rust's `|` and `&`.
             let set = matches!(target_ty, Type::Set(_));

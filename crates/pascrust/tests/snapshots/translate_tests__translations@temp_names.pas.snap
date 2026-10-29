@@ -51,7 +51,7 @@ fn pascal_main() {
     total = double(n) + double(n_2);
     pwriteln!(total);
     let n = p.get().value;
-    total += double(n);
+    total = total + double(n);
     pwriteln!(total);
     next = Ptr::alloc();
     next.get_mut().value = 7;
