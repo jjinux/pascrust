@@ -257,7 +257,13 @@ pub(super) fn check_aliasing(a: &Analysis, sites: &[CallSite]) -> Vec<Diagnostic
                         callee.name
                     ),
                 ));
-            } else if callee.captures.iter().any(|c| c.sym == root) {
+            } else if callee
+                .captures
+                .iter()
+                // Through a pointer, the argument only reads the pointer
+                // itself, which a callee that reads it too doesn't mind.
+                .any(|c| c.sym == root && !(arg.through_pointer && c.mode != CaptureMode::RefMut))
+            {
                 errors.push(Diagnostic::new(
                     span,
                     format!(

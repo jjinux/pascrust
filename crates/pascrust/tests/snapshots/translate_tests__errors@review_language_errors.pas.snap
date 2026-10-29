@@ -1,0 +1,20 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/review_language_errors.pas
+---
+review_language_errors.pas:29:10: error: `New` needs a constructor here, but `TShape.Draw` isn't one
+  New(p, Draw);
+         ^^^^
+
+review_language_errors.pas:30:14: error: `Dispose` needs a destructor here, but `TShape.Init` isn't one
+  Dispose(p, Init);
+             ^^^^
+
+review_language_errors.pas:32:9: error: `i` is a field of the `with` record; a `for` loop needs a plain variable
+    for i := 1 to 3 do
+        ^
+
+review_language_errors.pas:34:18: error: `p` is passed by `var` more than once in this call to `PtrAndField`; Rust doesn't allow two mutable references to the same variable
+  PtrAndField(p, p^.x);
+                 ^^^^

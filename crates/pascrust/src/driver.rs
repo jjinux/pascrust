@@ -66,7 +66,9 @@ pub struct Options {
 pub fn transpile_file_with(path: &Path, options: &Options) -> Result<Generated, String> {
     let source = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let file_name = path.file_name().map_or_else(|| "input.pas".into(), |n| n.to_string_lossy().into_owned());
-    let mut dirs = vec![path.parent().unwrap_or(Path::new(".")).to_path_buf()];
+    // `game.pas` has the parent `""`, which means the current directory.
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let mut dirs = vec![parent.to_path_buf()];
     dirs.extend(options.unit_dirs.iter().cloned());
     transpile(source, &file_name, &dirs, &options.switches)
 }

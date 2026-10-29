@@ -88,7 +88,8 @@ Statements
 - Value and `var` parameters; passing arrays, records and strings both ways.
   Different fields of one record may be passed as two `var` arguments
   (`Init(p.x, p.y)`, also through a pointer, `q^.x, q^.y`); the same place
-  twice, a record and its field, or two elements of one array may not
+  twice, a record and its field, a pointer and a field behind it
+  (`F(q, q^.x)`), or two elements of one array may not
 
 Built-ins (System unit)
 
@@ -137,7 +138,8 @@ Objects (TP 5.5 OOP)
 - `private` keyword accepted and ignored
 - `virtual` methods: dispatch through `Self`, through `var` parameters of an
   ancestor type, and through pointers (a pointer to an object may point to a
-  descendant); `constructor`/`destructor`, `inherited Method`,
+  descendant); `constructor`/`destructor` (`New(p, Init)` must name a
+  constructor and `Dispose(p, Done)` a destructor), `inherited Method`,
   `Ancestor.Method(...)`, `New(p, Init(...))`, `New(PType, Init(...))` as a
   function, `Dispose(p, Done)`, `TypeOf` (compared with `=`/`<>`). Not yet:
   a descendant hiding a static method that calls virtual ones
@@ -170,7 +172,8 @@ More language
   set constants and typed constants, sets in records and parameters
 - `with` statements (single and multiple record expressions, records and
   objects, through pointers). A body may not change an array index that
-  chooses the record (`with a[i] do ... i := 2` is an error)
+  chooses the record (`with a[i] do ... i := 2` is an error), and a field
+  can't be a `for` loop's variable
 - Typed constants (`const Days: array[0..6] of String[9] = (...)`;
   `const x: integer = 5`), which are initialized variables in TP
 - Anonymous record types in `var` declarations (`EndPoint: record x, y:

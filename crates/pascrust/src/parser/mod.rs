@@ -378,6 +378,11 @@ impl Parser {
         // virtual methods. pascrust's objects carry no such table (see
         // `notes/virtual_methods.md`), so constructors and destructors are
         // ordinary procedures.
+        let role = match self.peek() {
+            TokenKind::Keyword(Keyword::Constructor) => MethodRole::Constructor,
+            TokenKind::Keyword(Keyword::Destructor) => MethodRole::Destructor,
+            _ => MethodRole::Plain,
+        };
         let kind = match self.bump().kind {
             TokenKind::Keyword(Keyword::Function) => ProcKind::Function,
             TokenKind::Keyword(Keyword::Procedure | Keyword::Constructor | Keyword::Destructor) => ProcKind::Procedure,
@@ -432,7 +437,18 @@ impl Parser {
                 ProcBody::Block(Box::new(block))
             }
         };
-        Ok(ProcDecl { kind, owner, name, params, ret, body, span: start.to(self.prev_span()), is_virtual, header_span })
+        Ok(ProcDecl {
+            kind,
+            owner,
+            name,
+            params,
+            ret,
+            body,
+            span: start.to(self.prev_span()),
+            is_virtual,
+            role,
+            header_span,
+        })
     }
 
     fn param_list(&mut self) -> PResult<Vec<ParamGroup>> {

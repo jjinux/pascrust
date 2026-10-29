@@ -218,6 +218,8 @@ pub struct Analysis {
     pub with_bodies: HashMap<usize, crate::ast::Stmt>,
     /// Methods declared `virtual`.
     pub virtuals: HashSet<ProcId>,
+    /// Methods declared `constructor` or `destructor`.
+    pub method_roles: HashMap<ProcId, crate::ast::MethodRole>,
     /// Methods that must see the object's real type: the virtual ones, and
     /// those that call one on `Self` (directly or through other methods).
     /// They become methods of a trait (see `notes/virtual_methods.md`).
@@ -453,6 +455,10 @@ pub struct VarArg {
     pub fields: Vec<String>,
     /// True if the path has an array index after `fields`.
     pub indexed: bool,
+    /// True if the argument is reached through a pointer (`q^.x`): then
+    /// `fields` leads to the pointer, and the record behind it is borrowed
+    /// at run time instead (see `heap_field`).
+    pub through_pointer: bool,
     pub span: Span,
 }
 
@@ -497,7 +503,12 @@ impl VarArg {
     /// field path starts with the other's. `p.x` and `p.y` are disjoint,
     /// and Rust allows `&mut p.x` and `&mut p.y` at the same time.
     pub fn overlaps(&self, other: &VarArg) -> bool {
-        self.root == other.root && fields_overlap(&self.fields, &other.fields)
+        // Two places behind pointers are checked by `heap_field` instead:
+        // different fields of one heap record are fine. A pointer and a
+        // place behind it (`q` and `q^.x`) do overlap.
+        !(self.through_pointer && other.through_pointer)
+            && self.root == other.root
+            && fields_overlap(&self.fields, &other.fields)
     }
 }
 

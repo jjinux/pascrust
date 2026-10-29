@@ -171,6 +171,16 @@ pub enum ProcKind {
     Function,
 }
 
+/// What a method is declared as. Constructors and destructors are ordinary
+/// procedures here, but `New(p, Init)` must name a constructor, as in TP.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MethodRole {
+    #[default]
+    Plain,
+    Constructor,
+    Destructor,
+}
+
 /// A procedure or function declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcDecl {
@@ -187,6 +197,8 @@ pub struct ProcDecl {
     /// Declared `virtual` (in an object type): calls choose the version for
     /// the object's real type at run time.
     pub is_virtual: bool,
+    /// Declared with `constructor` or `destructor` rather than `procedure`.
+    pub role: MethodRole,
     /// The span of the heading alone (`procedure Push(var list: NodePtr; v: integer);`),
     /// which codegen copies into a doc comment.
     pub header_span: Span,

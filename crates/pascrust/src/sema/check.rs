@@ -640,6 +640,7 @@ impl Checker {
             if method.is_virtual {
                 self.a.virtuals.insert(pid);
             }
+            self.a.method_roles.insert(pid, method.role);
             let self_sym = self.add_symbol(
                 "Self",
                 "self".to_string(),
@@ -1238,6 +1239,7 @@ impl Checker {
             self.index_variables(&record, &mut selectors);
             self.with_records.push((record, ty));
         }
+        self.check_with_for_loops(body);
         let mut stmts = prelude;
         stmts.push(self.rewrite_stmt(body));
         let rewritten = if stmts.len() == 1 {
@@ -1271,6 +1273,25 @@ impl Checker {
         self.scopes.last_mut().unwrap().insert(key.clone(), sym);
         self.use_var(sym, true);
         (Ident { name: key, span }, sym)
+    }
+
+    /// A `for` loop inside a `with` can't use one of the record's fields as
+    /// its control variable: TP needs a plain variable there.
+    fn check_with_for_loops(&mut self, s: &Stmt) {
+        let mut bad = Vec::new();
+        visit_stmts(s, &mut |s| {
+            if let StmtKind::For { var, .. } = &s.kind
+                && self.with_member(&var.key()).is_some()
+            {
+                bad.push(var.clone());
+            }
+        });
+        for var in bad {
+            self.error(
+                var.span,
+                format!("`{}` is a field of the `with` record; a `for` loop needs a plain variable", var.name),
+            );
+        }
     }
 
     /// A new local variable that holds the pointer a `with` record is
@@ -1539,7 +1560,10 @@ impl Checker {
     /// Resolve a `for` loop's control variable and start tracking it.
     fn for_variable(&mut self, var: &Ident, stmt_start: usize) -> Type {
         let Some(sym) = self.lookup(&var.key()) else {
-            self.error(var.span, format!("unknown identifier `{}`", var.name));
+            // A `with` field already has its own error (`check_with_for_loops`).
+            if self.with_member(&var.key()).is_none() {
+                self.error(var.span, format!("unknown identifier `{}`", var.name));
+            }
             self.active_for_vars.push(usize::MAX);
             return Type::Error;
         };
@@ -1950,15 +1974,24 @@ impl Checker {
                 }
                 (fields, complete)
             }
-            ExprKind::Index(inner, _) => (Self::place_fields(inner).0, false),
+            ExprKind::Index(inner, _) | ExprKind::Deref(inner) => (Self::place_fields(inner).0, false),
             _ => (Vec::new(), true),
+        }
+    }
+
+    /// Is the place reached through a pointer (`q^.x`)?
+    fn through_pointer(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Deref(_) => true,
+            ExprKind::Field(inner, _) | ExprKind::Index(inner, _) => Self::through_pointer(inner),
+            _ => false,
         }
     }
 
     fn place_root(&self, e: &Expr) -> Option<SymId> {
         match &e.kind {
             ExprKind::Name(_) => self.a.refs.get(&e.id).copied(),
-            ExprKind::Field(inner, _) | ExprKind::Index(inner, _) => self.place_root(inner),
+            ExprKind::Field(inner, _) | ExprKind::Index(inner, _) | ExprKind::Deref(inner) => self.place_root(inner),
             _ => None,
         }
     }
@@ -2108,6 +2141,7 @@ impl Checker {
             whole: matches!(receiver.kind, ExprKind::Name(_)),
             fields: Self::place_fields(receiver).0,
             indexed: !Self::place_fields(receiver).1,
+            through_pointer: Self::through_pointer(receiver),
             span: receiver.span,
         });
         self.user_call_with(e, pid, args, receiver_arg)
@@ -2193,6 +2227,7 @@ impl Checker {
                         whole: matches!(arg.kind, ExprKind::Name(_)),
                         fields: Self::place_fields(arg).0,
                         indexed: !Self::place_fields(arg).1,
+                        through_pointer: Self::through_pointer(arg),
                         span: arg.span,
                     });
                 }
@@ -2479,6 +2514,18 @@ impl Checker {
                         span: call.span,
                     };
                     self.call_statement(&call);
+                    // TP: `New` takes a constructor, `Dispose` a destructor.
+                    let ExprKind::Call { callee, .. } = &call.kind else { unreachable!() };
+                    if let Some(&(pid, _)) = self.a.method_calls.get(&callee.id) {
+                        let (wanted, role) = match b {
+                            New => ("constructor", MethodRole::Constructor),
+                            _ => ("destructor", MethodRole::Destructor),
+                        };
+                        if self.a.method_roles.get(&pid) != Some(&role) {
+                            let method = self.a.procs[pid].name.clone();
+                            self.error(call.span, format!("`{name}` needs a {wanted} here, but `{method}` isn't one"));
+                        }
+                    }
                     self.a.object_calls.insert(callee_id(e), (call, temp));
                 } else if type_arg.is_some() {
                     let (_, sym) = self.temp_pointer(&ty, span);
@@ -3006,5 +3053,25 @@ fn byte_sequence(ty: &Type) -> bool {
         Type::Str { .. } => true,
         Type::Array(a) => matches!(a.elem, Type::Int(IntKind::Byte | IntKind::ShortInt) | Type::Char | Type::Bool),
         _ => false,
+    }
+}
+
+/// Call `f` on a statement and every statement nested in it.
+fn visit_stmts(s: &Stmt, f: &mut impl FnMut(&Stmt)) {
+    f(s);
+    match &s.kind {
+        StmtKind::Compound(body) | StmtKind::Repeat { body, .. } => body.iter().for_each(|s| visit_stmts(s, f)),
+        StmtKind::If { then_branch, else_branch, .. } => {
+            visit_stmts(then_branch, f);
+            if let Some(e) = else_branch {
+                visit_stmts(e, f);
+            }
+        }
+        StmtKind::While { body, .. } | StmtKind::For { body, .. } | StmtKind::With { body, .. } => visit_stmts(body, f),
+        StmtKind::Case { arms, else_body, .. } => {
+            arms.iter().for_each(|arm| visit_stmts(&arm.body, f));
+            else_body.iter().flatten().for_each(|s| visit_stmts(s, f));
+        }
+        StmtKind::Empty | StmtKind::Assign { .. } | StmtKind::Call(_) => {}
     }
 }
