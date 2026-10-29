@@ -255,7 +255,6 @@ Last: raw bytes and C strings
 - [x] Untyped files (`file` without `of`) with `BlockRead`/`BlockWrite`, and untyped `var` parameters, as byte views of records and arrays (with `SizeOf`).
 - [x] `PChar` and the `Strings` unit, as a byte buffer plus an offset; a `Char` array used as a `PChar` is lent a copy for the statement, and keeping a `PChar` into one is a compile error (the user chose this over shared arrays, 2026-10-29).
 - [ ] `WinDos` (the `Dos` routines with `PChar` arguments; mostly aliases), and `Read`/`Str`/`Val`/`Assign`/`Rename` on `Char` arrays and `PChar`s (TP 7's extended syntax).
-- [ ] If a real program needs `P := A` (a `PChar` kept into a `Char` array): in programs that use `PChar`, make every zero-based `Char` array a shared buffer of `Cell<u8>`, so pointers into it alias as in TP (option 2 in the discussion of 2026-10-29). A further step, if programs need real addresses (`Pointer` and `PChar` casts at any offset, `Mem[]`): one byte array standing for the program's memory, pointers as indexes into it.
 - [ ] Skip: `Graph3` and `Turbo3` (Turbo Pascal 3.0 compatibility).
 
 ## Phase 8: Tier 3 and FFI (as interest dictates)

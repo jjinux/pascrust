@@ -422,13 +422,42 @@ pub struct Ptr<T>(Option<Rc<RefCell<T>>>);
   it in a global, a field, a `var` parameter, or pass it to a routine that
   keeps it) and which return one (the `Strings` functions return a pointer
   into their first argument, except `StrNew`). An array that reaches a
-  kept place, `P := A` included, is an error. Rejected alternatives (the
-  user's choice, 2026-10-29): every `Char` array in a `PChar` program as a
-  shared buffer of `Cell<u8>`, so `P := A` aliases as in TP, at the cost of
-  a second path for every way of using an array (TODO.md); and one big
-  byte array standing for the program's memory, with pointers as indexes,
-  which still wouldn't let a pointer reach an ordinary variable and would
-  lose the per-allocation bounds checks.
+  kept place, `P := A` included, is an error.
+
+  Possible future enhancements, if real programs need them (the user chose
+  the copy for now, 2026-10-29):
+
+  - **Shared `Char` arrays**, so `P := A` aliases as in TP: in a program
+    that uses `PChar`, every zero-based `Char` array becomes a shared
+    buffer of `Cell<u8>` (a cell can be read and written through a shared
+    reference, with no borrow panics), and a `PChar` into it shares that
+    buffer. Copying an array stays a copy (a deep clone), and a pointer
+    into a routine's local array stays valid after the routine returns,
+    where TP's would dangle. The cost: every way of using such an array
+    needs a second path in codegen (indexing as `a[i].get()` and
+    `a[i].set(c)`, assignment, `var` parameters, `Move`/`FillChar`, typed
+    files, `Write`), and the generated code reads less like plain Rust.
+  - **One buffer for the program's memory** (the user's idea): a single
+    byte array standing for all the memory a TP program could have, with
+    `Pointer` and `PChar` as indexes into it, as an emulator does. That
+    would give real addresses: casts between `Pointer` and `PChar` at any
+    offset, `Mem[]`-style access, a realistic `MemAvail`/`MaxAvail`, and
+    it keeps those "virtual pointers" isolated from Rust's own memory. The
+    downsides:
+    - It doesn't by itself let a pointer reach an ordinary variable: the
+      program's variables are Rust values (`PArray`, `PString`, records),
+      not bytes in the buffer. For `P := A` to work, `A` would have to
+      live in the buffer, and every use of it would become a read or write
+      of the buffer (`mem.read_u8(a + i)`). Done for all variables, the
+      output would read like a virtual machine, not hand-written Rust.
+    - It loses the per-allocation bounds checks: today each `GetMem`,
+      `StrNew` or literal has its own buffer, so running off the end is
+      runtime error 201 at the spot. In one buffer it would silently
+      overwrite the next allocation (faithful to TP, but much harder to
+      debug), and using memory after `FreeMem` would go unnoticed unless
+      the buffer had an allocator that tagged its blocks.
+    - Typed pointers (`Ptr<T>`, records on the heap) would still be Rust
+      values outside the buffer, unless records were also kept as bytes.
 - Other pointer
   arithmetic, `Addr`/`@` on variables, `Seg`/`Ofs`/`Ptr(...)` and `Mem[]`
   are out of scope for now.
