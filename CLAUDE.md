@@ -63,3 +63,13 @@ program to produce expected output (`tests/gen_expected.sh`) is fine.
 - Generated code must compile without warnings.
 - Every new Pascal construct needs a translate test *and* a run test.
 - Commit as you go, with focused commits.
+
+## Reviews
+
+Have Claude Fable review every commit: after committing, give a Fable
+subagent (the Agent tool with `model: "fable"`) the commit to review, with
+the project's goals, and ask it to reproduce each finding with a small
+Pascal program (compared with `fpc -Mtp` where FPC matches TP). Its scratch
+files go in `out/review/`, and it must not read or search anything outside
+the project. Fix the straightforward findings in follow-up commits (each
+with a test that fails without the fix), and ask the user about the rest.

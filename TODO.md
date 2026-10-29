@@ -185,7 +185,6 @@ chosen so each step is testable with the previous ones.
 - [ ] Keep the generated Rust reasonably readable by a human. It's fine for it to call helper functions in the runtime (`pascrust_runtime`) when a Pascal construct needs support code; what matters is that a reader can follow the translated program.
 - [ ] Read through the generated Rust for `life.pas` and `bstunit.pas` as if reviewing a colleague's code; fix anything an intermediate Rust programmer would not write (unneeded clones, casts, parentheses, `mut`).
 - [ ] Commit showcase generated output for `hello.pas` and `life.pas` (per open question 7) with a refresh script.
-- [ ] Carry Pascal comments into the Rust output at statement boundaries.
 - [ ] Make transpiler diagnostics show the source line with a caret; add `--explain` text for the alias-detection error.
 - [ ] Write `docs/translating.md`: a user guide with the Pascal→Rust mapping table and the known limitations, generated partly from the translate-test snapshots.
 - [ ] Measure and trim compile time of generated crates (feature flags, no unused dependencies).
@@ -200,9 +199,12 @@ something harmless and plausible, so the program runs, and list the fake in
 `language_spec.md`. Each item gets translate and run tests, checked against
 `fpc -Mtp` where FPC matches TP.
 
+Next up (moved here from Phase 6 at the user's request)
+- [ ] Carry Pascal comments into the Rust output at statement boundaries.
+
 System, the small routines
 - [x] `SizeOf` with TP's sizes (`Integer` 2, `LongInt` 4, `Real` 6, `Char` and `Boolean` 1, `string[n]` n+1, records unpadded, arrays), so `FillChar(a, SizeOf(a), 0)` and record-size arithmetic work.
-- [x] `High`/`Low` (of arrays, strings, ordinal types and variables), `Swap`, `Assigned`, `RunError(n)`. `SizeOf`, `High` and `Low` are folded into constants, as in TP, so they work in `const` declarations and array bounds. (`Double`, `Single` and `Extended` are all `Real` here, so `SizeOf` gives them 6;)
+- [x] `High`/`Low` (of arrays, strings, ordinal types and variables), `Swap`, `Assigned`, `RunError(n)`. `SizeOf`, `High` and `Low` are folded into constants, as in TP, so they work in `const` declarations and array bounds. (`Double`, `Single` and `Extended` are all `Real` here, so `SizeOf` gives them 6.)
 - [x] `FillChar` and `Move` for the common cases: filling a whole array, record or string with one byte value (zeroing is by far the most common), and copying between variables of the same type. Other uses (partial byte ranges, mismatched types) are a clear error.
 - [x] `GetDir(drive, s)`: the current directory as a DOS path, through the drive mapping.
 - [x] System variables: `ExitCode` (read/write; `Halt` without an argument uses it), `RandSeed` (read/write, so `RandSeed := 42` gives a repeatable sequence), `FileMode` (0 opens typed files read-only), and `Input`/`Output` as `Text` variables (`Writeln(Output, ...)`). Done as runtime variables (`SymKind::RuntimeVar`: a getter and a setter, `set_rand_seed(42)`), which Crt's `TextAttr` and `LastMode` can reuse; `Input`/`Output` are always the console (reopening them is an error).
