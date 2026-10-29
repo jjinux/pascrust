@@ -4,6 +4,8 @@ program SystemVars;
 var
   checks, failures: Integer;
   first, second: Integer;
+  big: LongInt;
+  negative: Integer;
   n: Integer;
   f: file of Integer;
 
@@ -28,6 +30,14 @@ begin
   second := Random(1000);
   Check(first = second, 'RandSeed repeats a sequence');
   Check(RandSeed <> 1234, 'Random moves RandSeed on');
+  negative := 0;
+  for n := 1 to 200 do
+  begin
+    big := Random(60000);
+    if (big < 0) or (big >= 60000) then
+      negative := negative + 1;
+  end;
+  Check(negative = 0, 'Random(60000) is a Word, 0..59999');
   Check(FileMode = 2, 'FileMode starts at 2');
   Assign(f, 'system_vars.tmp');
   Rewrite(f);

@@ -245,6 +245,7 @@ impl<'a> Codegen<'a> {
             }
             Pi => "std::f64::consts::PI".to_string(),
             Random => match args.first() {
+                Some(n) if self.a.random_word.contains(&call_id) => format!("random_word({})", self.expr(n).0),
                 Some(n) => format!("random({})", self.expr(n).0),
                 None => "random_real()".to_string(),
             },

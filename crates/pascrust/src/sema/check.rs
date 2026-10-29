@@ -2573,7 +2573,16 @@ impl Checker {
             Random => {
                 if arity(&mut self.errors, span, args.len(), 0..=1, &name) && args.len() == 1 {
                     self.int_arg(&args[0]);
-                    Type::Int(IntKind::Integer)
+                    // TP's `Random(Range: Word): Word`. With a constant range
+                    // up to 32767 the result fits an `Integer`, which keeps
+                    // the common `Random(6) + 1` free of conversions.
+                    match self.eval_const(&args[0]) {
+                        Some(ConstVal::Int(n)) if n <= 32767 => Type::Int(IntKind::Integer),
+                        _ => {
+                            self.a.random_word.insert(callee_id(e));
+                            Type::Int(IntKind::Word)
+                        }
+                    }
                 } else {
                     Type::Real
                 }

@@ -174,6 +174,9 @@ pub struct Analysis {
     pub procs: Vec<ProcInfo>,
     /// The type of every expression node.
     pub types: HashMap<NodeId, Type>,
+    /// `Random(n)` calls (by the callee's id) whose result is a `Word`: the
+    /// range isn't a constant below 32768.
+    pub random_word: HashSet<NodeId>,
     /// `FillChar` calls (by the callee's id) that fill with 0.
     pub fill_zero: HashSet<NodeId>,
     /// Calls sema worked out, by the call's id: `SizeOf`, `High`, `Low`.

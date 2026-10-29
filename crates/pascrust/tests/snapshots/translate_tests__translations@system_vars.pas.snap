@@ -33,6 +33,8 @@ fn pascal_main() {
     let mut failures: i16 = 0;
     let mut first: i16 = 0;
     let mut second: i16 = 0;
+    let mut big: i32 = 0;
+    let mut negative: i16 = 0;
     let mut n: i16 = 0;
     let mut f: PFile<i16> = PFile::default();
     checks = 0;
@@ -43,6 +45,18 @@ fn pascal_main() {
     second = random(1000);
     check(&mut checks, &mut failures, first == second, pstr("RandSeed repeats a sequence"));
     check(&mut checks, &mut failures, rand_seed() != 1234, pstr("Random moves RandSeed on"));
+    negative = 0;
+    // `n` is also used outside this loop (Pascal leaves it holding the
+    // last value), so the loop updates it on every pass instead of declaring
+    // a fresh loop variable.
+    for n_value in 1..=200 {
+        n = n_value;
+        big = i32::from(random_word(60000));
+        if big < 0 || big >= 60000 {
+            negative += 1;
+        }
+    }
+    check(&mut checks, &mut failures, negative == 0, pstr("Random(60000) is a Word, 0..59999"));
     check(&mut checks, &mut failures, i16::from(file_mode()) == 2, pstr("FileMode starts at 2"));
     f.assign("system_vars.tmp");
     f.rewrite();

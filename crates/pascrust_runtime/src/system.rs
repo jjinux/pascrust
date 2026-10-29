@@ -31,9 +31,18 @@ fn next_seed() -> u32 {
 /// seed by `n` and keeps the top 32 bits of the product, which is the same as
 /// `seed / 2^32 * n` rounded down. Its parameter is a `Word`, so `n` is
 /// truncated to 16 bits, as TP would do; `Random(0)` is 0.
+///
+/// This is for a constant range below 32768, whose result fits an
+/// `Integer`; see [`random_word`] for the rest.
 pub fn random(n: impl Into<i32>) -> i16 {
+    random_word(n) as i16
+}
+
+/// Pascal `Random(n)` as TP declares it, a `Word` from 0 to n - 1, for a
+/// range that isn't a constant below 32768 (`Random(60000)`, `Random(n)`).
+pub fn random_word(n: impl Into<i32>) -> u16 {
     let n = n.into() as u16;
-    ((u64::from(next_seed()) * u64::from(n)) >> 32) as i16
+    ((u64::from(next_seed()) * u64::from(n)) >> 32) as u16
 }
 
 /// Pascal `Random` without an argument: a real in `[0, 1)`, the seed divided
