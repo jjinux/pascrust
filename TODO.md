@@ -171,6 +171,7 @@ chosen so each step is testable with the previous ones.
 
 ## Phase 6: Polish and readability
 
+- [ ] Have Claude Fable review every commit since its last code review (`git log 38138d3..HEAD`, the commit that recorded that review's results): the transpiler and the runtime, as last time. Fix the straightforward findings, ask the user about the rest, and record the results here.
 - [ ] Announce Pascrust to the Pascal community: find which Pascal compiler projects are still alive (Free Pascal, Lazarus, and others), find their mailing lists or forums and what each allows for announcements, then draft a short announcement for each (what Pascrust is, that it's MIT, a link to the repository). The user reviews and sends them; Claude doesn't post anything itself.
 - [x] Add an "Acknowledgements" section to the README thanking the projects we learned from and compared against. Our code is our own, but being able to run their tools and compare output helped a great deal: Free Pascal (`fpc -Mtp` produces most of our expected test output), daelsepara's turbo-pascal-assembly (the System unit disassembly behind `Random`), J R Stockton's Pascal pages, Borland's Turbo Pascal manuals, p2c (design ideas), and the Rust crates we build on (`clap`, `crossterm`, `minifb`, `insta`, ...). Also Claude Fable, for the code and design reviews.
 - [x] `tpc`: a command-line compiler with Turbo Pascal's `TPC.EXE` options (`-$`, `-E`, `-U`, `-Q`; the rest accepted and ignored). Not an `fpc` look-alike, which would hide the real one.
