@@ -1633,30 +1633,15 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    fn assignment(&mut self, target: &Expr, value: &Expr) -> String {
+    /// `x := x + n` reads better as Rust's compound assignment `x += n`,
+    /// when it means the same.
+    fn compound_assignment(&mut self, target: &Expr, value: &Expr, place: &str) -> Option<String> {
         let target_ty = self.a.type_of(target.id).clone();
-        // `RandSeed := 42` → `set_rand_seed(42);`.
-        if let Some(&sym) = self.a.refs.get(&target.id)
-            && let SymKind::RuntimeVar { set, .. } = self.a.sym(sym).kind
-        {
-            return format!("{set}({});", self.coerce(value, &target_ty).0);
-        }
-        // `p := p^.next` would borrow `p` (through `p.get()`) while assigning
-        // to it, which the borrow checker rejects. Computing the value into
-        // a temporary first ends that borrow before the assignment.
-        if contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target))) {
-            let temp = self.temp_name(&value_temp_base(value));
-            let value_code = self.coerce(value, &target_ty).0;
-            let place = self.place(target);
-            return format!("let {temp} = {value_code};\n{}{place} = {temp};", "    ".repeat(self.indent));
-        }
-        let place = self.place(target);
-        // `x := x + n` reads better as Rust's compound assignment `x += n`.
         if let ExprKind::Binary { op: op @ (BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul), lhs, rhs } = &value.kind
             && *self.a.type_of(value.id) == target_ty
             && *self.a.type_of(lhs.id) == target_ty
             && !matches!(target_ty, Type::Str { .. })
-            && self.same_as_place(lhs, &place)
+            && self.same_place(lhs, target)
             // `n += f()` calls `f` before it reads `n`, but Pascal (as Free
             // Pascal does it) reads `n` first, which matters when `f` can
             // change `n`: when `n` is passed to it, or it's a global or outer
@@ -1678,7 +1663,42 @@ impl<'a> Codegen<'a> {
                 BinaryOp::Sub => "-=",
                 _ => "*=",
             };
-            return format!("{place} {rust_op} {};", self.coerce(rhs, &target_ty).0);
+            return Some(format!("{place} {rust_op} {};", self.coerce(rhs, &target_ty).0));
+        }
+        None
+    }
+
+    fn assignment(&mut self, target: &Expr, value: &Expr) -> String {
+        let target_ty = self.a.type_of(target.id).clone();
+        // `RandSeed := 42` → `set_rand_seed(42);`.
+        if let Some(&sym) = self.a.refs.get(&target.id)
+            && let SymKind::RuntimeVar { set, .. } = self.a.sym(sym).kind
+        {
+            return format!("{set}({});", self.coerce(value, &target_ty).0);
+        }
+        // `p := p^.next` would borrow `p` (through `p.get()`) while assigning
+        // to it, which the borrow checker rejects. Computing the value into
+        // a temporary first ends that borrow before the assignment.
+        if contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target))) {
+            // `p^.x := p^.x + 1` can still be `p.get_mut().x += 1`: only the
+            // place reads the pointer, so there's one borrow. That needs the
+            // added part to read no pointer itself.
+            if let ExprKind::Binary { rhs, .. } = &value.kind
+                && !contains_deref(rhs)
+            {
+                let place = self.place(target);
+                if let Some(code) = self.compound_assignment(target, value, &place) {
+                    return code;
+                }
+            }
+            let temp = self.temp_name(&value_temp_base(value));
+            let value_code = self.coerce(value, &target_ty).0;
+            let place = self.place(target);
+            return format!("let {temp} = {value_code};\n{}{place} = {temp};", "    ".repeat(self.indent));
+        }
+        let place = self.place(target);
+        if let Some(code) = self.compound_assignment(target, value, &place) {
+            return code;
         }
         let mut value_code = self.coerce(value, &target_ty).0;
         // A `string[n]` variable silently truncates longer values in Turbo
@@ -1698,11 +1718,29 @@ impl<'a> Codegen<'a> {
     /// Is `e` the place `place` (so `place := e + n` can be `place += n`)?
     /// Generating `e` just to compare may make temporaries for its calls;
     /// they're thrown away, as the code that would use them is.
-    fn same_as_place(&mut self, e: &Expr, place: &str) -> bool {
-        let pending = self.pending.len();
-        let same = self.expr(e).0 == place;
-        self.pending.truncate(pending);
-        same
+    /// Do `a` and `b` name the same place: the same variable, field,
+    /// element (with the same index variables or literals) or pointer
+    /// target? Compared in the Pascal, since the Rust differs between
+    /// reading and writing (`p.get().x`, `p.get_mut().x`).
+    fn same_place(&self, a: &Expr, b: &Expr) -> bool {
+        match (&a.kind, &b.kind) {
+            (ExprKind::Name(x), ExprKind::Name(y)) => {
+                x.key() == y.key()
+                    && self.a.refs.get(&a.id) == self.a.refs.get(&b.id)
+                    && self.a.self_fields.get(&a.id) == self.a.self_fields.get(&b.id)
+            }
+            (ExprKind::Int(x), ExprKind::Int(y)) => x == y,
+            (ExprKind::Field(a_base, a_field), ExprKind::Field(b_base, b_field)) => {
+                a_field.key() == b_field.key() && self.same_place(a_base, b_base)
+            }
+            (ExprKind::Index(a_base, a_indexes), ExprKind::Index(b_base, b_indexes)) => {
+                self.same_place(a_base, b_base)
+                    && a_indexes.len() == b_indexes.len()
+                    && a_indexes.iter().zip(b_indexes).all(|(x, y)| self.same_place(x, y))
+            }
+            (ExprKind::Deref(x), ExprKind::Deref(y)) => self.same_place(x, y),
+            _ => false,
+        }
     }
 
     /// The Rust place expression for writing variable `sym` in the current

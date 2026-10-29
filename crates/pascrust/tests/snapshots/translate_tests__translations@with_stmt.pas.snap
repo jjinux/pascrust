@@ -94,8 +94,7 @@ fn pascal_main() {
         node.get_mut().next = head.clone();
         head = p.clone();
         p = Ptr::nil();
-        let value = node.get().value + 1;
-        node.get_mut().value = value;
+        node.get_mut().value += 1;
     }
     p = head.clone();
     while !p.is_nil() {

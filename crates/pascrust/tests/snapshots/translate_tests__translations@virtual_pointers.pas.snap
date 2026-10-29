@@ -299,8 +299,7 @@ fn pascal_main() {
     circle = Ptr::new(AnyShape::Circle(TCircle::default()));
     circle.get_mut().as_t_circle_mut().init(2, 20);
     pc = circle.clone();
-    let value = pc.get().as_t_circle().radius + 1;
-    pc.get_mut().as_t_circle_mut().radius = value;
+    pc.get_mut().as_t_circle_mut().radius += 1;
     add(&mut list, pc.clone());
     ps = Ptr::new(AnyShape::Square(TSquare::default()));
     ps.get_mut().as_t_square_mut().base.init(3);
