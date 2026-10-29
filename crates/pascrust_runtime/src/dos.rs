@@ -238,7 +238,8 @@ pub const ARCHIVE: u8 = 0x20;
 pub const ANY_FILE: u8 = 0x3F;
 
 /// The `Dos` unit's `SearchRec`. TP kept DOS's search state in `Fill`; we
-/// keep a handle there to the matches not yet returned (see `SEARCHES`).
+/// keep a handle there to the search's matches, and how many it has
+/// returned (see `SEARCHES`).
 /// `name` is a full string, not TP's `string[12]`, so long names fit.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SearchRec {
@@ -258,12 +259,37 @@ struct Found {
     size: i32,
 }
 
+/// How many searches stay open at once. DOS kept a search's state in the
+/// `SearchRec` itself, so a program never closes one: one that stops early
+/// (`FindFirst` to see if a file exists) leaves it open, and the oldest are
+/// closed past this many.
+const OPEN_SEARCHES: usize = 100;
+
 thread_local! {
-    /// The matches each search still has to return, by the handle in its
-    /// `SearchRec.Fill`. `RefCell` because `FindNext` changes them.
-    static SEARCHES: std::cell::RefCell<std::collections::HashMap<u32, std::collections::VecDeque<Found>>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// The matches of each open search, by the handle in bytes 1-4 of its
+    /// `SearchRec.Fill`; bytes 5-8 hold how many it has returned. So a copy
+    /// of a `SearchRec` goes on from the same place on its own, as in DOS.
+    /// Handles only grow, so a `BTreeMap`'s first entry is the oldest
+    /// search. (`Rc` because the copies share the list; `RefCell` because
+    /// searches open and close.)
+    static SEARCHES: std::cell::RefCell<std::collections::BTreeMap<u32, std::rc::Rc<Vec<Found>>>> =
+        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
     static NEXT_SEARCH: Cell<u32> = const { Cell::new(1) };
+}
+
+/// The handle and position kept in a `SearchRec`'s `Fill`.
+fn search_state(s: &SearchRec) -> (u32, u32) {
+    let byte = |i: i32| s.fill[i];
+    let handle = u32::from_le_bytes([byte(1), byte(2), byte(3), byte(4)]);
+    let position = u32::from_le_bytes([byte(5), byte(6), byte(7), byte(8)]);
+    (handle, position)
+}
+
+fn set_search_state(s: &mut SearchRec, handle: u32, position: u32) {
+    let bytes = handle.to_le_bytes().into_iter().chain(position.to_le_bytes());
+    for (i, byte) in bytes.enumerate() {
+        s.fill[i as i32 + 1] = byte;
+    }
 }
 
 /// `FindFirst(path, attr, s)`: find the first file matching `path` (DOS
@@ -271,10 +297,15 @@ thread_local! {
 /// files are always included; directories only if `attr` has `Directory`,
 /// hidden files (names starting with `.`) only if it has `Hidden`. Matches
 /// come in name order. `DosError` is 0 if one was found, 18 if none was,
-/// 3 if the directory doesn't exist.
+/// 3 if the directory doesn't exist. `attr = VolumeID` alone asks for the
+/// disk's label, which there isn't one of.
 pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut SearchRec) {
     let path = path.into().to_string();
     let attr = attr.into() as u8;
+    // A new search replaces the one this `SearchRec` held, as it did in DOS.
+    let (old, _) = search_state(s);
+    SEARCHES.with_borrow_mut(|searches| searches.remove(&old));
+    set_search_state(s, 0, 0);
     let split = path.rfind(['\\', '/', ':']).map_or(0, |i| i + 1);
     let (dir, pattern) = path.split_at(split);
     let dir_path = if dir.is_empty() { std::path::PathBuf::from(".") } else { dos_path(dir) };
@@ -283,15 +314,24 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
         return;
     };
     let mut found: Vec<Found> = Vec::new();
-    // DOS listed `.` and `..` in subdirectories; `read_dir` doesn't.
-    if attr & DIRECTORY != 0 && matches!(pattern, "*.*" | "*") && !dir.is_empty() {
+    // DOS listed `.` and `..` in every directory but a root; `read_dir`
+    // doesn't list them.
+    let is_root = dir_path.canonicalize().is_ok_and(|p| p.parent().is_none());
+    if attr & DIRECTORY != 0 && !is_root {
         for name in [".", ".."] {
-            found.push(Found { name: name.to_string(), attr: DIRECTORY, time: 0, size: 0 });
+            if dos_match(pattern, name) {
+                found.push(Found { name: name.to_string(), attr: DIRECTORY, time: 0, size: 0 });
+            }
         }
     }
     for entry in entries.flatten() {
+        if attr == VOLUME_ID {
+            break;
+        }
         let name = entry.file_name().to_string_lossy().into_owned();
-        let Ok(meta) = entry.metadata() else { continue };
+        // Follow a symbolic link to see what it points to (a link to a
+        // directory is a directory); a broken link is listed as itself.
+        let Ok(meta) = std::fs::metadata(entry.path()).or_else(|_| entry.metadata()) else { continue };
         let mut file_attr = if meta.is_dir() { DIRECTORY } else { ARCHIVE };
         if meta.permissions().readonly() {
             file_attr |= READ_ONLY;
@@ -310,37 +350,36 @@ pub fn find_first(path: impl Into<PString>, attr: impl Into<i32>, s: &mut Search
     found.sort_by_key(|f| f.name.to_ascii_lowercase());
     let id = NEXT_SEARCH.with(|n| {
         let id = n.get();
-        n.set(id.wrapping_add(1));
+        n.set(id + 1);
         id
     });
-    for (i, byte) in id.to_le_bytes().into_iter().enumerate() {
-        s.fill[i as i32 + 1] = byte;
-    }
-    SEARCHES.with_borrow_mut(|searches| searches.insert(id, found.into()));
+    SEARCHES.with_borrow_mut(|searches| {
+        searches.insert(id, std::rc::Rc::new(found));
+        if searches.len() > OPEN_SEARCHES {
+            searches.pop_first();
+        }
+    });
+    set_search_state(s, id, 0);
     find_next(s);
 }
 
 /// `FindNext(s)`: the next match of the search `s` started. `DosError` is
 /// 18 when there are no more.
 pub fn find_next(s: &mut SearchRec) {
-    let id = u32::from_le_bytes([s.fill[1], s.fill[2], s.fill[3], s.fill[4]]);
-    let next = SEARCHES.with_borrow_mut(|searches| {
-        let next = searches.get_mut(&id).and_then(|matches| matches.pop_front());
-        if next.is_none() {
-            searches.remove(&id);
-        }
-        next
-    });
-    match next {
-        Some(found) => {
-            s.name = PString::from(found.name.as_str());
-            s.attr = found.attr;
-            s.time = found.time;
-            s.size = found.size;
-            set_dos_error(0);
-        }
-        None => set_dos_error(18),
-    }
+    let (id, position) = search_state(s);
+    let matches = SEARCHES.with_borrow(|searches| searches.get(&id).cloned());
+    let Some(found) = matches.as_ref().and_then(|m| m.get(position as usize)) else {
+        // Past the end: the search is over.
+        SEARCHES.with_borrow_mut(|searches| searches.remove(&id));
+        set_dos_error(18);
+        return;
+    };
+    s.name = PString::from(found.name.as_str());
+    s.attr = found.attr;
+    s.time = found.time;
+    s.size = found.size;
+    set_search_state(s, id, position + 1);
+    set_dos_error(0);
 }
 
 /// Does `name` match the DOS wildcard `pattern`? Case doesn't matter, and
@@ -365,6 +404,9 @@ fn glob(pattern: &[u8], text: &[u8]) -> bool {
         (None, None) => true,
         (Some(b'*'), _) => glob(&pattern[1..], text) || (!text.is_empty() && glob(pattern, &text[1..])),
         (Some(b'?'), Some(_)) => glob(&pattern[1..], &text[1..]),
+        // DOS padded names with blanks, so `?` also matches nothing at the
+        // end: `DATA?.DAT` matches `DATA.DAT`.
+        (Some(b'?'), None) => glob(&pattern[1..], text),
         (Some(p), Some(t)) if p == t => glob(&pattern[1..], &text[1..]),
         _ => false,
     }
@@ -545,6 +587,47 @@ mod find_tests {
         assert!(dos_match("DATA?.DAT", "data1.dat"));
         assert!(!dos_match("DATA?.DAT", "data12.dat"));
         assert!(dos_match("*", ".hidden"));
+        assert!(dos_match("DATA?.DAT", "data.dat"));
+        assert!(!dos_match("*.PAS", "."));
+    }
+
+    /// A scratch directory under `target/`, emptied.
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/dos-tests").join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn searches_are_closed() {
+        let dir = scratch("searches");
+        std::fs::write(dir.join("one.txt"), "1").unwrap();
+        let pattern = format!("{}/*.txt", dir.display());
+        // Searches that stop early, each in a new SearchRec: only the
+        // newest stay open.
+        for _ in 0..OPEN_SEARCHES + 50 {
+            find_first(pattern.as_str(), ARCHIVE, &mut SearchRec::default());
+        }
+        assert_eq!(SEARCHES.with_borrow(|s| s.len()), OPEN_SEARCHES);
+        // A search that runs out is closed.
+        let mut s = SearchRec::default();
+        find_first(pattern.as_str(), ARCHIVE, &mut s);
+        let (id, _) = search_state(&s);
+        find_next(&mut s);
+        assert_eq!(dos_error(), 18);
+        assert!(SEARCHES.with_borrow(|searches| !searches.contains_key(&id)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_to_a_directory_is_a_directory() {
+        let dir = scratch("links");
+        std::fs::create_dir(dir.join("sub")).unwrap();
+        std::os::unix::fs::symlink(dir.join("sub"), dir.join("link")).unwrap();
+        let mut s = SearchRec::default();
+        find_first(format!("{}/link", dir.display()).as_str(), DIRECTORY, &mut s);
+        assert_eq!((dos_error(), s.attr), (0, DIRECTORY));
     }
 
     #[test]

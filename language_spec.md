@@ -239,8 +239,13 @@ Dos unit
   (`Directory`, `AnyFile`, ...): DOS wildcards (`*.*` matches every name),
   directories only with `Directory`, dot-files count as `Hidden`, matches
   in name order, `DosError` 18 when there are no more and 3 for a missing
-  directory. `SearchRec.Name` is a full string (TP's was `string[12]`), so
-  long names fit
+  directory. `?` also matches nothing at the end of a name (`DATA?.DAT`
+  finds `DATA.DAT`), `.` and `..` are listed in every directory but a
+  root, a link to a directory counts as a directory, and `VolumeID` alone
+  finds nothing (there's no volume label). A copy of a `SearchRec` goes on
+  from the same place by itself. `SearchRec.Name` is a full string (TP's
+  was `string[12]`), so long names fit. A search that stops early stays
+  open, as nothing tells pascrust it's done; the newest 100 are kept
 - Faked: `DosVersion` (DOS 6.22), `DiskFree`/`DiskSize` (512 MB free of a
   1 GB disk on every drive: real disks are too big for a `LongInt`),
   `SetDate`/`SetTime` (don't change the computer's clock),

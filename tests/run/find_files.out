@@ -2,8 +2,15 @@ ok: FindFirst *.TXT finds both, in name order
 ok: DosError 18 after the last one
 ok: Size and Attr of a file
 ok: Time of a file
-ok: with Directory, *.* finds the subdirectory
+ok: with Directory, *.* finds the subdirectory, . and ..
+ok: an empty subdirectory has . and ..
+ok: a pattern . doesn't match leaves it out
 ok: without Directory, no directories
+ok: a copy of a SearchRec goes on by itself
+ok: ? matches nothing at the end of a name
+ok: ????????.??? matches every name
+ok: VolumeID alone: no volume label
+ok: a failed FindFirst ends the search before it
 ok: no match: DosError 18
 ok: missing directory: DosError 3
-8 of 8 checks passed
+15 of 15 checks passed

@@ -5,7 +5,7 @@ program FindFiles;
 uses Dos;
 var
   checks, failures: Integer;
-  s: SearchRec;
+  s, t: SearchRec;
   f: Text;
   found: string;
   count: Integer;
@@ -59,7 +59,15 @@ begin
       count := count + 1;
     FindNext(s);
   end;
-  Check(count = 1, 'with Directory, *.* finds the subdirectory');
+  Check(count = 3, 'with Directory, *.* finds the subdirectory, . and ..');
+  FindFirst('sub\*.*', Directory, s);
+  found := s.Name;
+  FindNext(s);
+  found := found + ' ' + s.Name;
+  FindNext(s);
+  Check((found = '. ..') and (DosError = 18), 'an empty subdirectory has . and ..');
+  FindFirst('*.TXT', Directory, s);
+  Check(s.Name = 'a.txt', 'a pattern . doesn''t match leaves it out');
   FindFirst('*.*', Archive, s);
   count := 0;
   while DosError = 0 do
@@ -69,6 +77,21 @@ begin
     FindNext(s);
   end;
   Check(count = 0, 'without Directory, no directories');
+  FindFirst('*.TXT', AnyFile, s);
+  t := s;
+  FindNext(t);
+  FindNext(s);
+  Check((t.Name = 'b.txt') and (s.Name = 'b.txt'), 'a copy of a SearchRec goes on by itself');
+  FindFirst('B?.TXT', AnyFile, s);
+  Check((DosError = 0) and (s.Name = 'b.txt'), '? matches nothing at the end of a name');
+  FindFirst('????????.???', Archive, s);
+  Check((DosError = 0) and (s.Name = 'a.txt'), '????????.??? matches every name');
+  FindFirst('*.*', VolumeID, s);
+  Check(DosError = 18, 'VolumeID alone: no volume label');
+  FindFirst('*.TXT', AnyFile, s);
+  FindFirst('nowhere\*.*', AnyFile, s);
+  FindNext(s);
+  Check(DosError = 18, 'a failed FindFirst ends the search before it');
   FindFirst('*.zzz', AnyFile, s);
   Check(DosError = 18, 'no match: DosError 18');
   FindFirst('nowhere\*.*', AnyFile, s);

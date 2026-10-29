@@ -791,6 +791,12 @@ sense; only what can't be real is faked.
   a modern file system, so they're remembered per path while the program
   runs (`ReadOnly` really changes the permissions). The routines that take
   TP's untyped `var F` take any file through the runtime's `AnyFile` trait.
+  DOS kept a `FindFirst` search's state in the `SearchRec` itself, so a
+  program never closes a search; pascrust keeps each search's matches in
+  a table, with the handle and position in `SearchRec.Fill`. A search is
+  dropped when it runs out or its `SearchRec` starts another, and past
+  100 open searches the oldest goes (a search that stops early, to see if
+  a file exists, would otherwise stay forever).
 - **System and Crt** (`MemAvail`/`MaxAvail` report 512,000 bytes,
   `Mark`/`Release` and `SetTextBuf` become comments, `Test8087` is 3,
   `DirectVideo`/`CheckSnow`/`CheckEOF` are remembered and ignored): see

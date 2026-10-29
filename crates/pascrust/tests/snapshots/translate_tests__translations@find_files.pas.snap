@@ -46,6 +46,7 @@ fn pascal_main() {
     let mut checks: i16 = 0;
     let mut failures: i16 = 0;
     let mut s: SearchRec = SearchRec::default();
+    let mut t: SearchRec = SearchRec::default();
     let mut f: PText = PText::default();
     let mut found: PString = PString::new();
     let mut count: i16 = 0;
@@ -81,7 +82,15 @@ fn pascal_main() {
         }
         find_next(&mut s);
     }
-    check(&mut checks, &mut failures, count == 1, pstr("with Directory, *.* finds the subdirectory"));
+    check(&mut checks, &mut failures, count == 3, pstr("with Directory, *.* finds the subdirectory, . and .."));
+    find_first("sub\\*.*", DIRECTORY, &mut s);
+    found = s.name;
+    find_next(&mut s);
+    found = found + " " + s.name;
+    find_next(&mut s);
+    check(&mut checks, &mut failures, found == ". .." && dos_error() == 18, pstr("an empty subdirectory has . and .."));
+    find_first("*.TXT", DIRECTORY, &mut s);
+    check(&mut checks, &mut failures, s.name == "a.txt", pstr("a pattern . doesn't match leaves it out"));
     find_first("*.*", ARCHIVE, &mut s);
     count = 0;
     while dos_error() == 0 {
@@ -91,6 +100,31 @@ fn pascal_main() {
         find_next(&mut s);
     }
     check(&mut checks, &mut failures, count == 0, pstr("without Directory, no directories"));
+    find_first("*.TXT", ANY_FILE, &mut s);
+    t = s;
+    find_next(&mut t);
+    find_next(&mut s);
+    check(
+        &mut checks,
+        &mut failures,
+        t.name == "b.txt" && s.name == "b.txt",
+        pstr("a copy of a SearchRec goes on by itself"),
+    );
+    find_first("B?.TXT", ANY_FILE, &mut s);
+    check(
+        &mut checks,
+        &mut failures,
+        dos_error() == 0 && s.name == "b.txt",
+        pstr("? matches nothing at the end of a name"),
+    );
+    find_first("????????.???", ARCHIVE, &mut s);
+    check(&mut checks, &mut failures, dos_error() == 0 && s.name == "a.txt", pstr("????????.??? matches every name"));
+    find_first("*.*", VOLUME_ID, &mut s);
+    check(&mut checks, &mut failures, dos_error() == 18, pstr("VolumeID alone: no volume label"));
+    find_first("*.TXT", ANY_FILE, &mut s);
+    find_first("nowhere\\*.*", ANY_FILE, &mut s);
+    find_next(&mut s);
+    check(&mut checks, &mut failures, dos_error() == 18, pstr("a failed FindFirst ends the search before it"));
     find_first("*.zzz", ANY_FILE, &mut s);
     check(&mut checks, &mut failures, dos_error() == 18, pstr("no match: DosError 18"));
     find_first("nowhere\\*.*", ANY_FILE, &mut s);
