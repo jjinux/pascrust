@@ -441,7 +441,7 @@ impl<T> FileRecord for crate::ptr::Ptr<T> {
 macro_rules! file_record {
     (enum $ty:ident) => {
         impl $crate::io::FileRecord for $ty {
-            fn encode(&self, out: &mut Vec<u8>) {
+            fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
                 out.push($crate::ordinal::Ordinal::ord(*self) as u8);
             }
             fn decode(input: &mut &[u8]) -> Self {
@@ -452,7 +452,7 @@ macro_rules! file_record {
     };
     ($ty:ident { $($field:ident),* $(,)? }) => {
         impl $crate::io::FileRecord for $ty {
-            fn encode(&self, out: &mut Vec<u8>) {
+            fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
                 $( $crate::io::FileRecord::encode(&self.$field, out); )*
             }
             fn decode(input: &mut &[u8]) -> Self {

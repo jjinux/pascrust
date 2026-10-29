@@ -145,6 +145,11 @@ const RESERVED: &[&str] = &[
     "random_word",
     "io_unchecked",
     "pas_str",
+    // `TypeOf` adds a `type_name` method to an object hierarchy.
+    "type_name",
+    // A trait the generated code implements by name (`impl Default for
+    // AnyShape`, `..Default::default()`).
+    "Default",
     // The setters of runtime variables (`RandSeed := 1` is `set_rand_seed(1)`).
     "set_exit_code",
     "set_rand_seed",
