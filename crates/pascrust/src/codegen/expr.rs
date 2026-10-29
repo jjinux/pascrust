@@ -293,6 +293,18 @@ impl<'a> Codegen<'a> {
         {
             return ("PString::new()".to_string(), prec::POSTFIX);
         }
+        // `p := Node1` and `Node1 := p` between `Pointer` and a typed pointer.
+        match (to, &from) {
+            (Type::AnyPointer, Type::Pointer(_)) => {
+                return (format!("AnyPtr::from_ptr(&{})", self.selector_base(e)), prec::POSTFIX);
+            }
+            (Type::Pointer(target), Type::AnyPointer) => {
+                let target = target.target().rust();
+                return (format!("{}.cast::<{target}>()", paren(self.expr(e), prec::POSTFIX)), prec::POSTFIX);
+            }
+            (Type::AnyPointer, Type::Nil) => return ("AnyPtr::nil()".to_string(), prec::POSTFIX),
+            _ => {}
+        }
         // A descendant object where an ancestor is expected: its ancestor
         // part, `circle.base` (cloned unless it's `Copy`). TP copied its
         // table of virtual methods too, so the copy would still act as a
@@ -621,6 +633,12 @@ impl<'a> Codegen<'a> {
     /// from where the argument starts (`&mut x`, `&mut string_bytes(&mut s,
     /// 30)`, `&mut bytes_from(&mut buf, 9)`).
     pub(super) fn view_arg(&mut self, arg: &Expr) -> String {
+        // `p^` of a `Pointer`: the bytes `GetMem` gave it.
+        if let ExprKind::Deref(pointer) = &arg.kind
+            && *self.a.type_of(pointer.id) == Type::AnyPointer
+        {
+            return format!("&mut {}.bytes()", self.selector_base(pointer));
+        }
         if *self.a.type_of(arg.id) == Type::Untyped {
             return format!("&mut {}", self.untyped_name(arg));
         }
@@ -637,6 +655,11 @@ impl<'a> Codegen<'a> {
 
     /// A variable's bytes to read from (`Move`'s source).
     pub(super) fn view_bytes(&mut self, arg: &Expr) -> String {
+        if let ExprKind::Deref(pointer) = &arg.kind
+            && *self.a.type_of(pointer.id) == Type::AnyPointer
+        {
+            return format!("&{}.bytes().to_bytes()", self.selector_base(pointer));
+        }
         if *self.a.type_of(arg.id) == Type::Untyped {
             return format!("&{}", self.untyped_name(arg));
         }
@@ -813,6 +836,13 @@ impl<'a> Codegen<'a> {
             SymKind::TypeName(ty) if *self.a.type_of(args[0].id) == Type::Untyped => {
                 let bytes = self.untyped_name(&args[0]);
                 format!("{bytes}.read::<{}>()", ty.rust())
+            }
+            // `PNode(p)`, `Pointer(Node1)`: the conversions `coerce` makes.
+            SymKind::TypeName(ty @ (Type::AnyPointer | Type::Pointer(_)))
+                if matches!(self.a.type_of(args[0].id), Type::AnyPointer | Type::Pointer(_)) =>
+            {
+                let ty = ty.clone();
+                self.coerce(&args[0], &ty).0
             }
             SymKind::TypeName(ty) => {
                 let ty = ty.clone();
@@ -1238,6 +1268,8 @@ fn comparison_type(l: &Type, r: &Type) -> Type {
         _ if l.is_numeric() && r.is_numeric() => numeric_common(l, r).unwrap_or(Type::Error),
         (Type::Char | Type::StrLit(1), Type::Char | Type::StrLit(1)) => Type::Char,
         _ if l.is_stringish() && r.is_stringish() => Type::Str { cap: 255 },
+        // A `Pointer` and a typed pointer are compared as `Pointer`s.
+        (Type::AnyPointer, _) | (_, Type::AnyPointer) => Type::AnyPointer,
         _ => l.concrete(),
     }
 }

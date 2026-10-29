@@ -40,6 +40,7 @@ builtins! {
     Val => "val",
     // Pointers
     New => "new", Dispose => "dispose", Assigned => "assigned", Mark => "mark", Release => "release",
+    GetMem => "getmem", FreeMem => "freemem",
     // Sets
     Include => "include", Exclude => "exclude",
     // Files

@@ -292,6 +292,17 @@ impl<'a> Codegen<'a> {
             },
             Randomize => "randomize()".to_string(),
             New => self.new_call(call_id, args),
+            // A typed pointer gets its whole record (or array), which is
+            // what `GetMem(p, n * SizeOf(T))` was used for: an array as long
+            // as needed; past `n` is then a range error, not corruption.
+            GetMem => match self.a.type_of(args[0].id).clone() {
+                Type::AnyPointer => format!("{} = AnyPtr::alloc({});", self.place(&args[0]), self.expr(&args[1]).0),
+                ty => format!("{} = {};", self.place(&args[0]), self.alloc(&ty)),
+            },
+            FreeMem => match self.a.type_of(args[0].id) {
+                Type::AnyPointer => format!("{}.free();", self.place_receiver(&args[0])),
+                _ => format!("{}.dispose();", self.place_receiver(&args[0])),
+            },
             Dispose => {
                 let dispose = format!("{}.dispose();", self.place_receiver(&args[0]));
                 match self.a.object_calls.get(&call_id) {

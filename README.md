@@ -156,8 +156,8 @@ units. Some things a modern machine doesn't have are faked so old programs
 still run: `Lst` prints to a file or a command (see [Printing](#printing)),
 overlays need no `.OVR` file, `MemAvail` reports plenty of memory.
 
-Not supported yet: variant records, procedural types, `goto`, `GetMem` and
-untyped pointers, and `PChar` with the `Strings` unit. See `language_spec.md` for the details
+Not supported yet: variant records, procedural types, `goto`, pointer
+arithmetic, and `PChar` with the `Strings` unit. See `language_spec.md` for the details
 and `TODO.md` for what's next. Runtime errors print Turbo Pascal's message
 and exit code (e.g. `Runtime error 201: Range check error ...`).
 

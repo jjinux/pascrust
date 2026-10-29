@@ -126,6 +126,14 @@ Built-ins (System unit)
   `BlockWrite(f, s[1], Length(s))`), `Seek`/`FilePos`/`FileSize`/`Eof`/
   `Truncate` in records. Without `Result`, reading fewer than `Count`
   records is runtime error 100; with it, only the bytes read change
+- The untyped `Pointer`: it holds any typed pointer (`p := node`), is cast
+  back with `PNode(p)^.x` (a cast to the wrong type is runtime error 204),
+  compares with typed pointers and `nil`, and gets raw memory from
+  `GetMem(p, Size)`, which `p^` passes as untyped memory (`BlockRead(f,
+  p^, n)`, `Move(p^, x, n)`). `GetMem` for a typed pointer allocates the
+  whole type, which covers the dynamic-array idiom (`GetMem(a, n *
+  SizeOf(Integer))` with `a: ^array[0..999] of Integer`). `FreeMem(p,
+  Size)` frees either
 - Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
   routine sees the caller's variable as TP's bytes, through a typecast
   (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a
@@ -367,8 +375,8 @@ Later (real TP features, not in the examples, worth doing in order)
    real`), `@proc`
 5. `goto` / `label` (only the structured uses: jump forward out of nested
    loops, which Rust can express with labeled `break`)
-6. (Untyped `var` parameters are done, in tier 2.) `GetMem`/`FreeMem`,
-   untyped `Pointer`, `Addr`/`@` on variables (would need
+6. (Untyped `var` parameters, `GetMem`/`FreeMem` and the untyped `Pointer`
+   are done, in tier 2.) Pointer arithmetic, `Addr`/`@` on variables (would need
    the place-descriptor representation from `architecture.md` §15)
 7. (Untyped files are done, in tier 2.) `TextRec`/`FileRec`
 8. (Done, now in tier 2: TP-exact binary layout for `file of Rec`.)

@@ -390,7 +390,17 @@ pub struct Ptr<T>(Option<Rc<RefCell<T>>>);
   parameter, so sema's overlap check applies) or the heap (a `RefCell`
   error), so no program can tell. See `notes/untyped_memory.md` for the
   plan this is step 1 of.
-- Untyped `Pointer`, `GetMem`/`FreeMem` (step 3 of that plan), pointer
+- The untyped `Pointer` (step 3 of that plan) is the runtime's `AnyPtr`,
+  an enum: `Nil`; `Bytes(Rc<RefCell<Vec<u8>>>)`, the memory from
+  `GetMem(p, n)`; and `Typed(Rc<dyn Any>)`, a typed `Ptr<T>` stored as a
+  `Pointer` (`AnyPtr::from_ptr(&n)`). `PNode(p)` is `p.cast::<Node>()`,
+  which downcasts the `Rc<dyn Any>` back and is runtime error 204 for the
+  wrong type, as is a typed pointer's record used as bytes. `p^` has the
+  type `Untyped`, so it goes only where an untyped `var` does, as
+  `&mut p.bytes()`. Comparisons go through `AnyPtr` (identity of the
+  `Rc`). `GetMem` on a typed pointer allocates the whole type (Fable's
+  point 4: the dynamic-array idiom), so it is `New`.
+- Pointer
   arithmetic, `Addr`/`@` on variables, `Seg`/`Ofs`/`Ptr(...)` and `Mem[]`
   are out of scope for now.
 

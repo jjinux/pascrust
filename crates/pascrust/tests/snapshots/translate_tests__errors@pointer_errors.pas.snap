@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/pointer_errors.pas
+---
+pointer_errors.pas:9:8: error: an untyped value (an untyped parameter, or `p^` of a `Pointer`) can only be passed on or typecast (`TBytes(Data)`)
+  n := p^;
+       ^^
+
+pointer_errors.pas:10:11: error: an untyped value (an untyped parameter, or `p^` of a `Pointer`) can only be passed on or typecast (`TBytes(Data)`)
+  WriteLn(p^);
+          ^^
+
+pointer_errors.pas:11:3: error: wrong number of arguments to `GetMem`
+  GetMem(p);
+  ^^^^^^^^^

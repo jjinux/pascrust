@@ -7,7 +7,7 @@ untyped_errors.pas:6:16: error: an untyped parameter must be `var`
 procedure Show(Data);
                ^^^^
 
-untyped_errors.pas:12:11: error: an untyped parameter can only be passed on or typecast (`TBytes(Data)`)
+untyped_errors.pas:12:11: error: an untyped value (an untyped parameter, or `p^` of a `Pointer`) can only be passed on or typecast (`TBytes(Data)`)
   WriteLn(Data);
           ^^^^
 

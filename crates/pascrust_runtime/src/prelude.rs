@@ -11,7 +11,7 @@ pub use crate::io::{FileRecord, PBlockFile, PFile, PText, PasWrite, eof, eoln, s
 pub use crate::ordinal::{Enumerated, Ordinal, enum_range};
 pub use crate::overlay::*;
 pub use crate::printer::Lst;
-pub use crate::ptr::Ptr;
+pub use crate::ptr::{AnyPtr, Ptr};
 pub use crate::run::{halt, io_result, io_unchecked, rte, run_error};
 pub use crate::set::PSet;
 pub use crate::string::{PString, pos, pstr};

@@ -206,3 +206,145 @@ mod tests {
         let _ = p.get().value;
     }
 }
+
+/// Pascal's untyped `Pointer`: `nil`, a block of bytes from `GetMem`, or any
+/// typed pointer with its type forgotten (`p := Node1`, then `PNode(p)^`).
+/// Turbo Pascal's `Pointer` was just an address; here the type a pointer
+/// had is kept out of sight in an `Rc<dyn Any>`, and `PNode(p)` asks for it
+/// back (`p.cast::<Node>()`), which is a runtime error if it was something
+/// else: TP would have read the bytes as the wrong type.
+#[derive(Clone, Default)]
+pub enum AnyPtr {
+    #[default]
+    Nil,
+    /// `GetMem(p, Size)`: `Size` bytes, which `p^` sees as untyped memory.
+    Bytes(Rc<RefCell<Vec<u8>>>),
+    /// A typed pointer's record cell, its type erased. (`dyn Any` is Rust's
+    /// way of holding "a value of some type", which `downcast` recovers.)
+    Typed(Rc<dyn std::any::Any>),
+}
+
+impl AnyPtr {
+    pub const fn nil() -> AnyPtr {
+        AnyPtr::Nil
+    }
+
+    pub fn is_nil(&self) -> bool {
+        matches!(self, AnyPtr::Nil)
+    }
+
+    /// `GetMem(p, Size)` for a `Pointer`: `Size` zero bytes.
+    pub fn alloc(size: impl Into<i32>) -> AnyPtr {
+        let size = usize::try_from(size.into()).unwrap_or(0);
+        AnyPtr::Bytes(Rc::new(RefCell::new(vec![0; size])))
+    }
+
+    /// `FreeMem(p, Size)`: the bytes are gone; using them again is runtime
+    /// error 201. (As in TP, `p` itself is unchanged.)
+    pub fn free(&mut self) {
+        match self {
+            AnyPtr::Bytes(bytes) => bytes.borrow_mut().clear(),
+            AnyPtr::Nil => crate::rte(204, "Invalid pointer operation: FreeMem(nil)"),
+            AnyPtr::Typed(_) => {}
+        }
+    }
+
+    /// `p := Node1`: any typed pointer, its type forgotten.
+    pub fn from_ptr<T: 'static>(pointer: &Ptr<T>) -> AnyPtr {
+        match &pointer.0 {
+            Some(cell) => AnyPtr::Typed(cell.clone()),
+            None => AnyPtr::Nil,
+        }
+    }
+
+    /// `PNode(p)`, or `Node1 := p`: the typed pointer back.
+    pub fn cast<T: 'static>(&self) -> Ptr<T> {
+        match self {
+            AnyPtr::Nil => Ptr::nil(),
+            AnyPtr::Typed(cell) => match cell.clone().downcast::<RefCell<Option<T>>>() {
+                Ok(cell) => Ptr(Some(cell)),
+                Err(_) => crate::rte(204, "Invalid pointer operation: a Pointer used as a pointer to another type"),
+            },
+            AnyPtr::Bytes(_) => crate::rte(204, "Invalid pointer operation: memory from GetMem used as a typed record"),
+        }
+    }
+
+    /// `p^` as untyped memory (`BlockRead(f, p^, n)`): its bytes.
+    pub fn bytes(&self) -> BufferView {
+        match self {
+            AnyPtr::Bytes(bytes) => BufferView(bytes.clone()),
+            AnyPtr::Nil => crate::rte(204, "Invalid pointer operation: dereferencing nil"),
+            AnyPtr::Typed(_) => crate::rte(204, "Invalid pointer operation: a typed record used as untyped memory"),
+        }
+    }
+}
+
+/// Two `Pointer`s are equal when they point to the same thing.
+impl PartialEq for AnyPtr {
+    fn eq(&self, other: &AnyPtr) -> bool {
+        match (self, other) {
+            (AnyPtr::Nil, AnyPtr::Nil) => true,
+            (AnyPtr::Bytes(a), AnyPtr::Bytes(b)) => Rc::ptr_eq(a, b),
+            (AnyPtr::Typed(a), AnyPtr::Typed(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Debug for AnyPtr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AnyPtr::Nil => write!(f, "nil"),
+            AnyPtr::Bytes(bytes) => write!(f, "Pointer({} bytes)", bytes.borrow().len()),
+            AnyPtr::Typed(_) => write!(f, "Pointer(..)"),
+        }
+    }
+}
+
+/// As for `Ptr`, a stored pointer is 4 zero bytes and reads back as nil.
+impl crate::io::FileRecord for AnyPtr {
+    fn encode(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&[0; 4]);
+    }
+    fn decode(input: &mut &[u8]) -> Self {
+        *input = &input[4.min(input.len())..];
+        AnyPtr::Nil
+    }
+}
+
+/// The bytes a `Pointer` from `GetMem` points to, as untyped memory.
+pub struct BufferView(Rc<RefCell<Vec<u8>>>);
+
+impl crate::bytes::ByteView for BufferView {
+    fn to_bytes(&self) -> Vec<u8> {
+        self.0.borrow().clone()
+    }
+
+    fn set_bytes(&mut self, bytes: &[u8]) {
+        let mut buffer = self.0.borrow_mut();
+        let n = bytes.len().min(buffer.len());
+        buffer[..n].copy_from_slice(&bytes[..n]);
+    }
+}
+
+#[cfg(test)]
+mod any_ptr_tests {
+    use super::*;
+    use crate::bytes::ByteView;
+
+    #[test]
+    fn a_pointer_keeps_its_type_out_of_sight() {
+        let node: Ptr<i16> = Ptr::new(5);
+        let any = AnyPtr::from_ptr(&node);
+        assert_eq!(*any.cast::<i16>().get(), 5);
+        assert!(any == AnyPtr::from_ptr(&node));
+        assert!(AnyPtr::nil().cast::<i16>().is_nil());
+    }
+
+    #[test]
+    fn getmem_gives_bytes() {
+        let p = AnyPtr::alloc(4);
+        p.bytes().set_bytes(&[1, 2]);
+        assert_eq!(p.bytes().to_bytes(), [1, 2, 0, 0]);
+    }
+}

@@ -249,8 +249,8 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews are on hold (the user, 2026-10-29); every commit still needs one when they resume. Not yet reviewed: `afba062..HEAD` (from 53cd1f8 on: per-procedure capture names, and/or keep their lets, call indexes in written places, pointer reads next to calls, argument order, Val's `-$1`, C: as the file system's root). Keep this range up to date.
-- [ ] Untyped memory, as planned in `notes/untyped_memory.md` (agreed with Fable's review; the user said go ahead). Done: step 0 (TP-exact typed files), step 1 (untyped `var` parameters, byte views, `Move`/`FillChar` between types), step 2 (untyped files, `BlockRead`/`BlockWrite`). Next: step 3 (`Pointer`, `GetMem`/`FreeMem`), then `GetImage`/`PutImage`, `PChar`.
+- [ ] Fable code reviews are on hold (the user, 2026-10-29); every commit still needs one when they resume. Not yet reviewed: `afba062..HEAD` (from 53cd1f8 on: per-procedure capture names, and/or keep their lets, call indexes in written places, pointer reads next to calls, argument order, Val's `-$1`, C: as the file system's root, untyped memory steps 0 to 3). Keep this range up to date.
+- [ ] Untyped memory, as planned in `notes/untyped_memory.md` (agreed with Fable's review; the user said go ahead). Done: step 0 (TP-exact typed files), step 1 (untyped `var` parameters, byte views, `Move`/`FillChar` between types), step 2 (untyped files, `BlockRead`/`BlockWrite`), step 3 (the untyped `Pointer`, `GetMem`/`FreeMem`). Next: step 4 (`GetImage`/`PutImage` in TP's layout), then step 5 (`PChar` and `Strings`).
 - [ ] Question for the user (from a Fable review): is the directory the program starts in a drive's root? `GetDir` calls it `C:\`, and `FindFirst('A:*.*')` there lists no `.`/`..`, but `FindFirst('*.*')` there does (the `find_files` test expects that). DOS would list neither in a root.
 - [x] Untyped files (`file` without `of`) with `BlockRead`/`BlockWrite`, and untyped `var` parameters, as byte views of records and arrays (with `SizeOf`).
 - [ ] `PChar` and the `Strings` unit (`StrLen`, `StrCopy`, `StrCat`, `StrComp`, `StrPas`, `StrPCopy`, ...), as a handle to a byte buffer plus an offset, since `PChar` arithmetic is pointer arithmetic. Then `WinDos` (the `Dos` routines with `PChar` arguments) is mostly aliases.
@@ -263,7 +263,7 @@ Last: raw bytes and C strings
 - [ ] Procedural types and procedure parameters.
 - [ ] Structured `goto` (forward jumps out of loops → labeled `break`).
 - [x] TP-exact binary file layout including 6-byte `Real`, so `examples/database/mark.dat` can be read (step 0 of `notes/untyped_memory.md`).
-- [ ] `GetMem`/`FreeMem`/untyped `Pointer` via a place-descriptor representation; the per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
+- [ ] The per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
 - [ ] Bundled-globals option (`struct Globals` per unit) for programs with very many globals.
 - [ ] FFI to Rust: `external` procedures mapped to `src/externs.rs` stubs; a worked example calling a Rust function from Pascal.
 - [ ] Embedding: `pascrust build --lib unit.pas` and `pascrust_runtime::call(...) -> Result`, with a host example that calls `BSTUnit` from Rust.

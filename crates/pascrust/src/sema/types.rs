@@ -130,6 +130,9 @@ pub enum Type {
     /// TP, a pointer to the type's table of virtual methods.) It can only be
     /// compared.
     TypeInfo,
+    /// The untyped `Pointer`: `nil`, a block from `GetMem`, or any typed
+    /// pointer with its type forgotten.
+    AnyPointer,
     /// An untyped `var` parameter (`var Data`): some variable, seen as its
     /// bytes. It can only be passed on or typecast (`TBytes(Data)`).
     Untyped,
@@ -329,6 +332,7 @@ impl Type {
             },
             Type::TypeInfo => "&'static str".to_string(),
             Type::Untyped => "&mut dyn ByteView".to_string(),
+            Type::AnyPointer => "AnyPtr".to_string(),
             Type::Set(elem) => format!("PSet<{}>", elem.concrete().rust()),
             Type::Nil | Type::Void | Type::Error => "()".to_string(),
         }
@@ -357,7 +361,9 @@ impl Type {
             (Type::Real, t) if t.is_numeric() => true,
             (Type::Char, Type::Char | Type::StrLit(1)) => true,
             (Type::Str { .. }, t) if t.is_stringish() => true,
-            (Type::Pointer(_), Type::Nil) => true,
+            (Type::Pointer(_) | Type::AnyPointer, Type::Nil) => true,
+            // `Pointer` and the typed pointers can be assigned to each other.
+            (Type::AnyPointer, Type::Pointer(_)) | (Type::Pointer(_), Type::AnyPointer) => true,
             (Type::Set(a), Type::Set(b)) => **b == Type::Void || same_ordinal_kind(a, b),
             // An object may be assigned to (or passed as) one of its
             // ancestors: its ancestor part is copied.
@@ -402,6 +408,7 @@ impl fmt::Display for Type {
             Type::Array(a) => write!(f, "array[{}..{}] of {}", a.lo, a.hi, a.elem),
             Type::Nil | Type::TypeInfo => write!(f, "Pointer"),
             Type::Untyped => write!(f, "untyped"),
+            Type::AnyPointer => write!(f, "Pointer"),
             Type::Set(elem) if **elem == Type::Void => write!(f, "empty set"),
             Type::Set(elem) => write!(f, "set of {elem}"),
             Type::Void => write!(f, "no value"),
@@ -435,7 +442,7 @@ pub fn tp_size(ty: &Type) -> Option<i64> {
             let own = o.fields.iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()?;
             own + o.parent.as_ref().map_or(Some(0), |p| tp_size(&Type::Object(p.clone())))?
         }
-        Type::Pointer(_) => 4,
+        Type::Pointer(_) | Type::AnyPointer => 4,
         // A set has a bit per value, up to 256 values (32 bytes).
         Type::Set(elem) => match &**elem {
             Type::Bool => 1,

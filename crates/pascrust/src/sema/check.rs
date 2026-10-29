@@ -84,6 +84,9 @@ pub(super) struct Checker {
     call_sites: Vec<CallSite>,
 }
 
+/// An untyped parameter, or `p^` of a `Pointer`, has no type of its own.
+const UNTYPED_USE: &str = "an untyped value (an untyped parameter, or `p^` of a `Pointer`) can only be passed on or typecast (`TBytes(Data)`)";
+
 impl Checker {
     pub fn new() -> Checker {
         let mut checker = Checker {
@@ -253,6 +256,7 @@ impl Checker {
             ("boolean", Type::Bool),
             ("char", Type::Char),
             ("text", Type::Text),
+            ("pointer", Type::AnyPointer),
             // Only reached as a value, as in `SizeOf(string)`: in a type,
             // `string` is a keyword the parser handles.
             ("string", Type::Str { cap: 255 }),
@@ -1686,7 +1690,9 @@ impl Checker {
     }
 
     fn check_assignable(&mut self, target: &Type, value: &Type, span: Span) {
-        if !target.accepts(value) {
+        if *value == Type::Untyped {
+            self.error(span, UNTYPED_USE);
+        } else if !target.accepts(value) {
             self.error(span, format!("cannot assign a {value} value to a {target} variable"));
         }
     }
@@ -2069,6 +2075,8 @@ impl Checker {
     fn deref_type(&mut self, base: Type, span: Span) -> Type {
         match base {
             Type::Pointer(p) => p.target(),
+            // `p^` of a `Pointer`: untyped memory (`BlockRead(f, p^, n)`).
+            Type::AnyPointer => Type::Untyped,
             Type::Error => Type::Error,
             other => {
                 self.error(span, format!("`^` needs a pointer, found {other}"));
@@ -2209,6 +2217,14 @@ impl Checker {
                 // `TBytes`.
                 if from == Type::Untyped {
                     return self.view_cast(e, &target);
+                }
+                // `PNode(p)` and `Pointer(Node1)`: between `Pointer` and a
+                // typed pointer.
+                if matches!(
+                    (&from, &target),
+                    (Type::AnyPointer, Type::Pointer(_)) | (Type::Pointer(_), Type::AnyPointer)
+                ) {
+                    return target;
                 }
                 if !(from.is_ordinal() && target.is_ordinal()) && from != Type::Error {
                     self.error(e.span, format!("cannot cast a {from} value to {target}"));
@@ -2569,7 +2585,7 @@ impl Checker {
                         || ty == Type::Error;
                     if !writable {
                         let message = if ty == Type::Untyped {
-                            "an untyped parameter can only be passed on or typecast (`TBytes(Data)`)".to_string()
+                            UNTYPED_USE.to_string()
                         } else {
                             format!("cannot write a {ty} value")
                         };
@@ -2942,7 +2958,24 @@ impl Checker {
                 self.fold(e, &ty);
                 ty
             }
-            Assigned => self.unary_builtin(span, args, &name, |t| matches!(t, Type::Pointer(_)), |_| Type::Bool),
+            Assigned => self.unary_builtin(
+                span,
+                args,
+                &name,
+                |t| matches!(t, Type::Pointer(_) | Type::AnyPointer),
+                |_| Type::Bool,
+            ),
+            // `GetMem(p, Size)` and `FreeMem(p, Size)`.
+            GetMem | FreeMem => {
+                if arity(&mut self.errors, span, args.len(), 2..=2, &name) {
+                    let ty = self.place(&args[0], true);
+                    if !matches!(ty, Type::Pointer(_) | Type::AnyPointer | Type::Error) {
+                        self.error(args[0].span, format!("`{name}` needs a pointer, found {ty}"));
+                    }
+                    self.int_arg(&args[1]);
+                }
+                Type::Void
+            }
             RunError => {
                 if arity(&mut self.errors, span, args.len(), 0..=1, &name) && args.len() == 1 {
                     self.int_arg(&args[0]);
@@ -3218,7 +3251,8 @@ fn comparable(l: &Type, r: &Type) -> bool {
     (l.is_numeric() && r.is_numeric())
         || (l.is_stringish() && r.is_stringish())
         || (l == r && (l.is_ordinal() || matches!(l, Type::Pointer(_))))
-        || (matches!(l, Type::Pointer(_) | Type::Nil) && matches!(r, Type::Pointer(_) | Type::Nil))
+        || (matches!(l, Type::Pointer(_) | Type::AnyPointer | Type::Nil)
+            && matches!(r, Type::Pointer(_) | Type::AnyPointer | Type::Nil))
         || (*l == Type::TypeInfo && *r == Type::TypeInfo)
 }
 
