@@ -41,6 +41,12 @@ impl<T, const LO: i64, const N: usize> PArray<T, LO, N> {
     pub fn iter(&self) -> std::slice::Iter<'_, T> {
         self.0.iter()
     }
+
+    /// The elements as a Rust slice, for runtime routines that take a run of
+    /// them (`DrawPoly`'s points).
+    pub fn as_slice(&self) -> &[T] {
+        &self.0
+    }
 }
 
 impl<T: Copy, const LO: i64, const N: usize> PArray<T, LO, N> {

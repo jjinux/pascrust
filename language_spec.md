@@ -297,16 +297,24 @@ Graph unit (BGI, as used in the examples)
 - `SetColor`/`GetColor`/`SetBkColor`/`GetBkColor`, the 16 colour constants
 - `PutPixel`/`GetPixel`, `Line`/`LineTo`/`LineRel`/`MoveTo`/`MoveRel`/
   `GetX`/`GetY`, `Rectangle`, `Bar`, `Bar3D`, `Circle`, `Arc`, `Ellipse`,
-  `PieSlice`, `DrawPoly`, `FillPoly`, `FloodFill`
+  `PieSlice`, `Sector`, `FillEllipse`, `FloodFill`, `GetArcCoords`
+  (`ArcCoordsType`)
+- `DrawPoly`/`FillPoly` with an array of `PointType` (TP's untyped `var
+  PolyPoints` took any variable; PascRust wants that array). `DrawPoly`
+  doesn't close the shape; `FillPoly` fills it (even-odd rule) and
+  outlines it closed
 - `SetLineStyle`/`GetLineSettings` (`SolidLn`, `DottedLn`, ..., `NormWidth`,
-  `ThickWidth`), `SetFillStyle`/`SetFillPattern`/`GetFillPattern`/
-  `GetFillSettings` (`FillPatternType`), `SetWriteMode`
+  `ThickWidth`, `LineSettingsType`), `SetFillStyle`/`SetFillPattern`/
+  `GetFillPattern`/`GetFillSettings` (`FillPatternType`,
+  `FillSettingsType`), `SetWriteMode`
 - `OutText`/`OutTextXY`, `SetTextJustify` (`LeftText`, `CenterText`,
   `RightText`, `TopText`, `BottomText`), `SetTextStyle` (default font only;
-  scaled sizes), `TextWidth`/`TextHeight`
-- `SetViewPort`/`ClearViewPort`/`ClearDevice`/`GetViewSettings`,
-  `GetAspectRatio`
-- `GetImage`/`PutImage`/`ImageSize` on a byte buffer
+  scaled sizes), `GetTextSettings` (`TextSettingsType`),
+  `TextWidth`/`TextHeight`
+- `SetViewPort`/`ClearViewPort`/`ClearDevice`/`GetViewSettings`
+  (`ViewPortType`), `GetAspectRatio`
+- Not yet: `GetImage`/`PutImage`/`ImageSize`, the palette routines beyond
+  `SetPalette`, pages (see TODO.md, Phase 7)
 
 ## Tier 3: later, or never
 

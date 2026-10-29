@@ -8,8 +8,9 @@
 //! Supported: `InitGraph`/`CloseGraph`/`SetGraphMode`/`RestoreCrtMode`,
 //! colours and palettes, pixels, lines (styles, thickness, XOR mode),
 //! rectangles, bars, circles, arcs, ellipses, pie slices, flood fill,
-//! viewports, and text in the 8x8 default font (other fonts fall back to it,
-//! scaled). Not yet: `GetImage`/`PutImage`, polygons, user fill patterns.
+//! viewports, polygons, the `Get*Settings` records, and text in the 8x8
+//! default font (other fonts fall back to it, scaled). Not yet:
+//! `GetImage`/`PutImage`, palettes beyond `SetPalette`, pages.
 //!
 //! Environment variables:
 //! - `PASCRUST_GRAPH=headless`: draw without a window (for tests).
@@ -30,6 +31,59 @@ use crate::string::PString;
 /// `FillPatternType = array[1..8] of Byte`: eight rows of eight pixels, bit 7
 /// leftmost, for `SetFillPattern`.
 pub type FillPatternType = PArray<u8, 1, 8>;
+
+/// `PointType`, for `DrawPoly` and `FillPoly`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PointType {
+    pub x: i16,
+    pub y: i16,
+}
+
+/// `ArcCoordsType`, for `GetArcCoords`: the last arc's centre and ends.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ArcCoordsType {
+    pub x: i16,
+    pub y: i16,
+    pub x_start: i16,
+    pub y_start: i16,
+    pub x_end: i16,
+    pub y_end: i16,
+}
+
+/// `LineSettingsType`, for `GetLineSettings`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LineSettingsType {
+    pub line_style: u16,
+    pub pattern: u16,
+    pub thickness: u16,
+}
+
+/// `FillSettingsType`, for `GetFillSettings`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FillSettingsType {
+    pub pattern: u16,
+    pub color: u16,
+}
+
+/// `TextSettingsType`, for `GetTextSettings`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TextSettingsType {
+    pub font: u16,
+    pub direction: u16,
+    pub char_size: u16,
+    pub horiz: u16,
+    pub vert: u16,
+}
+
+/// `ViewPortType`, for `GetViewSettings`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ViewPortType {
+    pub x1: i16,
+    pub y1: i16,
+    pub x2: i16,
+    pub y2: i16,
+    pub clip: bool,
+}
 
 /// The screen, while graphics mode is on. A `Mutex` because the window
 /// (main thread) reads it while the program (worker thread) draws.
@@ -301,6 +355,7 @@ pub fn set_fill_pattern(pattern: FillPatternType, c: impl Into<i32>) {
     with(|s| {
         s.fill_pattern = rows;
         s.fill_color = c;
+        s.fill_style = i32::from(USER_FILL);
     });
 }
 
@@ -403,6 +458,75 @@ pub fn flood_fill(x: impl Into<i32>, y: impl Into<i32>, border: impl Into<i32>) 
     with(|s| s.flood_fill(x, y, border));
 }
 
+// Polygons.
+
+/// The first `count` points, as `(x, y)`.
+fn points(count: impl Into<i32>, points: &[PointType]) -> Vec<(i32, i32)> {
+    let count = usize::try_from(count.into()).unwrap_or(0);
+    points.iter().take(count).map(|p| (i32::from(p.x), i32::from(p.y))).collect()
+}
+
+/// `DrawPoly(NumPoints, PolyPoints)`: lines from point to point, in the
+/// current line style. It isn't closed unless the last point repeats the
+/// first. (TP's `PolyPoints` is an untyped `var`; here it's an array of
+/// `PointType`.)
+pub fn draw_poly(count: impl Into<i32>, poly_points: &[PointType]) {
+    let points = points(count, poly_points);
+    with(|s| {
+        for pair in points.windows(2) {
+            s.line(pair[0].0, pair[0].1, pair[1].0, pair[1].1);
+        }
+    });
+}
+
+/// `FillPoly(NumPoints, PolyPoints)`: the polygon filled with the fill
+/// style, and outlined, closed, in the current line style.
+pub fn fill_poly(count: impl Into<i32>, poly_points: &[PointType]) {
+    let points = points(count, poly_points);
+    with(|s| {
+        s.fill_polygon_inside(&points);
+        for (i, &(x1, y1)) in points.iter().enumerate() {
+            let (x2, y2) = points[(i + 1) % points.len()];
+            s.line(x1, y1, x2, y2);
+        }
+    });
+}
+
+// What's been set: the `Get*` routines.
+
+/// `GetArcCoords(ArcCoords)`: where the last `Arc`, `Ellipse`, `PieSlice`
+/// or `Sector` was drawn.
+pub fn get_arc_coords(coords: &mut ArcCoordsType) {
+    let [x, y, x_start, y_start, x_end, y_end] = with(|s| s.arc).map(|n| n as i16);
+    *coords = ArcCoordsType { x, y, x_start, y_start, x_end, y_end };
+}
+
+pub fn get_line_settings(settings: &mut LineSettingsType) {
+    let ((style, pattern), thickness) = with(|s| (s.line_style, s.thickness));
+    *settings = LineSettingsType { line_style: style as u16, pattern, thickness: thickness as u16 };
+}
+
+pub fn get_fill_settings(settings: &mut FillSettingsType) {
+    let (pattern, color) = with(|s| (s.fill_style, s.fill_color));
+    *settings = FillSettingsType { pattern: pattern as u16, color: u16::from(color) };
+}
+
+pub fn get_text_settings(settings: &mut TextSettingsType) {
+    let ((font, size), vertical, (horiz, vert)) = with(|s| (s.font, s.vertical, s.justify));
+    *settings = TextSettingsType {
+        font: font as u16,
+        direction: u16::from(vertical),
+        char_size: size as u16,
+        horiz: u16::from(horiz),
+        vert: u16::from(vert),
+    };
+}
+
+pub fn get_view_settings(view: &mut ViewPortType) {
+    let ((x1, y1, x2, y2), clip) = with(|s| (s.view, s.clip));
+    *view = ViewPortType { x1: x1 as i16, y1: y1 as i16, x2: x2 as i16, y2: y2 as i16, clip };
+}
+
 // The screen and viewports.
 
 pub fn clear_device() {
@@ -445,6 +569,7 @@ pub fn set_text_style(font: impl Into<i32>, direction: impl Into<i32>, size: imp
     with(|s| {
         s.vertical = vertical;
         s.text_scale = scale.min(10);
+        s.font = (font, size);
     });
 }
 

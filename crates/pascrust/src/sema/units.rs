@@ -42,6 +42,12 @@ pub enum Param {
     /// `Graph`'s `FillPatternType`, by value and as a `var` parameter.
     FillPattern,
     VarFillPattern,
+    /// A `var` parameter of one of the unit's record types, by its
+    /// (lowercase) name: `VarRecord("linesettingstype")`.
+    VarRecord(&'static str),
+    /// `DrawPoly`'s points: TP's untyped `var PolyPoints`, here an array of
+    /// `PointType`.
+    Points,
 }
 
 /// The `Dos` unit's `SearchRec`, filled in by `FindFirst`/`FindNext`. The
@@ -92,6 +98,39 @@ pub fn registers_type() -> Type {
         .map(|n| Field { name: n.to_string(), rust_name: n.to_ascii_lowercase(), ty: Type::Int(IntKind::Word) })
         .collect();
     Type::Record(std::rc::Rc::new(RecordType { rust_name: "Registers".to_string(), fields }))
+}
+
+/// A record type a unit declares, whose Rust struct the runtime defines with
+/// the fields in snake case (`XStart` is `x_start`).
+fn unit_record(rust_name: &str, fields: &[(&str, Type)]) -> Type {
+    use super::types::{Field, RecordType};
+    let fields = fields
+        .iter()
+        .map(|(name, ty)| Field { name: name.to_string(), rust_name: super::names::snake_case(name), ty: ty.clone() })
+        .collect();
+    Type::Record(std::rc::Rc::new(RecordType { rust_name: rust_name.to_string(), fields }))
+}
+
+/// `Graph`'s record types.
+pub fn graph_record(name: &str) -> Option<Type> {
+    let (int, word) = (Type::Int(IntKind::Integer), Type::Int(IntKind::Word));
+    let ints = |names: &[&'static str]| names.iter().map(|&n| (n, int.clone())).collect::<Vec<_>>();
+    let words = |names: &[&'static str]| names.iter().map(|&n| (n, word.clone())).collect::<Vec<_>>();
+    Some(match name {
+        "pointtype" => unit_record("PointType", &ints(&["X", "Y"])),
+        "arccoordstype" => unit_record("ArcCoordsType", &ints(&["X", "Y", "XStart", "YStart", "XEnd", "YEnd"])),
+        "linesettingstype" => unit_record("LineSettingsType", &words(&["LineStyle", "Pattern", "Thickness"])),
+        "fillsettingstype" => unit_record("FillSettingsType", &words(&["Pattern", "Color"])),
+        "textsettingstype" => {
+            unit_record("TextSettingsType", &words(&["Font", "Direction", "CharSize", "Horiz", "Vert"]))
+        }
+        "viewporttype" => {
+            let mut fields = ints(&["x1", "y1", "x2", "y2"]);
+            fields.push(("Clip", Type::Bool));
+            unit_record("ViewPortType", &fields)
+        }
+        _ => return None,
+    })
 }
 
 /// `Graph`'s `FillPatternType = array[1..8] of Byte`: an 8x8 bit pattern.
@@ -336,6 +375,13 @@ pub static GRAPH: &[UnitRoutine] = &[
     routine!("outtextxy" => "out_text_xy"(Int, Int, Str)),
     routine!("textwidth" => "text_width"(Str) -> Word),
     routine!("textheight" => "text_height"(Str) -> Word),
+    routine!("drawpoly" => "draw_poly"(Int, Points)),
+    routine!("fillpoly" => "fill_poly"(Int, Points)),
+    routine!("getarccoords" => "get_arc_coords"(VarRecord("arccoordstype"))),
+    routine!("getlinesettings" => "get_line_settings"(VarRecord("linesettingstype"))),
+    routine!("getfillsettings" => "get_fill_settings"(VarRecord("fillsettingstype"))),
+    routine!("gettextsettings" => "get_text_settings"(VarRecord("textsettingstype"))),
+    routine!("getviewsettings" => "get_view_settings"(VarRecord("viewporttype"))),
 ];
 
 pub static GRAPH_CONSTS: &[UnitConst] = &[
@@ -478,7 +524,20 @@ pub fn unit_types(name: &str) -> Vec<(&'static str, Type)> {
             ("registers", registers_type()),
             ("datetime", date_time_type()),
         ],
-        "graph" => vec![("fillpatterntype", fill_pattern_type())],
+        "graph" => {
+            let mut types = vec![("fillpatterntype", fill_pattern_type())];
+            for name in [
+                "pointtype",
+                "arccoordstype",
+                "linesettingstype",
+                "fillsettingstype",
+                "textsettingstype",
+                "viewporttype",
+            ] {
+                types.push((name, graph_record(name).expect("a Graph record")));
+            }
+            types
+        }
         _ => Vec::new(),
     }
 }

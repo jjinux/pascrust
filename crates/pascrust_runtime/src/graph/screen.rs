@@ -63,11 +63,20 @@ pub struct Screen {
     pub palette: [u8; 16],
     pub color: u8,
     pub bk_color: u8,
-    /// One bit per pixel along a line; thickness is 1 or 3.
+    /// One bit per pixel along a line; thickness is 1 or 3. And the style
+    /// number and pattern as `SetLineStyle` gave them, for `GetLineSettings`.
     pub line_pattern: u16,
     pub thickness: i32,
+    pub line_style: (i32, u16),
     pub fill_pattern: [u8; 8],
     pub fill_color: u8,
+    /// The `SetFillStyle` pattern number (`UserFill` after `SetFillPattern`).
+    pub fill_style: i32,
+    /// `SetTextStyle`'s font and size, for `GetTextSettings`.
+    pub font: (i32, i32),
+    /// Where the last arc was drawn: centre, start and end points, for
+    /// `GetArcCoords`.
+    pub arc: [i32; 6],
     /// `SetTextJustify`: horizontal 0 left, 1 centre, 2 right; vertical
     /// 0 bottom, 1 centre, 2 top.
     pub justify: (u8, u8),
@@ -91,8 +100,12 @@ impl Screen {
             bk_color: 0,
             line_pattern: LINE_PATTERNS[0],
             thickness: 1,
+            line_style: (0, 0xFFFF),
             fill_pattern: FILL_PATTERNS[1],
             fill_color: 15,
+            fill_style: 1,
+            font: (0, 1),
+            arc: [0; 6],
             justify: (0, 2),
             vertical: false,
             text_scale: 1,
@@ -249,6 +262,7 @@ impl Screen {
     /// An elliptical arc in the current colour. Arcs are always solid; a
     /// thick one is three arcs of neighbouring radii.
     pub fn ellipse(&mut self, cx: i32, cy: i32, start: i32, end: i32, xr: i32, yr: i32) {
+        self.remember_arc(cx, cy, start, end, xr, yr);
         let radii: &[i32] = if self.thickness >= 3 { &[-1, 0, 1] } else { &[0] };
         for &d in radii {
             let points = Screen::arc_points(cx, cy, start, end, xr + d, yr + d);
@@ -269,7 +283,45 @@ impl Screen {
     }
 
     /// A filled wedge of an ellipse (`PieSlice`, `Sector`), outlined.
+    /// The centre and the end points of an arc, for `GetArcCoords`.
+    fn remember_arc(&mut self, cx: i32, cy: i32, start: i32, end: i32, xr: i32, yr: i32) {
+        // Angles go counterclockwise from 3 o'clock, and y grows downwards.
+        let point = |angle: i32| {
+            let radians = f64::from(angle).to_radians();
+            let x = cx + (radians.cos() * f64::from(xr)).round() as i32;
+            let y = cy - (radians.sin() * f64::from(yr)).round() as i32;
+            (x, y)
+        };
+        let ((xs, ys), (xe, ye)) = (point(start), point(end));
+        self.arc = [cx, cy, xs, ys, xe, ye];
+    }
+
+    /// `FillPoly`'s inside: for each row, where the edges cross it, filled
+    /// between alternate crossings (the even-odd rule).
+    pub fn fill_polygon_inside(&mut self, points: &[(i32, i32)]) {
+        let Some(top) = points.iter().map(|p| p.1).min() else { return };
+        let bottom = points.iter().map(|p| p.1).max().unwrap_or(top);
+        for y in top..=bottom {
+            let mut crossings: Vec<i32> = Vec::new();
+            for (i, &(x1, y1)) in points.iter().enumerate() {
+                let (x2, y2) = points[(i + 1) % points.len()];
+                // Each edge counts for the rows from its top up to, but not
+                // including, its bottom, so a shared corner counts once.
+                if (y1 <= y && y < y2) || (y2 <= y && y < y1) {
+                    crossings.push(x1 + (y - y1) * (x2 - x1) / (y2 - y1));
+                }
+            }
+            crossings.sort_unstable();
+            for pair in crossings.chunks(2) {
+                if let [from, to] = pair {
+                    self.fill_span(*from, *to, y);
+                }
+            }
+        }
+    }
+
     pub fn sector(&mut self, cx: i32, cy: i32, start: i32, end: i32, xr: i32, yr: i32) {
+        self.remember_arc(cx, cy, start, end, xr, yr);
         let (start_f, mut end_f) = (f64::from(start.rem_euclid(360)), f64::from(end.rem_euclid(360)));
         if end_f <= start_f {
             end_f += 360.0;
@@ -371,6 +423,7 @@ impl Screen {
     // State.
 
     pub fn set_line_style(&mut self, style: i32, pattern: u16, thickness: i32) {
+        self.line_style = (style, pattern);
         self.line_pattern = match style {
             4 => pattern,
             s => LINE_PATTERNS.get(s as usize).copied().unwrap_or(0xFFFF),
@@ -381,6 +434,7 @@ impl Screen {
     pub fn set_fill_style(&mut self, pattern: i32, color: u8) {
         if let Some(p) = FILL_PATTERNS.get(pattern as usize) {
             self.fill_pattern = *p;
+            self.fill_style = pattern;
         }
         self.fill_color = color & 15;
     }

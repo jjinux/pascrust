@@ -2192,6 +2192,20 @@ impl Checker {
                         self.error(arg.span, format!("expected a file variable, found {ty}"));
                     }
                 }
+                Param::VarRecord(key) => {
+                    let ty = self.place(arg, true);
+                    let wanted = super::units::graph_record(key).expect("a Graph record");
+                    if ty != wanted && ty != Type::Error {
+                        self.error(arg.span, format!("expected a {wanted} variable, found {ty}"));
+                    }
+                }
+                Param::Points => {
+                    let ty = self.place(arg, true);
+                    let point = super::units::graph_record("pointtype").expect("PointType");
+                    if !matches!(&ty, Type::Array(a) if a.elem == point) && ty != Type::Error {
+                        self.error(arg.span, format!("expected an array of PointType, found {ty}"));
+                    }
+                }
                 Param::VarSearchRec => {
                     let ty = self.place(arg, true);
                     if ty != super::units::search_rec_type() && ty != Type::Error {

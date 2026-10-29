@@ -627,7 +627,23 @@ impl<'a> Codegen<'a> {
                         | Param::VarDateTime
                         | Param::VarLongInt
                         | Param::VarFile
-                        | Param::VarFillPattern => self.place_mut(arg),
+                        | Param::VarFillPattern
+                        | Param::VarRecord(_) => self.place_mut(arg),
+                        // The points as a `&[PointType]` slice. A method
+                        // call dereferences by itself, so a `var` parameter
+                        // `*points` is just `points.as_slice()`.
+                        Param::Points => {
+                            let place = self.place(arg);
+                            match place.strip_prefix('*') {
+                                Some(name) if name.chars().all(|c| c.is_alphanumeric() || c == '_') => {
+                                    format!("{name}.as_slice()")
+                                }
+                                _ => {
+                                    let precedence = if place.starts_with('*') { prec::UNARY } else { prec::POSTFIX };
+                                    format!("{}.as_slice()", paren((place, precedence), prec::POSTFIX))
+                                }
+                            }
+                        }
                     })
                     .collect();
                 let code = format!("{}({})", r.rust, parts.join(", "));

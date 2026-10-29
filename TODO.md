@@ -237,7 +237,7 @@ Dos, the rest
 - [x] Never: `Intr`, `MsDos`, `Keep`, `GetIntVec`/`SetIntVec` are a clear "needs real DOS" error (`UnitRoutine::refused`).
 
 Graph, the rest
-- [ ] `DrawPoly`/`FillPoly` (arrays of `PointType`), `GetArcCoords`, and the `Get*Settings` records (`GetLineSettings`, `GetFillSettings`, `GetTextSettings`, `GetViewSettings`).
+- [x] `DrawPoly`/`FillPoly` (arrays of `PointType`), `GetArcCoords`, and the `Get*Settings` records (`GetLineSettings`, `GetFillSettings`, `GetTextSettings`, `GetViewSettings`).
 - [ ] `GetImage`/`PutImage`/`ImageSize` with the `PutImage` modes (`NormalPut`, `XORPut`, ...), storing images in a byte buffer the program allocates.
 - [ ] Palettes: `GetPalette`, `GetDefaultPalette`, `SetAllPalette`, `SetRGBPalette`, `GetPaletteSize`; `GraphDefaults`; `SetAspectRatio`; `SetUserCharSize`; `GetDriverName`/`GetModeName`/`GetMaxMode`/`GetModeRange`.
 - [ ] `SetActivePage`/`SetVisualPage` (two framebuffers, for flicker-free animation).
