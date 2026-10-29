@@ -21,7 +21,7 @@ use std::process::ExitCode;
 use pascrust::driver::{self, Options};
 
 const USAGE: &str = "\
-Pascrust tpc: compile Turbo Pascal programs, with TPC's command line.
+PascRust tpc: compile Turbo Pascal programs, with TPC's command line.
 
 Syntax: tpc [options] filename [options]
   -$<switches>  Compiler switches, as in {$...}: '-$I-' or '-$R+,I-'

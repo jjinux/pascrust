@@ -169,7 +169,7 @@ pub fn f_search(name: impl Into<PString>, dir_list: impl Into<PString>) -> PStri
 
 /// `FExpand(path)`: the full DOS path, like `C:\GAMES\SCORES.DAT`.
 ///
-/// pascrust pretends each drive letter is a directory on this machine (see
+/// PascRust pretends each drive letter is a directory on this machine (see
 /// [`dos_path`]) whose current directory is its root, and that the current
 /// drive is C:. So `scores.dat` expands to `C:\SCORES.DAT`, which
 /// `dos_path` turns back into `scores.dat` in drive C's directory. Programs
@@ -211,7 +211,7 @@ mod tests {
     }
 }
 
-/// The `Registers` record of `Intr` and `MsDos`, which pascrust can't run.
+/// The `Registers` record of `Intr` and `MsDos`, which PascRust can't run.
 /// It exists so programs that declare one still compile up to those calls.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Registers {
@@ -262,7 +262,7 @@ struct Found {
 
 /// How many searches stay open at once. DOS kept a search's state in the
 /// `SearchRec` itself, so a program never closes one (and a copy of a
-/// `SearchRec` can carry on with it any time). So pascrust keeps every
+/// `SearchRec` can carry on with it any time). So PascRust keeps every
 /// search, up to this many, and then forgets the one used longest ago. A
 /// recursive directory walk leaves each level's search idle while it
 /// searches the levels below, so the limit is high.

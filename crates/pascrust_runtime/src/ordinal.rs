@@ -21,7 +21,7 @@ impl Ordinal for bool {
     }
 }
 
-/// An enumerated type: implemented by the code pascrust generates for each
+/// An enumerated type: implemented by the code PascRust generates for each
 /// Pascal enum. `VALUES` lists every value in order, which is all we need to
 /// convert ordinals back to values (`Color(2)`, `Succ`, `for` loops).
 pub trait Enumerated: Ordinal + 'static {

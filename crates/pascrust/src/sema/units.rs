@@ -80,7 +80,7 @@ pub fn date_time_type() -> Type {
     Type::Record(std::rc::Rc::new(RecordType { rust_name: "DateTime".to_string(), fields }))
 }
 
-/// The `Dos` unit's `Registers`, for `Intr` and `MsDos`, which pascrust
+/// The `Dos` unit's `Registers`, for `Intr` and `MsDos`, which PascRust
 /// refuses: declared so a program that uses them gets that error and not
 /// "unknown type". Only the `Word` registers (TP's is a variant record that
 /// also has the `Byte` halves, `AL`, `AH`, ...).
@@ -134,7 +134,7 @@ impl Ret {
 pub struct UnitRoutine {
     /// Lowercase Pascal name.
     pub name: &'static str,
-    /// For a routine pascrust refuses: why (calling it is an error).
+    /// For a routine PascRust refuses: why (calling it is an error).
     pub refused: Option<&'static str>,
     /// The runtime function.
     pub rust: &'static str,

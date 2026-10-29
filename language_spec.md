@@ -1,8 +1,8 @@
-# Pascrust language specification
+# PascRust language specification
 
 ## Decision: Turbo Pascal, not ISO Pascal
 
-Pascrust translates **Turbo Pascal** (Borland's dialect), accepting Turbo
+PascRust translates **Turbo Pascal** (Borland's dialect), accepting Turbo
 Pascal 7.0 syntax and implementing the Turbo Pascal 5.5 feature level first.
 ISO 7185 "Standard Pascal" is not a target.
 
@@ -115,7 +115,7 @@ Built-ins (System unit)
   strings and arrays of bytes or chars may be filled with any value) or on
   part of a string or byte array (`FillChar(s[1], n, ' ')`); `Move` between
   two whole variables of the same type. Other uses are an error, since
-  pascrust can't copy raw bytes between unrelated types
+  PascRust can't copy raw bytes between unrelated types
 - System variables (and the units' `TextAttr`, `DosError`, ...; these can be
   read and set with `:=`, but not passed as `var` arguments or to `Inc`):
   `ExitCode` (the exit code when the program ends),
@@ -252,7 +252,7 @@ Dos unit
   root (`\`, or a drive's `A:\` wherever it's mapped), a link to a directory counts as a directory, and `VolumeID` alone
   finds nothing (there's no volume label). A copy of a `SearchRec` goes on
   from the same place by itself. `SearchRec.Name` is a full string (TP's
-  was `string[12]`), so long names fit. Nothing tells pascrust when a
+  was `string[12]`), so long names fit. Nothing tells PascRust when a
   program is done with a search, so it keeps up to 10,000 (of which up
   to 100 that have run out), forgetting those used longest ago
 - Faked: `DosVersion` (DOS 6.22), `DiskFree`/`DiskSize` (512 MB free of a
@@ -277,7 +277,7 @@ Dos unit
   which wants write access); a time that doesn't exist locally (the hour skipped
   when clocks go forward, day 0) moves to the nearest one that does.
   `DosError` is 2 for a missing file and 3 for a missing directory.
-  TP's untyped `var F` took any variable; pascrust wants a file
+  TP's untyped `var F` took any variable; PascRust wants a file
 - `Erase` of a read-only file fails with access denied (5), as in DOS
 - DOS path translation (`a:\tictac` → a configured directory)
 

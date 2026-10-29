@@ -169,7 +169,7 @@ pub(crate) fn main_loop(worker: &JoinHandle<()>) {
         match STATE.load(Ordering::SeqCst) {
             OPEN_REQUESTED => {
                 let options = WindowOptions { resize: true, ..WindowOptions::default() };
-                match Window::new("Pascrust", WIDTH, HEIGHT, options) {
+                match Window::new("PascRust", WIDTH, HEIGHT, options) {
                     Ok(mut w) => {
                         w.set_target_fps(60);
                         w.set_input_callback(Box::new(Typed));

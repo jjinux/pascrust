@@ -1,4 +1,4 @@
-# Pascrust
+# PascRust
 
 A Turbo Pascal → Rust transpiler, written in Rust. It's a learning project:
 the user is an intermediate Rust programmer who's fascinated by language
@@ -12,7 +12,7 @@ implementation. The opening prompt is in `README.md` before it was removed
   deviate from it, update it in the same commit (and say why).
 - `language_spec.md`: which Pascal constructs are supported, by tier.
 - `notes/`: research (p2c, Free Pascal) and answered questions for the user.
-- `README.md`: what a user needs: what Pascrust is, how to run it (`pascrust`,
+- `README.md`: what a user needs: what PascRust is, how to run it (`pascrust`,
   `tpc`, `fmt`), the environment variables, what's supported, the examples.
 
 Keep these up to date as you go: whenever a change adds or changes a
@@ -47,7 +47,7 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
 
 ## Licensing
 
-Pascrust is MIT. Don't copy code or tests from GPL projects (Free Pascal,
+PascRust is MIT. Don't copy code or tests from GPL projects (Free Pascal,
 p2c, GNU Pascal): read them for ideas only. Running `fpc` as an external
 program to produce expected output (`tests/gen_expected.sh`) is fine.
 

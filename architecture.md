@@ -1,6 +1,6 @@
-# Pascrust architecture
+# PascRust architecture
 
-This document records the core architectural decisions for Pascrust, a
+This document records the core architectural decisions for PascRust, a
 Turbo Pascal to Rust transpiler, with the rationale for each and the
 alternatives that were rejected. It answers every question in the "Make the
 core architectural decisions" section of `TODO.md`. The language subset is in
@@ -810,7 +810,7 @@ sense; only what can't be real is faked.
   clearing it gives write access back to the owner only). The routines that take
   TP's untyped `var F` take any file through the runtime's `AnyFile` trait.
   DOS kept a `FindFirst` search's state in the `SearchRec` itself, so a
-  program never closes a search; pascrust keeps each search's matches in
+  program never closes a search; PascRust keeps each search's matches in
   a table, with the handle and position in `SearchRec.Fill`. A copy of a
   `SearchRec` can carry on with a search at any time, so none is dropped
   when it runs out; instead, past 100 open searches the one used longest

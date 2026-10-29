@@ -1,14 +1,14 @@
-Pascrust
+PascRust
 ========
 
 [![CI](https://github.com/jjinux/pascrust/actions/workflows/ci.yml/badge.svg)](https://github.com/jjinux/pascrust/actions/workflows/ci.yml)
 
-Pascrust is a Turbo Pascal to Rust transpiler, so that you can more easily
+PascRust is a Turbo Pascal to Rust transpiler, so that you can more easily
 run your old Turbo Pascal programs on modern computers. It writes a small
 Cargo project for each program, so you can build and run your old Pascal code
 natively, and read the Rust it turned into.
 
-Pascrust was written by Claude Code Opus with help from Claude Code Fable and
+PascRust was written by Claude Code Opus with help from Claude Code Fable and
 JJ Behrens.
 
 ## Inspiration
@@ -136,7 +136,7 @@ PASCRUST_PRINTER='|less' pascrust run report.pas
 
 The quotes matter, because `|` means a pipe to the shell. A command is run
 by `sh`, starts the first time the program prints, and gets the output on
-its standard input. When the program ends, its input is closed and Pascrust
+its standard input. When the program ends, its input is closed and PascRust
 waits for it to finish, so the whole job is sent. A program that never
 prints creates no file and runs no command. Output goes through exactly as
 written, form feeds (`Write(Lst, #12)`) included. A procedure that writes
@@ -199,7 +199,7 @@ and run `cargo test` for the whole test suite.
 
 ## Acknowledgements
 
-Pascrust's code is its own, but we leaned on a lot of other people's work
+PascRust's code is its own, but we leaned on a lot of other people's work
 while writing it. Thank you to:
 
 - [Free Pascal](https://www.freepascal.org/). Running `fpc -Mtp` on our

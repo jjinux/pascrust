@@ -379,7 +379,7 @@ impl Parser {
     pub(super) fn proc_decl(&mut self, heading_only: bool) -> PResult<ProcDecl> {
         let start = self.span();
         // In Turbo Pascal a constructor also sets up the object's table of
-        // virtual methods. pascrust's objects carry no such table (see
+        // virtual methods. PascRust's objects carry no such table (see
         // `notes/virtual_methods.md`), so constructors and destructors are
         // ordinary procedures.
         let role = match self.peek() {

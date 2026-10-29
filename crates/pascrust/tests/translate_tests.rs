@@ -6,7 +6,7 @@
 //! `cargo insta review` (install with `cargo install cargo-insta`), or run
 //! with `INSTA_UPDATE=always` and read the diff in git.
 //!
-//! `tests/errors/*.pas` are programs pascrust must reject; their snapshots
+//! `tests/errors/*.pas` are programs PascRust must reject; their snapshots
 //! hold the error messages.
 
 #[test]

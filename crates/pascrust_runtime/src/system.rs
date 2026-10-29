@@ -234,7 +234,7 @@ fn match_case(path: &std::path::Path) -> std::path::PathBuf {
 /// Pascal `GetDir(drive, s)`: the current directory as a DOS path, like
 /// `C:\GAMES`. Drive 0 is the current drive (always C:, as in `FExpand`),
 /// 1 is A:, 2 is B:, ... A drive other than C: reports its root, since
-/// pascrust keeps only one current directory.
+/// PascRust keeps only one current directory.
 pub fn get_dir(drive: impl Into<i32>) -> PString {
     let drive = match drive.into() {
         0 | 3 => 'C',

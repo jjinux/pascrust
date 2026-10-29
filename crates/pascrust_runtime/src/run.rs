@@ -94,13 +94,13 @@ pub fn halt(code: i32) {
 /// Run a translated Pascal program. Generated `main` functions call this.
 ///
 /// The program runs on a thread with a large stack (Pascal programs often keep
-/// big arrays in globals, which pascrust turns into locals of `pascal_main`),
+/// big arrays in globals, which PascRust turns into locals of `pascal_main`),
 /// and any panic is translated into a Turbo Pascal style runtime error message
 /// and exit code.
 pub fn run(program: fn()) {
     // Silence Rust's default "thread panicked at ..." message for Pascal
     // runtime errors (we print our own), but keep it for genuine bugs, where
-    // the Rust location is useful for debugging pascrust itself.
+    // the Rust location is useful for debugging PascRust itself.
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         if info.payload().downcast_ref::<RuntimeError>().is_none() {

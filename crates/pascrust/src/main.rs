@@ -8,7 +8,7 @@ use std::process::{Command, ExitCode};
 // the `--help` text.
 use clap::{Parser, Subcommand};
 
-/// Pascrust: transpile Turbo Pascal programs to Rust.
+/// PascRust: transpile Turbo Pascal programs to Rust.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {

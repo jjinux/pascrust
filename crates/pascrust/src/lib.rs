@@ -1,4 +1,4 @@
-//! Pascrust: a Turbo Pascal to Rust transpiler.
+//! PascRust: a Turbo Pascal to Rust transpiler.
 //!
 //! The pipeline, one module per stage:
 //!

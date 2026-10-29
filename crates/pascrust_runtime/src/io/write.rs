@@ -132,7 +132,7 @@ impl_pas_write_int!(i8, i16, i32, i64, u16, u32, u64);
 
 /// Turbo Pascal prints a `Real` with no width in scientific notation, 17
 /// characters wide: ` 1.2345000000E+02`. That's at most 11 significant
-/// digits, the precision of TP's 6-byte `Real`, even though pascrust
+/// digits, the precision of TP's 6-byte `Real`, even though PascRust
 /// stores a `Real` as an `f64`; so `x:25` pads with spaces rather than
 /// printing more digits.
 const DEFAULT_REAL_WIDTH: i32 = 17;

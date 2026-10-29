@@ -35,5 +35,5 @@ make the test fail, through the output, the exit code, or both. Copy the
 
 Where Free Pascal agrees with Turbo Pascal, the `.out` comes from
 `tests/gen_expected.sh`. Where it doesn't (`SizeOf`, DOS paths), the `.out`
-is built from the `Check` calls in the source, never from pascrust's own
-output, so it can't just repeat a pascrust bug.
+is built from the `Check` calls in the source, never from PascRust's own
+output, so it can't just repeat a PascRust bug.

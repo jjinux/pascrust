@@ -70,7 +70,7 @@ go with the default" needs no further action.
    **Default: check what codegen needs (types of every expression, lvalues,
    parameter kinds, alias detection) and report those errors with Pascal
    positions; rely on rustc for anything else, and treat any rustc error on
-   generated code as a Pascrust bug to fix.**
+   generated code as a PascRust bug to fix.**
 
 10. **Scope of OOP.** The examples use static `object` methods and single
     inheritance only. Should virtual methods, constructors and destructors be

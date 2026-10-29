@@ -1,6 +1,6 @@
 # Prior art: p2c and friends
 
-Research notes for Pascrust. The question from `TODO.md` was: "Wasn't there
+Research notes for PascRust. The question from `TODO.md` was: "Wasn't there
 some famous Pascal to C compiler? If so, carefully study how it's implemented."
 Yes: **p2c**, by Dave Gillespie. This file records how it works, what we take
 from it, and the other prior art (Free Pascal, test suites, Pascal to Rust
@@ -28,7 +28,7 @@ attempts, Turbo Pascal specs and standard-library interfaces).
   PC)" per `sys.p2crc`), UCSD, Oregon, VAX, MPW, Modula-2 (partial). Turbo
   support is explicitly incomplete: `turbo.imp` has partial interface texts
   for the standard Turbo units and users "must write their own runtime
-  emulations" for Crt/Dos/Graph. (That is exactly the gap Pascrust fills.)
+  emulations" for Crt/Dos/Graph. (That is exactly the gap PascRust fills.)
 
 ### Pipeline (from `p2c.man`)
 
@@ -39,7 +39,7 @@ into an internal tree → optional flow analysis and dead-code removal → emit
 "stamped with serial numbers" so they can be re-attached to the right
 statement in the output, and long lines are broken with "the TeX typesetter's
 paragraph formatter" algorithm. Stated goal: "Output code is arranged to be
-readable and efficient." Pascrust adopts the whole-program approach, the
+readable and efficient." PascRust adopts the whole-program approach, the
 per-unit output file, comment preservation (tier 3) and, in spirit, the
 readability goal; we delegate line breaking to `rustfmt`.
 
@@ -53,7 +53,7 @@ passed to a `var` parameter gets a temporary (HISTORY, v1.20). File
 parameters are special-cased: `VarFiles` "1 or default = `var f : file` params
 use &; 0=pass FILE *'s by value; must not open or close the file within the
 procedure".
-*For Pascrust*: C does not have a borrow checker, so p2c never faces the
+*For PascRust*: C does not have a borrow checker, so p2c never faces the
 aliasing problem that `architecture.md` §15 is about. We keep the "`var` is a
 reference" shape (`&mut T`) and add sema-level alias detection.
 
@@ -74,7 +74,7 @@ variables allowing sub-procedures access to their parents' variables are
 occasionally omitted by mistake". Gillespie also notes that for a single
 captured variable "passing a pointer to that variable directly would be
 simpler" but p2c never did that.
-*For Pascrust*: we do the "simpler" thing he describes, per-variable lifting,
+*For PascRust*: we do the "simpler" thing he describes, per-variable lifting,
 because in Rust the struct-pointer scheme reintroduces the `&mut LOC` vs
 `&mut LOC.field` double-borrow problem. See `architecture.md` §15.5.
 
@@ -86,7 +86,7 @@ normalized so the last used element is nonzero". Runtime functions in
 `p2c.h`: `P_setunion`, `P_setint`, `P_setdiff`, `P_setxor`, `P_inset`,
 `P_setequal`, `P_subset`, `P_addset`, `P_addsetr` (ranges), `P_remset`,
 `P_setcpy`, `P_expset`, `P_packset`; `SETBITS` is 32.
-*For Pascrust*: one 256-bit `PSet<T>`; the small/large split is an
+*For PascRust*: one 256-bit `PSet<T>`; the small/large split is an
 optimization we do not need.
 
 **Strings.** Pascal strings become NUL-terminated C `char` arrays (so "some
@@ -97,7 +97,7 @@ variable of any size", readable through `strmax`). The Turbo setting "changes
 the default integer size and string truncation limit", but "Turbo's automatic
 string clipping is not supported". Runtime helpers: `strsub`, `strltrim`,
 `strrtrim`, `strrpt`, `strpad`, `strpos2`, `sprintf` for `Str`.
-*For Pascrust*: we keep the length-prefixed layout (`PString`, length byte
+*For PascRust*: we keep the length-prefixed layout (`PString`, length byte
 addressable as `s[0]`) and the per-variable capacity, so clipping works. The
 hidden-size-parameter idea is why `PString` carries `cap` at run time.
 
@@ -108,13 +108,13 @@ macros with `GET`/`PUT`/`BUFEOF`/`BUFFPOS` emulating ISO buffer variables. I/O
 status: `P_ioresult` and `P_escapecode` globals, `_SETIO(cond, ior)` sets
 `P_ioresult` to 0 or the TP error code (`FileNotFound = 10`, `EndOfFile = 30`,
 ...). `CheckFileEOF` adds extra checks.
-*For Pascrust*: `PText` and `PFile<T>` structs, the same TP `IOResult` codes,
+*For PascRust*: `PText` and `PFile<T>` structs, the same TP `IOResult` codes,
 and `{$I-}` state tracked in the runtime.
 
 **`with` statements.** p2c introduces a temporary pointer to the record
 (`WithName` option: "Name of WITH statement temp ptr; %s=unique id") and
 rewrites field references through it.
-*For Pascrust*: we rewrite to full paths instead of holding a temporary,
+*For PascRust*: we rewrite to full paths instead of holding a temporary,
 because a `&mut` temporary would lock the record for the whole block.
 
 **Units / modules.** Each unit yields a `.h` with "a translation of the
@@ -123,17 +123,17 @@ interface text, located via `ImportFrom` entries or `ImportDir` search
 patterns (`%s.pas`, `%s.text`, `--HOMEDIR--/%s.imp`). `ImportAll` reads a
 whole file "in case file contains several modules/units". Built-in units are
 described by `.imp` files (`system.imp`, `turbo.imp`).
-*For Pascrust*: one Rust module per unit, `pub` for interface items; built-in
+*For PascRust*: one Rust module per unit, `pub` for interface items; built-in
 units are Rust modules in `pascrust_runtime` whose Pascal-visible signatures
 are a table in sema (the `.imp` idea, in Rust).
 
 **Integers.** `Integer16`: "1=assume Pascal integers are 16 bits ... default=0
-for HP/Oregon/VAX, 1 for Turbo/MPW". Pascrust: `i16` for Turbo, same
+for HP/Oregon/VAX, 1 for Turbo/MPW". PascRust: `i16` for Turbo, same
 reasoning.
 
 **Checks.** `ArrayCheck` "0 or default=do not check array bounds",
 `NilCheck`, `CaseCheck` ("check CASE statements without OTHERWISE"),
-`RangeCheck` "(not yet implemented)". Pascrust always checks array indexes
+`RangeCheck` "(not yet implemented)". PascRust always checks array indexes
 and nil derefs (Rust makes this free), and treats a `case` with no matching
 arm and no `else` as a no-op (TP semantics).
 
@@ -141,7 +141,7 @@ arm and no `else` as a no-op (TP semantics).
 blocks (p2c emulates non-local goto with `setjmp`; we reject), conformant
 arrays, variant records (p2c uses C unions; we flatten), `computational` type.
 
-### What Pascrust takes from p2c
+### What PascRust takes from p2c
 
 1. Whole-program translation with a per-unit output file.
 2. Lifting nested procedures to top level with explicit environment passing
@@ -167,7 +167,7 @@ arrays, variant records (p2c uses C unions; we flatten), `computational` type.
 - **pascal-rs** (https://docs.rs/crate/pascal/0.1.2): a Pascal interpreter
   written in Rust, not a transpiler. Useful only as a reference for a Rust
   Pascal lexer/parser shape.
-- Nothing else of substance exists; Pascrust is effectively green-field for
+- Nothing else of substance exists; PascRust is effectively green-field for
   the Rust-specific decisions (var aliasing, heap handles, lifting).
 
 ## 3. Free Pascal (the open-source Turbo Pascal)
@@ -239,7 +239,7 @@ arrays, variant records (p2c uses C unions; we flatten), `computational` type.
 
 ## 5. Standard library interfaces to match
 
-- **Turbo Pascal `System` unit** is the one to match for Pascrust's
+- **Turbo Pascal `System` unit** is the one to match for PascRust's
   `pascrust_runtime::system`. The TP 7.0 Language Guide chapter 1 of the
   "library reference" lists it; FPC's System unit documentation is the same
   interface plus extensions. The core TP 5.5/7.0 `System` surface, grouped:
@@ -259,7 +259,7 @@ arrays, variant records (p2c uses C unions; we flatten), `computational` type.
   205 floating overflow, 207 invalid floating operation, 100 disk read error,
   101 disk write, 102 file not assigned, 103 file not open, 104/105 not open
   for input/output, 106 invalid numeric format, 2 file not found, 3 path not
-  found, 4 too many open files, 5 access denied. Pascrust's `run()` prints
+  found, 4 too many open files, 5 access denied. PascRust's `run()` prints
   these codes.
 - **ISO 7185 required procedures** (`6.6.5`, `6.6.6`): `rewrite reset put get
   read readln write writeln page new dispose pack unpack abs sqr sin cos exp
