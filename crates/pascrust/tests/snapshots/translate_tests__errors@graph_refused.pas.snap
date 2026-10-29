@@ -1,0 +1,12 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/graph_refused.pas
+---
+graph_refused.pas:7:8: error: PascRust can't run `InstallUserDriver`: it loads a .BGI driver file; PascRust's one driver is built in, so leave the call out
+  n := InstallUserDriver('SVGA256', nil);
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+graph_refused.pas:8:8: error: PascRust can't run `RegisterBGIfont`: it registers font code linked in from an .OBJ file; PascRust draws every font with the built-in one, so leave the call out
+  n := RegisterBGIfont(nil);
+       ^^^^^^^^^^^^^^^^^^^^

@@ -124,6 +124,16 @@ pub fn graph_record(name: &str) -> Option<Type> {
         "textsettingstype" => {
             unit_record("TextSettingsType", &words(&["Font", "Direction", "CharSize", "Horiz", "Vert"]))
         }
+        "palettetype" => {
+            let colors = Type::Array(std::rc::Rc::new(super::types::ArrayType {
+                index: Type::Int(IntKind::Integer),
+                lo: 0,
+                hi: 15,
+                elem: Type::Int(IntKind::ShortInt),
+                alias: None,
+            }));
+            unit_record("PaletteType", &[("Size", Type::Int(IntKind::Byte)), ("Colors", colors)])
+        }
         "viewporttype" => {
             let mut fields = ints(&["x1", "y1", "x2", "y2"]);
             fields.push(("Clip", Type::Bool));
@@ -382,6 +392,23 @@ pub static GRAPH: &[UnitRoutine] = &[
     routine!("getfillsettings" => "get_fill_settings"(VarRecord("fillsettingstype"))),
     routine!("gettextsettings" => "get_text_settings"(VarRecord("textsettingstype"))),
     routine!("getviewsettings" => "get_view_settings"(VarRecord("viewporttype"))),
+    routine!("getpalette" => "get_palette"(VarRecord("palettetype"))),
+    routine!("getdefaultpalette" => "get_default_palette"(VarRecord("palettetype"))),
+    routine!("setallpalette" => "set_all_palette"(VarRecord("palettetype"))),
+    routine!("getpalettesize" => "get_palette_size"() -> Integer),
+    routine!("setrgbpalette" => "set_rgb_palette"(Int, Int, Int, Int)),
+    routine!("graphdefaults" => "graph_defaults"()),
+    routine!("setaspectratio" => "set_aspect_ratio"(Int, Int)),
+    routine!("setusercharsize" => "set_user_char_size"(Int, Int, Int, Int)),
+    routine!("getdrivername" => "get_driver_name"() -> Str),
+    routine!("getmodename" => "get_mode_name"(Int) -> Str),
+    routine!("getmaxmode" => "get_max_mode"() -> Integer),
+    routine!("getmoderange" => "get_mode_range"(Int, VarInteger, VarInteger)),
+    routine!("installuserfont" => "install_user_font"(Str) -> Integer),
+    routine!("setgraphbufsize" => "set_graph_buf_size"(Int)),
+    routine!("registerbgidriver" => refused "it registers driver code linked in from an .OBJ file; PascRust's one driver is built in, so leave the call out"),
+    routine!("registerbgifont" => refused "it registers font code linked in from an .OBJ file; PascRust draws every font with the built-in one, so leave the call out"),
+    routine!("installuserdriver" => refused "it loads a .BGI driver file; PascRust's one driver is built in, so leave the call out"),
 ];
 
 pub static GRAPH_CONSTS: &[UnitConst] = &[
@@ -435,6 +462,7 @@ pub static GRAPH_CONSTS: &[UnitConst] = &[
     ("copyput", "COPY_PUT", 0),
     ("xorput", "XOR_PUT", 1),
     ("maxcolors", "MAX_COLORS", 15),
+    ("usercharsize", "USER_CHAR_SIZE", 0),
 ];
 
 /// The `Overlay` unit, faked (see the runtime's `overlay` module): a
@@ -533,6 +561,7 @@ pub fn unit_types(name: &str) -> Vec<(&'static str, Type)> {
                 "fillsettingstype",
                 "textsettingstype",
                 "viewporttype",
+                "palettetype",
             ] {
                 types.push((name, graph_record(name).expect("a Graph record")));
             }

@@ -1,0 +1,16 @@
+ok: GetPalette: the EGA colours
+ok: GetPaletteSize
+ok: SetPalette shows in GetPalette
+ok: SetAllPalette: -1 leaves a colour alone
+ok: GetDefaultPalette
+ok: GraphDefaults resets colours and the palette
+ok: but not the picture
+ok: SetAspectRatio and GetAspectRatio
+ok: GetDriverName
+ok: GetMaxMode and GetModeName
+ok: GetModeRange of VGA
+ok: GetModeRange of CGA
+ok: GetModeRange of no driver
+ok: InstallUserFont gives a new font number
+ok: SetUserCharSize scales the text
+15 of 15 checks passed

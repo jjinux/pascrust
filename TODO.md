@@ -238,10 +238,10 @@ Dos, the rest
 
 Graph, the rest
 - [x] `DrawPoly`/`FillPoly` (arrays of `PointType`), `GetArcCoords`, and the `Get*Settings` records (`GetLineSettings`, `GetFillSettings`, `GetTextSettings`, `GetViewSettings`).
-- [ ] `GetImage`/`PutImage`/`ImageSize` with the `PutImage` modes (`NormalPut`, `XORPut`, ...), storing images in a byte buffer the program allocates.
-- [ ] Palettes: `GetPalette`, `GetDefaultPalette`, `SetAllPalette`, `SetRGBPalette`, `GetPaletteSize`; `GraphDefaults`; `SetAspectRatio`; `SetUserCharSize`; `GetDriverName`/`GetModeName`/`GetMaxMode`/`GetModeRange`.
+- [ ] `GetImage`/`PutImage`/`ImageSize` with the `PutImage` modes (`NormalPut`, `XORPut`, ...), storing images in a byte buffer the program allocates. Programs allocate it with `GetMem(p, ImageSize(...))` and pass `p^` (an untyped `var`), so this waits for a design for `GetMem`/`FreeMem` and untyped `Pointer`, shared with untyped files below.
+- [x] Palettes: `GetPalette`, `GetDefaultPalette`, `SetAllPalette`, `SetRGBPalette`, `GetPaletteSize`; `GraphDefaults`; `SetAspectRatio`; `SetUserCharSize`; `GetDriverName`/`GetModeName`/`GetMaxMode`/`GetModeRange`.
 - [ ] `SetActivePage`/`SetVisualPage` (two framebuffers, for flicker-free animation).
-- [ ] Fake: `RegisterBGIdriver`, `RegisterBGIfont`, `InstallUserDriver`, `InstallUserFont` and `SetGraphBufSize` succeed and change nothing (there are no `.BGI`/`.CHR` files to load).
+- [x] Fake: `InstallUserFont` and `SetGraphBufSize` succeed and change nothing (there are no `.CHR` files to load). `RegisterBGIdriver`, `RegisterBGIfont` and `InstallUserDriver` are refused instead, with the reason: they take `@DriverProc` (code linked in from an `.OBJ` file) or a driver file, and the call can simply go.
 
 Last: raw bytes and C strings
 - [ ] Untyped files (`file` without `of`) with `BlockRead`/`BlockWrite`, and untyped `var` parameters, as byte views of records and arrays (with `SizeOf`).

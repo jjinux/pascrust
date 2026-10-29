@@ -313,8 +313,18 @@ Graph unit (BGI, as used in the examples)
   `TextWidth`/`TextHeight`
 - `SetViewPort`/`ClearViewPort`/`ClearDevice`/`GetViewSettings`
   (`ViewPortType`), `GetAspectRatio`
-- Not yet: `GetImage`/`PutImage`/`ImageSize`, the palette routines beyond
-  `SetPalette`, pages (see TODO.md, Phase 7)
+- `SetPalette`, `GetPalette`/`GetDefaultPalette`/`SetAllPalette`
+  (`PaletteType`; -1 leaves a colour), `GetPaletteSize`, `SetRGBPalette`
+  (the VGA's 64 colour registers the EGA palette points into),
+  `GraphDefaults`, `SetAspectRatio` (remembered; pixels stay square),
+  `SetUserCharSize` (with `UserCharSize`), `GetDriverName` (`EGAVGA`),
+  `GetModeName`/`GetMaxMode`/`GetModeRange`
+- Faked: `InstallUserFont` gives a new font number (drawn in the built-in
+  font), `SetGraphBufSize` does nothing. Refused: `RegisterBGIdriver`,
+  `RegisterBGIfont` and `InstallUserDriver`, which link or load driver
+  code; PascRust's one driver is built in, so the calls can go
+- Not yet: `GetImage`/`PutImage`/`ImageSize` (they need `GetMem` and
+  untyped pointers), pages (see TODO.md, Phase 7)
 
 ## Tier 3: later, or never
 

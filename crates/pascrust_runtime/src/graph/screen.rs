@@ -25,6 +25,13 @@ pub fn ega_rgb(ega: u8) -> u32 {
     (channel(2, 5) << 16) | (channel(1, 4) << 8) | channel(0, 3)
 }
 
+/// A VGA colour register's 6-bit components (the low 6 bits of each) as
+/// `0xRRGGBB`, each scaled from 0..63 to 0..255.
+pub fn dac_rgb(red: i32, green: i32, blue: i32) -> u32 {
+    let component = |c: i32| ((c & 63) * 255 / 63) as u32;
+    (component(red) << 16) | (component(green) << 8) | component(blue)
+}
+
 /// Line patterns for `SetLineStyle`: one bit per pixel along the line.
 const LINE_PATTERNS: [u16; 4] = [
     0xFFFF, // SolidLn
@@ -61,6 +68,11 @@ pub struct Screen {
     pub pixels: Vec<u8>,
     /// The EGA colour each colour number is displayed as.
     pub palette: [u8; 16],
+    /// The VGA's colour registers (its DAC): what each of the 64 EGA colours
+    /// really looks like, as `0xRRGGBB`. `SetRGBPalette` changes them.
+    pub dac: [u32; 64],
+    /// `SetAspectRatio`, for `GetAspectRatio`.
+    pub aspect: (u16, u16),
     pub color: u8,
     pub bk_color: u8,
     /// One bit per pixel along a line; thickness is 1 or 3. And the style
@@ -96,6 +108,10 @@ impl Screen {
         Screen {
             pixels: vec![0; WIDTH * HEIGHT],
             palette: DEFAULT_PALETTE,
+            // `from_fn` builds an array from its index: entry `i` is EGA
+            // colour `i`.
+            dac: std::array::from_fn(|i| ega_rgb(i as u8)),
+            aspect: (10000, 10000),
             color: 15,
             bk_color: 0,
             line_pattern: LINE_PATTERNS[0],
@@ -118,7 +134,7 @@ impl Screen {
 
     /// The screen as `0xRRGGBB` pixels, for a window or an image file.
     pub fn render(&self, out: &mut [u32]) {
-        let rgb: Vec<u32> = self.palette.iter().map(|&e| ega_rgb(e)).collect();
+        let rgb: Vec<u32> = self.palette.iter().map(|&e| self.dac[usize::from(e & 63)]).collect();
         for (dst, &src) in out.iter_mut().zip(&self.pixels) {
             *dst = rgb[usize::from(src & 15)];
         }
@@ -453,6 +469,16 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rgb_palette_recolours() {
+        let mut s = Screen::new();
+        s.put_pixel(0, 0, 4); // red, EGA colour 4
+        s.dac[4] = dac_rgb(63, 32, 0);
+        let mut out = vec![0; WIDTH * HEIGHT];
+        s.render(&mut out);
+        assert_eq!(out[0], 0xFF8100);
+    }
 
     #[test]
     fn palette_colours() {

@@ -161,6 +161,7 @@ pub const VERT_DIR: u8 = 1;
 pub const COPY_PUT: u8 = 0;
 pub const XOR_PUT: u8 = 1;
 pub const MAX_COLORS: u8 = 15;
+pub const USER_CHAR_SIZE: u8 = 0;
 pub const CLIP_ON: bool = true;
 pub const CLIP_OFF: bool = false;
 pub const TOP_ON: bool = true;
@@ -233,10 +234,94 @@ pub fn get_max_color() -> u16 {
     15
 }
 
-/// `GetAspectRatio(Xasp, Yasp)`: VGA pixels are square.
+/// `GetAspectRatio(Xasp, Yasp)`: VGA pixels are square, unless
+/// `SetAspectRatio` said otherwise.
 pub fn get_aspect_ratio(x: &mut u16, y: &mut u16) {
-    *x = 10000;
-    *y = 10000;
+    (*x, *y) = with(|s| s.aspect);
+}
+
+/// `SetAspectRatio(Xasp, Yasp)`: remembered for `GetAspectRatio`. (Circles
+/// stay round: the screen's pixels are square whatever it says.)
+pub fn set_aspect_ratio(x: impl Into<i32>, y: impl Into<i32>) {
+    let aspect = (i(x) as u16, i(y) as u16);
+    with(|s| s.aspect = aspect);
+}
+
+/// `GraphDefaults`: everything back as `InitGraph` set it (colours,
+/// palette, styles, text, viewport, current position), but not the
+/// picture.
+pub fn graph_defaults() {
+    with(|s| {
+        let pixels = std::mem::take(&mut s.pixels);
+        *s = Screen::new();
+        s.pixels = pixels;
+    });
+}
+
+/// `GetDriverName`: the VGA driver's file name, as the BGI gave it.
+pub fn get_driver_name() -> PString {
+    PString::from("EGAVGA")
+}
+
+/// `GetModeName(ModeNumber)`: the VGA modes' names, as the BGI gave them.
+pub fn get_mode_name(mode: impl Into<i32>) -> PString {
+    let name = match i(mode) {
+        0 => "640 x 200 VGA",
+        1 => "640 x 350 VGA",
+        2 => "640 x 480 VGA",
+        _ => "",
+    };
+    PString::from(name)
+}
+
+/// `GetMaxMode`: `VGAHi`, the highest mode of the (only) driver.
+pub fn get_max_mode() -> i16 {
+    VGA_HI.into()
+}
+
+/// `GetModeRange(Driver, LoMode, HiMode)`: the modes each BGI driver had;
+/// -1 for a driver number that doesn't exist.
+pub fn get_mode_range(driver: impl Into<i32>, lo: &mut i16, hi: &mut i16) {
+    (*lo, *hi) = match i(driver) {
+        1 | 8 => (0, 4),     // CGA, AT&T 400
+        2 => (0, 5),         // MCGA
+        3 | 4 | 6 => (0, 1), // EGA, EGA64, IBM 8514
+        5 => (3, 3),         // EGA monochrome
+        7 | 10 => (0, 0),    // Hercules, PC 3270
+        9 => (0, 2),         // VGA
+        _ => (-1, -1),
+    };
+}
+
+/// `InstallUserFont(FileName)`: there are no `.CHR` files to load, but the
+/// program gets a new font number (drawn in the default font, as the
+/// built-in stroked fonts are).
+pub fn install_user_font(_file_name: impl Into<PString>) -> i16 {
+    thread_local! {
+        static NEXT_FONT: std::cell::Cell<i16> = const { std::cell::Cell::new(11) };
+    }
+    NEXT_FONT.with(|next| {
+        let font = next.get();
+        next.set(font + 1);
+        font
+    })
+}
+
+/// `SetGraphBufSize(BufSize)`: the BGI's buffer for flood fills. Ours needs
+/// no setting.
+pub fn set_graph_buf_size(_size: impl Into<i32>) {}
+
+/// `SetUserCharSize(MultX, DivX, MultY, DivY)`: scales the stroked fonts.
+/// Text here is the 8x8 font scaled by whole numbers, so it uses the
+/// vertical factor, rounded.
+pub fn set_user_char_size(
+    _mult_x: impl Into<i32>,
+    _div_x: impl Into<i32>,
+    mult_y: impl Into<i32>,
+    div_y: impl Into<i32>,
+) {
+    let scale = (i(mult_y) / i(div_y).max(1)).clamp(1, 10);
+    with(|s| s.text_scale = scale);
 }
 
 // Colours.
@@ -269,6 +354,60 @@ pub fn get_bk_color() -> u16 {
 pub fn set_palette(n: impl Into<i32>, ega: impl Into<i32>) {
     let (n, ega) = (color(n), (ega.into() & 63) as u8);
     with(|s| s.palette[usize::from(n)] = ega);
+}
+
+/// `PaletteType`: the number of colours, and the EGA colour of each.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PaletteType {
+    pub size: u8,
+    pub colors: PArray<i8, 0, 16>,
+}
+
+/// `GetPalette(Palette)`: the 16 colour numbers' EGA colours.
+pub fn get_palette(palette: &mut PaletteType) {
+    let colors = with(|s| s.palette);
+    fill_palette(palette, colors);
+}
+
+/// `GetDefaultPalette(Palette)`: the palette as `InitGraph` set it.
+pub fn get_default_palette(palette: &mut PaletteType) {
+    fill_palette(palette, screen::DEFAULT_PALETTE);
+}
+
+fn fill_palette(palette: &mut PaletteType, colors: [u8; 16]) {
+    palette.size = 16;
+    for (n, ega) in colors.into_iter().enumerate() {
+        palette.colors[n as i16] = ega as i8;
+    }
+}
+
+/// `SetAllPalette(Palette)`: set every colour number at once. An entry of
+/// -1 leaves that colour as it was.
+pub fn set_all_palette(palette: &mut PaletteType) {
+    let count = usize::from(palette.size).min(16);
+    let colors: Vec<i8> = palette.colors.iter().take(count).copied().collect();
+    with(|s| {
+        for (n, &ega) in colors.iter().enumerate() {
+            if ega >= 0 {
+                s.palette[n] = (ega & 63) as u8;
+            }
+        }
+    });
+}
+
+/// `GetPaletteSize`: 16 colours.
+pub fn get_palette_size() -> i16 {
+    16
+}
+
+/// `SetRGBPalette(ColorNum, Red, Green, Blue)`: what one of the VGA's 64
+/// colour registers shows, each component 0 to 63 (the low 6 bits). In 16-
+/// colour mode, colour number `n` shows register `palette[n]`, so
+/// `SetRGBPalette(DefaultPalette[Red], ...)` recolours red.
+pub fn set_rgb_palette(n: impl Into<i32>, red: impl Into<i32>, green: impl Into<i32>, blue: impl Into<i32>) {
+    let rgb = screen::dac_rgb(i(red), i(green), i(blue));
+    let n = (i(n) & 63) as usize;
+    with(|s| s.dac[n] = rgb);
 }
 
 // Pixels and lines.
