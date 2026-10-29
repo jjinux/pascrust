@@ -831,6 +831,10 @@ impl<'a> Codegen<'a> {
             .collect();
         let shared = |key: &Option<String>| key.is_some() && heap.iter().filter(|k| *k == key).count() > 1;
         let mut records: Vec<(String, String, String)> = Vec::new(); // (key, pointer, name)
+        // Value arguments with a call, not yet in a `let`: (position in
+        // `parts`, parameter). If a later argument has to go in a `let`,
+        // these go first, so the arguments still run left to right.
+        let mut calls_before: Vec<(usize, usize)> = Vec::new();
         for ((param, arg), key) in params.iter().zip(args).zip(&heap) {
             let var = self.a.var(*param);
             let ty = var.ty.clone();
@@ -892,10 +896,20 @@ impl<'a> Codegen<'a> {
                     None => false,
                 };
                 if borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root)) || derefs(arg) || uses_receiver {
+                    // `ShowV(Bump, p^.value)`: Bump runs before `p^.value`
+                    // is read, as in Pascal.
+                    for (position, earlier) in std::mem::take(&mut calls_before) {
+                        let temp = self.temp_name(&self.a.sym(earlier).rust_name.clone());
+                        let earlier_code = std::mem::replace(&mut parts[position], temp.clone());
+                        self.pending.push(format!("let {temp} = {earlier_code};"));
+                    }
                     let temp = self.temp_name(&self.a.sym(*param).rust_name.clone());
                     self.pending.push(format!("let {temp} = {code};"));
                     parts.push(temp);
                 } else {
+                    if self.has_call(arg) {
+                        calls_before.push((parts.len(), *param));
+                    }
                     parts.push(code);
                 }
             }
