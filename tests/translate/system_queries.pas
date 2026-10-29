@@ -31,6 +31,14 @@ var
   w: Word;
   i: Integer;
   small: array[0..LastDigit] of Char;
+  one: 1..10;
+  centered: -5..5;
+  aDigit: Digit;
+
+function TopOf(d: Digit): Integer;
+begin
+  TopOf := High(d);
+end;
 
 procedure Check(ok: Boolean; what: string);
 begin
@@ -73,6 +81,10 @@ begin
   Check(High(Boolean), 'High(Boolean)');
   Check(High(Digit) = 9, 'High(subrange)');
   Check(High(small) = 9, 'array bound from High');
+  Check((High(one) = 10) and (Low(one) = 1), 'High and Low of a subrange variable');
+  Check((High(centered) = 5) and (Low(centered) = -5), 'High and Low of a negative subrange variable');
+  Check(High(aDigit) = 9, 'High of a variable of a subrange type');
+  Check(TopOf(3) = 9, 'High of a subrange parameter');
   Check(High(s) = 30, 'High(string[30])');
   Check(Low(s) = 0, 'Low(string)');
   w := $1234;

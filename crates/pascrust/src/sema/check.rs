@@ -67,6 +67,9 @@ pub(super) struct Checker {
     declaring_type: bool,
     /// Bounds of type names declared as subranges (`Index = 1..10`).
     subrange_types: HashMap<SymId, (Type, i64, i64)>,
+    /// Bounds of variables and parameters declared with a subrange type
+    /// (`i: 1..10`), which are stored as their host type: for `High(i)`.
+    var_bounds: HashMap<SymId, (i64, i64)>,
     /// The records of the `with` statements we're inside, innermost last,
     /// with their types: a name that is one of their fields means that field.
     with_records: Vec<(Expr, Type)>,
@@ -100,6 +103,7 @@ impl Checker {
             pending_pointers: Vec::new(),
             method_scopes: Vec::new(),
             subrange_types: HashMap::new(),
+            var_bounds: HashMap::new(),
             with_records: Vec::new(),
             with_selectors: Vec::new(),
             next_synthetic_id: NodeId::MAX,
@@ -450,9 +454,13 @@ impl Checker {
                 Decl::Var(v) => {
                     let ty = self.resolve_named_type(&v.ty, Some(&v.names[0].name));
                     let owner = self.cur();
+                    let bounds = self.subrange_bounds(&v.ty);
                     for name in &v.names {
                         let sym = self.declare_var(name, ty.clone(), owner, VarRole::Local);
                         self.a.procs[owner].locals.push(sym);
+                        if let Some(bounds) = bounds {
+                            self.var_bounds.insert(sym, bounds);
+                        }
                     }
                 }
                 Decl::Proc(p) => self.proc_decl(p),
@@ -763,9 +771,13 @@ impl Checker {
                     Type::Error
                 }
             };
+            let bounds = group.ty.as_ref().and_then(|t| self.subrange_bounds(t));
             for name in &group.names {
                 let param = self.declare_var(name, ty.clone(), pid, VarRole::Param(group.mode));
                 self.a.procs[pid].params.push(param);
+                if let Some(bounds) = bounds {
+                    self.var_bounds.insert(param, bounds);
+                }
             }
         }
         self.scopes.pop();
@@ -1458,6 +1470,21 @@ impl Checker {
         }
     }
 
+    /// The bounds of a subrange type expression, written out (`1..10`) or
+    /// named (`Digit`).
+    fn subrange_bounds(&self, t: &TypeExpr) -> Option<(i64, i64)> {
+        let ord = |e: &Expr| match self.eval_const(e)? {
+            ConstVal::Int(n) => Some(n),
+            ConstVal::Str(s) if s.len() == 1 => Some(i64::from(s[0])),
+            _ => None,
+        };
+        match t {
+            TypeExpr::Subrange { lo, hi, .. } => Some((ord(lo)?, ord(hi)?)),
+            TypeExpr::Named(id) => self.subrange_types.get(&self.lookup(&id.key())?).map(|&(_, lo, hi)| (lo, hi)),
+            _ => None,
+        }
+    }
+
     /// `SizeOf(x)`, `High(x)` or `Low(x)`, where `x` is a type or a
     /// variable: the value, and its type.
     pub(super) fn type_query(&self, b: Builtin, arg: &Expr) -> Option<(ConstVal, Type)> {
@@ -1469,6 +1496,11 @@ impl Checker {
                     SymKind::TypeName(ty) => {
                         bounds = self.subrange_types.get(&sym).map(|&(_, lo, hi)| (lo, hi));
                         Some(ty.clone())
+                    }
+                    // A variable declared with a subrange type.
+                    SymKind::Var(_) => {
+                        bounds = self.var_bounds.get(&sym).copied();
+                        None
                     }
                     _ => None,
                 },

@@ -66,6 +66,13 @@ type Letters = PArray<bool, 97, 26>;
 /// record is a runtime error instead of undefined behaviour.
 type PPoint = Ptr<Point>;
 
+/// Pascal: `function TopOf(d: Digit): Integer;`
+fn top_of(d: i16) -> i16 {
+    let mut result: i16 = 0;
+    result = 9;
+    result
+}
+
 /// Pascal: `procedure Check(ok: Boolean; what: string);`
 ///
 /// The global variables this procedure uses are passed in as parameters,
@@ -92,6 +99,9 @@ fn pascal_main() {
     let mut w_: u16 = 0;
     let mut i: i16 = 0;
     let small: PArray<u8, 0, 10> = PArray::default();
+    let one: i16 = 0;
+    let centered: i16 = 0;
+    let a_digit: i16 = 0;
     checks = 0;
     failures = 0;
     check(&mut checks, &mut failures, 2 == 2, pstr("SizeOf(Integer)"));
@@ -120,6 +130,10 @@ fn pascal_main() {
     check(&mut checks, &mut failures, true, pstr("High(Boolean)"));
     check(&mut checks, &mut failures, 9 == 9, pstr("High(subrange)"));
     check(&mut checks, &mut failures, 9 == 9, pstr("array bound from High"));
+    check(&mut checks, &mut failures, 10 == 10 && 1 == 1, pstr("High and Low of a subrange variable"));
+    check(&mut checks, &mut failures, 5 == 5 && -5 == -5, pstr("High and Low of a negative subrange variable"));
+    check(&mut checks, &mut failures, 9 == 9, pstr("High of a variable of a subrange type"));
+    check(&mut checks, &mut failures, top_of(3) == 9, pstr("High of a subrange parameter"));
     check(&mut checks, &mut failures, 30 == 30, pstr("High(string[30])"));
     check(&mut checks, &mut failures, 0 == 0, pstr("Low(string)"));
     w_ = 4660;

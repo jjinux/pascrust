@@ -24,6 +24,10 @@ ok: High(Char)
 ok: High(Boolean)
 ok: High(subrange)
 ok: array bound from High
+ok: High and Low of a subrange variable
+ok: High and Low of a negative subrange variable
+ok: High of a variable of a subrange type
+ok: High of a subrange parameter
 ok: High(string[30])
 ok: Low(string)
 ok: Swap(Word)
@@ -31,4 +35,4 @@ ok: Swap(Integer)
 ok: Swap of a Word literal
 ok: Assigned(nil)
 ok: Assigned(p)
-33 of 33 checks passed
+37 of 37 checks passed
