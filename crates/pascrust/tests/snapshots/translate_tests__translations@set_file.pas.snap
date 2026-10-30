@@ -23,7 +23,7 @@ struct Rec {
 
 // `file of` needs to turn records into bytes and back. This runtime macro
 // implements that (the `FileRecord` trait) field by field.
-file_record!(Rec { n, flags, letters });
+file_record!(Rec { n, flags: set 1, letters });
 
 /// The main program: the `begin ... end.` block of `SetFile`.
 /// Its local variables are the Pascal program's global variables.

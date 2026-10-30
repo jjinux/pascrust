@@ -5,7 +5,7 @@ mod files;
 mod read;
 mod write;
 
-pub use files::{AnyFile, FileRecord, FileString, PBlockFile, PFile, PText, real48};
+pub use files::{AnyFile, FileRecord, FileString, Hint, PBlockFile, PFile, PText, real48};
 
 #[cfg(feature = "crt")]
 pub(crate) use read::read_key_plain;

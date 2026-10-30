@@ -170,7 +170,7 @@ impl<'a> Codegen<'a> {
     /// `[1, 3..5, x]` → `pset![1, 3..=5, x]`, each element as the set's
     /// element type (`'a'` → `b'a'`).
     fn set_literal(&mut self, e: &Expr, elems: &[SetElem]) -> String {
-        let Type::Set(elem_ty) = self.a.type_of(e.id).clone() else { unreachable!("sema typed the set") };
+        let Type::Set(elem_ty, _) = self.a.type_of(e.id).clone() else { unreachable!("sema typed the set") };
         if elems.is_empty() {
             return "PSet::new()".to_string();
         }
@@ -207,7 +207,7 @@ impl<'a> Codegen<'a> {
     fn set_binary(&mut self, op: BinaryOp, lhs: &Expr, rhs: &Expr) -> Code {
         use BinaryOp::*;
         if op == In {
-            let Type::Set(elem_ty) = self.a.type_of(rhs.id).clone() else { unreachable!("sema checked `in`") };
+            let Type::Set(elem_ty, _) = self.a.type_of(rhs.id).clone() else { unreachable!("sema checked `in`") };
             let x = self.coerce(lhs, &elem_ty);
             if let ExprKind::Set(elems) = &rhs.kind
                 && elems.iter().all(|elem| self.constant_item(elem))
@@ -546,7 +546,7 @@ impl<'a> Codegen<'a> {
             let (p, q) = (self.pchar_operand(lhs), self.pchar_operand(rhs));
             return (format!("{p}.diff(&{q})"), prec::POSTFIX);
         }
-        if op == In || matches!(lt, Type::Set(_)) {
+        if op == In || matches!(lt, Type::Set(..)) {
             return self.set_binary(op, lhs, rhs);
         }
         let (rust_op, p) = match op {
@@ -906,7 +906,8 @@ impl<'a> Codegen<'a> {
             Type::Str { cap } => format!("&mut string_bytes({}, {cap})", self.place_mut(root)),
             // An array of `string[n]`s or of small sets: their real sizes.
             ty => match super::size_hint(&ty) {
-                Some(size) => format!("&mut sized_bytes({}, {size})", self.place_mut(root)),
+                Some((size, 0)) => format!("&mut sized_bytes({}, {size})", self.place_mut(root)),
+                Some((size, first)) => format!("&mut sized_bytes_from({}, {size}, {first})", self.place_mut(root)),
                 None => self.place_mut(root),
             },
         };
@@ -936,7 +937,10 @@ impl<'a> Codegen<'a> {
         let all = match self.a.type_of(root.id).clone() {
             Type::Str { cap } => format!("string_view_bytes(&{}, {cap})", paren(self.expr(root), prec::UNARY)),
             ty => match super::size_hint(&ty) {
-                Some(size) => format!("sized_view_bytes(&{}, {size})", paren(self.expr(root), prec::UNARY)),
+                Some((size, 0)) => format!("sized_view_bytes(&{}, {size})", paren(self.expr(root), prec::UNARY)),
+                Some((size, first)) => {
+                    format!("sized_view_bytes_from(&{}, {size}, {first})", paren(self.expr(root), prec::UNARY))
+                }
                 None => format!("{}.to_bytes()", paren(self.expr(root), prec::POSTFIX)),
             },
         };
@@ -1493,7 +1497,7 @@ impl<'a> Codegen<'a> {
             // `const`; it takes the elements' ordinals as `u8`s.
             ConstVal::Set(ranges) => {
                 let elem_ty = match ty {
-                    Type::Set(elem) => elem.concrete(),
+                    Type::Set(elem, _) => elem.concrete(),
                     _ => Type::Int(IntKind::Byte),
                 };
                 let ord = |n: u8| match &elem_ty {

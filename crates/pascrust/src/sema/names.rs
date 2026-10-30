@@ -128,7 +128,9 @@ const RESERVED: &[&str] = &[
     "string_bytes",
     "string_view_bytes",
     "sized_bytes",
+    "sized_bytes_from",
     "sized_view_bytes",
+    "sized_view_bytes_from",
     // `TypeOf` adds a `type_name` method to an object hierarchy.
     "type_name",
     // A trait the generated code implements by name (`impl Default for

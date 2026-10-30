@@ -1018,8 +1018,10 @@ impl Checker {
                 if !is_subrange {
                     let elem_ty = self.resolve_type(elem);
                     return match &elem_ty {
-                        Type::Char | Type::Bool | Type::Int(IntKind::Byte) | Type::Error => Type::Set(Rc::new(elem_ty)),
-                        Type::Enum(e) if e.variants.len() <= 256 => Type::Set(Rc::new(elem_ty)),
+                        Type::Char | Type::Bool | Type::Int(IntKind::Byte) | Type::Error => {
+                            Type::Set(Rc::new(elem_ty), None)
+                        }
+                        Type::Enum(e) if e.variants.len() <= 256 => Type::Set(Rc::new(elem_ty), None),
                         _ => {
                             self.error(
                                 *span,
@@ -1039,7 +1041,7 @@ impl Checker {
                     );
                     return Type::Error;
                 }
-                Type::Set(Rc::new(elem_ty))
+                Type::Set(Rc::new(elem_ty), Some((lo, hi)))
             }
             other => {
                 self.error(other.span(), "this kind of type is not supported yet");
@@ -2283,7 +2285,7 @@ impl Checker {
                         }
                     }
                 }
-                Type::Set(Rc::new(elem_ty))
+                Type::Set(Rc::new(elem_ty), None)
             }
             // `@Handler`: a procedure's address, a `Pointer`, for `SetIntVec`.
             ExprKind::AddrOf(base)
@@ -2339,17 +2341,17 @@ impl Checker {
                 Some(Type::Int(IntKind::Word))
             }
             // Union, difference and intersection.
-            (Add | Sub | Mul, Type::Set(a), Type::Set(_)) => {
+            (Add | Sub | Mul, Type::Set(a, _), Type::Set(..)) => {
                 if **a == Type::Void {
                     Some(r.clone())
                 } else {
-                    l.accepts(r).then(|| Type::Set(a.clone()))
+                    l.accepts(r).then(|| l.clone())
                 }
             }
-            (In, _, Type::Set(elem)) => {
+            (In, _, Type::Set(elem, _)) => {
                 (l.is_ordinal() && (**elem == Type::Void || same_ordinal_kind(l, elem))).then_some(Type::Bool)
             }
-            (Eq | NotEq | LtEq | GtEq, Type::Set(_), Type::Set(_)) => {
+            (Eq | NotEq | LtEq | GtEq, Type::Set(..), Type::Set(..)) => {
                 (l.accepts(r) || r.accepts(l)).then_some(Type::Bool)
             }
             _ => None,
@@ -3404,8 +3406,8 @@ impl Checker {
                     let set_ty = self.place(&args[0], true);
                     let elem_ty = self.expr(&args[1]);
                     match &set_ty {
-                        Type::Set(elem) if same_ordinal_kind(elem, &elem_ty) || elem_ty == Type::Error => {}
-                        Type::Set(elem) => {
+                        Type::Set(elem, _) if same_ordinal_kind(elem, &elem_ty) || elem_ty == Type::Error => {}
+                        Type::Set(elem, _) => {
                             self.error(args[1].span, format!("a set of {elem} can't hold a {elem_ty}"));
                         }
                         Type::Error => {}

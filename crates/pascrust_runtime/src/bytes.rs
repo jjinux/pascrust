@@ -12,7 +12,7 @@
 
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
-use crate::io::{FileRecord, FileString};
+use crate::io::{FileRecord, FileString, Hint};
 use crate::ordinal::Ordinal;
 
 /// A variable as TP's bytes: what an untyped `var` parameter receives
@@ -68,31 +68,41 @@ impl<T: FileString> ByteView for StringBytes<'_, T> {
 /// `FileRecord::encode_sized`).
 pub struct SizedBytes<'a, T: FileRecord> {
     value: &'a mut T,
-    size: usize,
+    hint: Hint,
 }
 
 /// `Dump(names, ...)` with `names: array[1..3] of string[4]`: `&mut
 /// sized_bytes(&mut names, 4)`.
 pub fn sized_bytes<T: FileRecord>(value: &mut T, size: usize) -> SizedBytes<'_, T> {
-    SizedBytes { value, size }
+    SizedBytes { value, hint: Hint::new(size, 0) }
+}
+
+/// For a set kept from byte `first` of its bitmap (`set of 'a'..'z'`).
+pub fn sized_bytes_from<T: FileRecord>(value: &mut T, size: usize, first: usize) -> SizedBytes<'_, T> {
+    SizedBytes { value, hint: Hint::new(size, first) }
 }
 
 impl<T: FileRecord> ByteView for SizedBytes<'_, T> {
     fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
-        self.value.encode_sized(self.size, &mut out);
+        self.value.encode_sized(self.hint, &mut out);
         out
     }
 
     fn set_bytes(&mut self, bytes: &[u8]) {
-        *self.value = T::decode_sized(self.size, &mut &bytes[..]);
+        *self.value = T::decode_sized(self.hint, &mut &bytes[..]);
     }
 }
 
 /// The same, to read from (`Move`'s source).
 pub fn sized_view_bytes<T: FileRecord>(value: &T, size: usize) -> Vec<u8> {
+    sized_view_bytes_from(value, size, 0)
+}
+
+/// The same, for a set kept from byte `first` of its bitmap.
+pub fn sized_view_bytes_from<T: FileRecord>(value: &T, size: usize, first: usize) -> Vec<u8> {
     let mut out = Vec::new();
-    value.encode_sized(size, &mut out);
+    value.encode_sized(Hint::new(size, first), &mut out);
     out
 }
 

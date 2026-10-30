@@ -122,8 +122,9 @@ pub enum Type {
     /// `file of T`.
     File(Rc<Type>),
     /// `set of T`. The empty set literal `[]` is a `Set` of `Void`, which
-    /// fits any set type.
-    Set(Rc<Type>),
+    /// fits any set type. A set of a subrange (`set of 'a'..'z'`) keeps its
+    /// bounds, which decide how many bytes TP gave it.
+    Set(Rc<Type>, Option<(i64, i64)>),
     /// The type of `nil`.
     Nil,
     /// What `TypeOf` returns: which object type something really is. (In
@@ -505,7 +506,7 @@ impl Type {
             Type::AnyPointer => "AnyPtr".to_string(),
             Type::PChar => "PChar".to_string(),
             Type::Proc(p) => p.alias.clone(),
-            Type::Set(elem) => format!("PSet<{}>", elem.concrete().rust()),
+            Type::Set(elem, _) => format!("PSet<{}>", elem.concrete().rust()),
             Type::Nil | Type::Void | Type::Error => "()".to_string(),
         }
     }
@@ -524,7 +525,7 @@ impl Type {
     /// A set, or an array or record holding one.
     pub fn contains_set(&self) -> bool {
         match self {
-            Type::Set(_) => true,
+            Type::Set(..) => true,
             Type::Array(a) => a.elem.contains_set(),
             Type::Record(r) => r.fields.iter().any(|f| f.ty.contains_set()),
             _ => false,
@@ -595,7 +596,7 @@ impl Type {
             (Type::Proc(_), Type::Nil) => true,
             (Type::PChar, t) if t.is_char_array0() => true,
             (Type::AnyPointer, Type::PChar) => true,
-            (Type::Set(a), Type::Set(b)) => **b == Type::Void || same_ordinal_kind(a, b),
+            (Type::Set(a, _), Type::Set(b, _)) => **b == Type::Void || same_ordinal_kind(a, b),
             // An object may be assigned to (or passed as) one of its
             // ancestors: its ancestor part is copied.
             (Type::Object(to), Type::Object(from)) => from.lineage().iter().any(|(o, _)| o == to),
@@ -642,8 +643,8 @@ impl fmt::Display for Type {
             Type::AnyPointer => write!(f, "Pointer"),
             Type::PChar => write!(f, "PChar"),
             Type::Proc(p) => write!(f, "{}", p.pascal),
-            Type::Set(elem) if **elem == Type::Void => write!(f, "empty set"),
-            Type::Set(elem) => write!(f, "set of {elem}"),
+            Type::Set(elem, _) if **elem == Type::Void => write!(f, "empty set"),
+            Type::Set(elem, _) => write!(f, "set of {elem}"),
             Type::Void => write!(f, "no value"),
             Type::Error => write!(f, "<error>"),
         }
@@ -677,16 +678,30 @@ pub fn tp_size(ty: &Type) -> Option<i64> {
         }
         // A procedural value was a 4-byte far address in TP.
         Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Proc(_) => 4,
-        // A set has a bit per value, up to 256 values (32 bytes).
-        Type::Set(elem) => match &**elem {
-            Type::Bool => 1,
-            Type::Enum(e) => (e.variants.len() as i64 + 7) / 8,
-            _ => 32,
-        },
+        // A set has a bit per value, kept in the bytes from its lowest
+        // value's to its highest's (TP: `Max div 8 - Min div 8 + 1`).
+        Type::Set(..) => {
+            let (_, count) = set_bytes(ty);
+            count as i64
+        }
         Type::Text => 256,
         Type::File(_) => 128,
         _ => return None,
     })
+}
+
+/// The bytes a set takes in TP's layout: the first of the 32 bytes of the
+/// whole bitmap it keeps (its lowest value's), and how many.
+pub fn set_bytes(ty: &Type) -> (usize, usize) {
+    let Type::Set(elem, bounds) = ty else { return (0, 0) };
+    let (lo, hi) = match (bounds, &**elem) {
+        (Some(bounds), _) => *bounds,
+        (None, Type::Bool) => (0, 1),
+        (None, Type::Enum(e)) => (0, e.variants.len() as i64 - 1),
+        _ => (0, 255),
+    };
+    let (first, last) = ((lo / 8) as usize, (hi / 8) as usize);
+    (first, last - first + 1)
 }
 
 /// Can values of these two ordinal types mix, as set elements? Integers go

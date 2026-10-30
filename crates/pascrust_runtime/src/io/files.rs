@@ -360,15 +360,15 @@ pub trait FileRecord: Default {
     fn decode(input: &mut &[u8]) -> Self;
 
     /// Like `encode`, for a type whose size the Rust type doesn't say: a
-    /// `string[n]` (`size` is n), a set kept in `size` bytes, or an array of
-    /// either. Every other type ignores `size`.
-    fn encode_sized(&self, size: usize, out: &mut Vec<u8>) {
-        let _ = size;
+    /// `string[n]`, a set kept in a few bytes, or an array of either (see
+    /// [`Hint`]). Every other type ignores the hint.
+    fn encode_sized(&self, hint: Hint, out: &mut Vec<u8>) {
+        let _ = hint;
         self.encode(out);
     }
 
-    fn decode_sized(size: usize, input: &mut &[u8]) -> Self {
-        let _ = size;
+    fn decode_sized(hint: Hint, input: &mut &[u8]) -> Self {
+        let _ = hint;
         Self::decode(input)
     }
 
@@ -377,6 +377,22 @@ pub trait FileRecord: Default {
         let mut bytes = Vec::new();
         Self::default().encode(&mut bytes);
         bytes.len()
+    }
+}
+
+/// What a type says about its size that its Rust type doesn't: a
+/// `string[n]`'s capacity (`size` n), or the bytes a set keeps in TP: `size`
+/// of them from byte `first` of its 32-byte bitmap (`set of 'a'..'z'` is 4
+/// bytes from byte 12). `size` 0 means no hint.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Hint {
+    pub size: usize,
+    pub first: usize,
+}
+
+impl Hint {
+    pub const fn new(size: usize, first: usize) -> Hint {
+        Hint { size, first }
     }
 }
 
@@ -482,11 +498,11 @@ impl FileRecord for PString {
         PString::decode_string(255, input)
     }
     // A `string[n]`: n+1 bytes.
-    fn encode_sized(&self, size: usize, out: &mut Vec<u8>) {
-        self.encode_string(if size == 0 { 255 } else { size }, out);
+    fn encode_sized(&self, hint: Hint, out: &mut Vec<u8>) {
+        self.encode_string(if hint.size == 0 { 255 } else { hint.size }, out);
     }
-    fn decode_sized(size: usize, input: &mut &[u8]) -> PString {
-        PString::decode_string(if size == 0 { 255 } else { size }, input)
+    fn decode_sized(hint: Hint, input: &mut &[u8]) -> PString {
+        PString::decode_string(if hint.size == 0 { 255 } else { hint.size }, input)
     }
 }
 
@@ -555,13 +571,13 @@ impl<T: FileRecord, const LO: i64, const N: usize> FileRecord for crate::array::
         crate::array::PArray::new(std::array::from_fn(|_| T::decode(input)))
     }
     // The size is each element's.
-    fn encode_sized(&self, size: usize, out: &mut Vec<u8>) {
+    fn encode_sized(&self, hint: Hint, out: &mut Vec<u8>) {
         for item in self.iter() {
-            item.encode_sized(size, out);
+            item.encode_sized(hint, out);
         }
     }
-    fn decode_sized(size: usize, input: &mut &[u8]) -> Self {
-        crate::array::PArray::new(std::array::from_fn(|_| T::decode_sized(size, input)))
+    fn decode_sized(hint: Hint, input: &mut &[u8]) -> Self {
+        crate::array::PArray::new(std::array::from_fn(|_| T::decode_sized(hint, input)))
     }
 }
 
@@ -608,14 +624,14 @@ macro_rules! file_record {
     // Reading fills that variant and leaves the others at their defaults. A
     // variant's brackets may end in a nested part of its own, `[w, k; case
     // k: 2 { ... }]`, which the `@case` rules below handle the same way.
-    ($ty:ident { $($field:ident $(: $kind:ident $size:literal)?),* ; case $($variants:tt)* }) => {
+    ($ty:ident { $($field:ident $(: $kind:ident $size:literal $(from $first:literal)?)?),* ; case $($variants:tt)* }) => {
         impl $crate::io::FileRecord for $ty {
             fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
-                $( $crate::file_record!(@encode self.$field, out $(, $kind $size)?); )*
+                $( $crate::file_record!(@encode self.$field, out $(, $kind $size $(from $first)?)?); )*
                 $crate::file_record!(@encode_case self, out, $($variants)*);
             }
             fn decode(input: &mut &[u8]) -> Self {
-                let mut value = $ty { $( $field: $crate::file_record!(@decode input $(, $kind $size)?), )* ..Default::default() };
+                let mut value = $ty { $( $field: $crate::file_record!(@decode input $(, $kind $size $(from $first)?)?), )* ..Default::default() };
                 $crate::file_record!(@decode_case value, input, $($variants)*);
                 value
             }
@@ -628,8 +644,8 @@ macro_rules! file_record {
         }
         $out.resize(start + $area, 0);
     }};
-    (@encode_fields $record:ident, $out:ident, $($field:ident $(: $kind:ident $size:literal)?),* $(; case $($nested:tt)*)?) => {
-        $( $crate::file_record!(@encode $record.$field, $out $(, $kind $size)?); )*
+    (@encode_fields $record:ident, $out:ident, $($field:ident $(: $kind:ident $size:literal $(from $first:literal)?)?),* $(; case $($nested:tt)*)?) => {
+        $( $crate::file_record!(@encode $record.$field, $out $(, $kind $size $(from $first)?)?); )*
         $( $crate::file_record!(@encode_case $record, $out, $($nested)*); )?
     };
     (@decode_case $value:ident, $input:ident, $tag:ident : $area:literal { $($pattern:pat => [$($body:tt)*]),* $(,)? }) => {{
@@ -640,19 +656,19 @@ macro_rules! file_record {
         let used = before - $input.len();
         *$input = &$input[($area - used).min($input.len())..];
     }};
-    (@decode_fields $value:ident, $input:ident, $($field:ident $(: $kind:ident $size:literal)?),* $(; case $($nested:tt)*)?) => {
-        $( $value.$field = $crate::file_record!(@decode $input $(, $kind $size)?); )*
+    (@decode_fields $value:ident, $input:ident, $($field:ident $(: $kind:ident $size:literal $(from $first:literal)?)?),* $(; case $($nested:tt)*)?) => {
+        $( $value.$field = $crate::file_record!(@decode $input $(, $kind $size $(from $first)?)?); )*
         $( $crate::file_record!(@decode_case $value, $input, $($nested)*); )?
     };
-    ($ty:ident { $($field:ident $(: $kind:ident $size:literal)?),* $(,)? }) => {
+    ($ty:ident { $($field:ident $(: $kind:ident $size:literal $(from $first:literal)?)?),* $(,)? }) => {
         impl $crate::io::FileRecord for $ty {
             fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
-                $( $crate::file_record!(@encode self.$field, out $(, $kind $size)?); )*
+                $( $crate::file_record!(@encode self.$field, out $(, $kind $size $(from $first)?)?); )*
             }
             fn decode(input: &mut &[u8]) -> Self {
                 // Struct fields are evaluated in the order written, which is
                 // the order they were encoded in.
-                $ty { $( $field: $crate::file_record!(@decode input $(, $kind $size)?), )* }
+                $ty { $( $field: $crate::file_record!(@decode input $(, $kind $size $(from $first)?)?), )* }
             }
         }
     };
@@ -665,7 +681,10 @@ macro_rules! file_record {
         $crate::io::FileString::encode_string(&$value, $cap, $out)
     };
     (@encode $value:expr, $out:ident, set $bytes:literal) => {
-        $crate::io::FileRecord::encode_sized(&$value, $bytes, $out)
+        $crate::io::FileRecord::encode_sized(&$value, $crate::io::Hint::new($bytes, 0), $out)
+    };
+    (@encode $value:expr, $out:ident, set $bytes:literal from $first:literal) => {
+        $crate::io::FileRecord::encode_sized(&$value, $crate::io::Hint::new($bytes, $first), $out)
     };
     (@decode $input:ident) => {
         $crate::io::FileRecord::decode($input)
@@ -674,7 +693,10 @@ macro_rules! file_record {
         $crate::io::FileString::decode_string($cap, $input)
     };
     (@decode $input:ident, set $bytes:literal) => {
-        $crate::io::FileRecord::decode_sized($bytes, $input)
+        $crate::io::FileRecord::decode_sized($crate::io::Hint::new($bytes, 0), $input)
+    };
+    (@decode $input:ident, set $bytes:literal from $first:literal) => {
+        $crate::io::FileRecord::decode_sized($crate::io::Hint::new($bytes, $first), $input)
     };
 }
 
@@ -683,22 +705,22 @@ pub struct PFile<T> {
     name: Option<PString>,
     file: Option<File>,
     /// For a `file of string[n]` (or of a small set, or an array of them),
-    /// the size its type gives each record's strings or sets; 0 otherwise.
-    size: usize,
+    /// the size its type gives each record's strings or sets.
+    hint: Hint,
     // `PhantomData` says "this type is about `T`" without storing a `T`.
     _record: PhantomData<T>,
 }
 
 impl<T> Default for PFile<T> {
     fn default() -> Self {
-        PFile { name: None, file: None, size: 0, _record: PhantomData }
+        PFile { name: None, file: None, hint: Hint::new(0, 0), _record: PhantomData }
     }
 }
 
 /// As for [`PText`], a copy is closed.
 impl<T> Clone for PFile<T> {
     fn clone(&self) -> Self {
-        PFile { name: self.name, file: None, size: self.size, _record: PhantomData }
+        PFile { name: self.name, file: None, hint: self.hint, _record: PhantomData }
     }
 }
 
@@ -790,13 +812,18 @@ impl<T: FileRecord> PFile<T> {
     /// A `file of string[n]` (`size` n) or of a set kept in `size` bytes
     /// (or of an array of either): see `FileRecord::encode_sized`.
     pub fn sized(size: usize) -> Self {
-        PFile { size, ..PFile::default() }
+        PFile { hint: Hint::new(size, 0), ..PFile::default() }
+    }
+
+    /// A `file of` a set kept from byte `first` of its bitmap.
+    pub fn sized_from(size: usize, first: usize) -> Self {
+        PFile { hint: Hint::new(size, first), ..PFile::default() }
     }
 
     /// The bytes one record takes.
     fn record_size(&self) -> usize {
         let mut bytes = Vec::new();
-        T::default().encode_sized(self.size, &mut bytes);
+        T::default().encode_sized(self.hint, &mut bytes);
         bytes.len()
     }
 
@@ -841,13 +868,13 @@ impl<T: FileRecord> PFile<T> {
         if self.file().read_exact(&mut bytes).is_err() {
             crate::rte(100, "Disk read error: read past the end of the file");
         }
-        *target = T::decode_sized(self.size, &mut bytes.as_slice());
+        *target = T::decode_sized(self.hint, &mut bytes.as_slice());
     }
 
     /// Pascal `Write(f, x)`: write a record at the current position.
     pub fn write(&mut self, value: &T) {
         let mut bytes = Vec::new();
-        value.encode_sized(self.size, &mut bytes);
+        value.encode_sized(self.hint, &mut bytes);
         if self.file().write_all(&bytes).is_err() {
             crate::rte(101, "Disk write error");
         }

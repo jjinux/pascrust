@@ -136,7 +136,9 @@ impl<'a> Codegen<'a> {
             IOResult => "io_result()".to_string(),
             TypeOf => self.type_of(&args[0]),
             Include | Exclude => {
-                let Type::Set(elem) = self.a.type_of(args[0].id).clone() else { unreachable!("sema checked the set") };
+                let Type::Set(elem, _) = self.a.type_of(args[0].id).clone() else {
+                    unreachable!("sema checked the set")
+                };
                 let method = if b == Include { "include" } else { "exclude" };
                 format!("{}.{method}({});", self.place_receiver(&args[0]), self.coerce(&args[1], &elem).0)
             }

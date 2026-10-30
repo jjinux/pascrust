@@ -550,8 +550,13 @@ flag makes codegen wrap assignments into subrange variables with
 
 ## 14. Sets
 
-`set of T` becomes `PSet<T>`, a 256-bit bitset (`[u64; 4]`, `Copy`, like
-TP's 32-byte sets) with a phantom element type. `+`, `*` and `-` are
+`set of T` becomes `PSet<T>`, a 256-bit bitset (`[u64; 4]`, `Copy`) with a
+phantom element type. TP kept a set in only the bytes from its lowest
+value's to its highest's (`Max div 8 - Min div 8 + 1`: `set of 0..7` is 1
+byte, `set of 'a'..'z'` 4, bytes 12 to 15 of the whole bitmap), so a set
+of a subrange keeps its bounds in its type (`Type::Set`'s second field),
+`tp_size` uses TP's formula, and a file or byte view stores those bytes
+(`Hint { size, first }`, `set 4 from 12` in `file_record!`). `+`, `*` and `-` are
 `|`, `&` and `-` (`BitOr`/`BitAnd`/`Sub`); `=`/`<>` compare the bits;
 `<=`/`>=` are `is_subset`/`is_superset`; `Include`/`Exclude` are methods.
 `s := s + [x]` is `s |= pset![x]` (and `&=`, `-=`), except when the

@@ -1957,10 +1957,10 @@ impl<'a> Codegen<'a> {
             // `s[i] |= s[1]` borrows `s` mutably for the place before reading
             // `s[1]` (the operator is a trait method, unlike `+=` on
             // numbers), which the borrow checker rejects.
-            && !(matches!(target_ty, Type::Set(_)) && mentions(rhs, &root_name(target)))
+            && !(matches!(target_ty, Type::Set(..)) && mentions(rhs, &root_name(target)))
         {
             // For sets, Pascal's `+` and `*` are Rust's `|` and `&`.
-            let set = matches!(target_ty, Type::Set(_));
+            let set = matches!(target_ty, Type::Set(..));
             let rust_op = match op {
                 BinaryOp::Add if set => "|=",
                 BinaryOp::Mul if set => "&=",
@@ -2247,19 +2247,24 @@ fn file_record_field(field: &crate::sema::types::Field) -> String {
         return format!("{}: string {cap}", field.rust_name);
     }
     match size_hint(&field.ty) {
-        Some(bytes) => format!("{}: set {bytes}", field.rust_name),
+        Some((bytes, 0)) => format!("{}: set {bytes}", field.rust_name),
+        Some((bytes, first)) => format!("{}: set {bytes} from {first}", field.rust_name),
         None => field.rust_name.clone(),
     }
 }
 
 /// The size a type gives the strings or small sets in it that their Rust
-/// types don't say (`FileRecord::encode_sized`): a `string[n]`'s n, the
-/// bytes of a set smaller than 32, also for an array of them. `None` when
-/// the default encoding is right.
-pub(super) fn size_hint(ty: &Type) -> Option<usize> {
+/// types don't say (`FileRecord::encode_sized`): a `string[n]`'s n, or a
+/// set's bytes when it keeps fewer than 32, and the first of them in the
+/// bitmap (0 for a string); also for an array of them. `None` when the
+/// default encoding is right.
+pub(super) fn size_hint(ty: &Type) -> Option<(usize, usize)> {
     match ty {
-        Type::Str { cap } if *cap < 255 => Some(usize::from(*cap)),
-        Type::Set(_) => tp_size(ty).filter(|&bytes| bytes < 32).map(|bytes| bytes as usize),
+        Type::Str { cap } if *cap < 255 => Some((usize::from(*cap), 0)),
+        Type::Set(..) => {
+            let (first, bytes) = crate::sema::types::set_bytes(ty);
+            (bytes < 32).then_some((bytes, first))
+        }
         Type::Array(a) => size_hint(&a.elem),
         _ => None,
     }
@@ -2382,11 +2387,12 @@ fn default_value(ty: &Type) -> String {
         // `file of string[10]`: its records take 11 bytes, which the
         // `PString` type alone doesn't say.
         Type::File(elem) => match size_hint(elem) {
-            Some(size) => format!("PFile::sized({size})"),
+            Some((size, 0)) => format!("PFile::sized({size})"),
+            Some((size, first)) => format!("PFile::sized_from({size}, {first})"),
             None => "PFile::default()".to_string(),
         },
         Type::TypeInfo => "\"\"".to_string(),
-        Type::Set(_) => "PSet::new()".to_string(),
+        Type::Set(..) => "PSet::new()".to_string(),
         Type::Nil | Type::Untyped | Type::Void | Type::Error => "()".to_string(),
     }
 }

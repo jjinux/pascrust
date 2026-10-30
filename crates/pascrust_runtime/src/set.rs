@@ -229,16 +229,19 @@ impl<T> PSet<T> {
     /// The set as TP stored it: bit `n % 8` of byte `n / 8` for element `n`,
     /// in as many bytes as its elements need (`bytes`: 1 for a set of
     /// Boolean or of an enum of up to 8 values, 32 for a set of Char).
-    pub fn encode_bytes(&self, bytes: usize, out: &mut Vec<u8>) {
+    /// (`first` is where they start in the 32-byte bitmap: TP keeps a set of
+    /// `'a'..'z'` in bytes 12 to 15.)
+    pub fn encode_bytes(&self, bytes: usize, first: usize, out: &mut Vec<u8>) {
         let mut all = Vec::new();
         crate::io::FileRecord::encode(self, &mut all);
-        out.extend_from_slice(&all[..bytes]);
+        out.extend_from_slice(&all[first..first + bytes]);
     }
 
-    pub fn decode_bytes(bytes: usize, input: &mut &[u8]) -> PSet<T> {
+    pub fn decode_bytes(bytes: usize, first: usize, input: &mut &[u8]) -> PSet<T> {
         let (head, rest) = input.split_at(bytes.min(input.len()));
         *input = rest;
-        let mut all = head.to_vec();
+        let mut all = vec![0; first];
+        all.extend_from_slice(head);
         all.resize(32, 0);
         crate::io::FileRecord::decode(&mut &all[..])
     }
@@ -249,12 +252,12 @@ impl<T> PSet<T> {
 /// record field is stored in fewer bytes: see `encode_bytes`.)
 impl<T> crate::io::FileRecord for PSet<T> {
     // A set kept in its first `size` bytes (all 32 for 0).
-    fn encode_sized(&self, size: usize, out: &mut Vec<u8>) {
-        if size == 0 { self.encode(out) } else { self.encode_bytes(size, out) }
+    fn encode_sized(&self, hint: crate::io::Hint, out: &mut Vec<u8>) {
+        if hint.size == 0 { self.encode(out) } else { self.encode_bytes(hint.size, hint.first, out) }
     }
 
-    fn decode_sized(size: usize, input: &mut &[u8]) -> PSet<T> {
-        if size == 0 { Self::decode(input) } else { PSet::decode_bytes(size, input) }
+    fn decode_sized(hint: crate::io::Hint, input: &mut &[u8]) -> PSet<T> {
+        if hint.size == 0 { Self::decode(input) } else { PSet::decode_bytes(hint.size, hint.first, input) }
     }
 
     fn encode(&self, out: &mut Vec<u8>) {
