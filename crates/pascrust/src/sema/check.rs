@@ -1073,19 +1073,19 @@ impl Checker {
                 seen.push(ord);
                 labels.push(ord);
             }
-            if let Some(nested) = &arm.variant {
-                self.error(nested.span, "a variant part inside a variant is not supported yet");
-            }
             let start = resolved.len();
             self.record_fields(&arm.fields, resolved);
+            let end = resolved.len();
             // Each field's place in the bytes the variants share.
             let mut offsets = Vec::new();
             let mut at = 0;
-            for field in &resolved[start..] {
+            for field in &resolved[start..end] {
                 offsets.push(at);
                 at += super::types::tp_size(&field.ty).unwrap_or(0);
             }
-            variants.push(Variant { labels, fields: start..resolved.len(), offsets });
+            // A variant part at the end of this variant, after its fields.
+            let nested = arm.variant.as_ref().and_then(|part| self.variant_part(part, resolved)).map(Box::new);
+            variants.push(Variant { labels, fields: start..end, offsets, nested });
         }
         // Without a tag, the program picks a variant some other way, often
         // by reading the same bytes as another type: keep TP's bytes, if
@@ -1106,7 +1106,18 @@ impl Checker {
                 format!("a set in a variant part without a tag field (`{}`) is not supported yet", set.name),
             );
         }
-        Some(VariantPart { tag, tag_type, variants, bytes })
+        let mut part = VariantPart { tag, tag_type, variants, bytes };
+        // Inside a part kept as bytes, everything is bytes; but a flattened
+        // (tagged) part has no bytes to keep a tagless part inside it in.
+        if part.bytes {
+            part.set_bytes();
+        } else if part.variants.iter().any(|v| v.nested.as_ref().is_some_and(|n| n.bytes)) {
+            self.error(
+                v.span,
+                "a variant part without a tag field inside a variant with a tag isn't supported yet; give it a tag field",
+            );
+        }
+        Some(part)
     }
 
     /// A unique Rust type name (`CamelCase`) for a Pascal name.

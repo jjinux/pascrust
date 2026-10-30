@@ -513,11 +513,11 @@ impl<'a> Codegen<'a> {
                     for field in r.struct_fields() {
                         self.field_line(field, &groups);
                     }
-                    if let Some(part) = r.variant.as_ref().filter(|part| part.bytes) {
+                    if r.variant.as_ref().is_some_and(|part| part.bytes) {
                         let size = r.variant_area().unwrap_or(0);
                         self.line(format!("    {}variants: VariantPart<{size}>,", self.vis));
                         self.line("}");
-                        self.variant_accessors(r, part);
+                        self.variant_accessors(r);
                     } else {
                         self.line("}");
                     }
@@ -613,40 +613,53 @@ impl<'a> Codegen<'a> {
         for ty in self.a.file_types.iter().chain(&self.a.view_types) {
             visit(ty, &mut found);
         }
+        // So do the fields kept in a variant part's bytes, which their
+        // accessors read and write through it (an enum, a record).
+        for (ty, _) in &self.a.type_defs {
+            if let Type::Record(r) = ty
+                && r.variant.as_ref().is_some_and(|part| part.bytes)
+            {
+                r.fields[r.fixed_fields().len()..].iter().for_each(|f| visit(&f.ty, &mut found));
+            }
+        }
         found
     }
 
     /// The methods that stand for the fields kept in a variant part's bytes:
     /// `lo()` to read, `set_lo(v)` to assign, `lo_mut()` to change in place.
-    fn variant_accessors(&mut self, r: &RecordType, part: &VariantPart) {
+    fn variant_accessors(&mut self, r: &RecordType) {
         self.blank();
         self.line(format!("impl {} {{", r.rust_name));
         let vis = self.vis;
-        for variant in &part.variants {
-            for (field, offset) in r.fields[variant.fields.clone()].iter().zip(&variant.offsets) {
-                let (name, ty) = (&field.rust_name, field.ty.rust());
-                self.line(format!(
-                    "    // `{}` is bytes {offset} to {}",
-                    field.name,
-                    offset + tp_size(&field.ty).unwrap_or(0)
-                ));
-                // A `string[n]` (or an array of them) needs its capacity:
-                // the `PString` doesn't know it.
-                match string_capacity(&field.ty) {
-                    Some(cap) => {
-                        self.line(format!(
-                            "    {vis}fn {name}(&self) -> {ty} {{ self.variants.get_string({offset}, {cap}) }}"
-                        ));
-                        self.line(format!("    {vis}fn set_{name}(&mut self, {name}: {ty}) {{ self.variants.set_string({offset}, {cap}, {name}) }}"));
-                        self.line(format!("    {vis}fn {name}_mut(&mut self) -> StringField<'_, {ty}> {{ self.variants.string_field({offset}, {cap}) }}"));
-                    }
-                    None => {
-                        self.line(format!("    {vis}fn {name}(&self) -> {ty} {{ self.variants.get({offset}) }}"));
-                        self.line(format!(
-                            "    {vis}fn set_{name}(&mut self, {name}: {ty}) {{ self.variants.set({offset}, {name}) }}"
-                        ));
-                        self.line(format!("    {vis}fn {name}_mut(&mut self) -> VariantField<'_, {ty}> {{ self.variants.field({offset}) }}"));
-                    }
+        // Every field after the fixed ones is in the bytes, those of nested
+        // variant parts (and their tags) too.
+        for (index, field) in r.fields.iter().enumerate().skip(r.fixed_fields().len()) {
+            let Some(offset) = r.byte_offset(index) else { continue };
+            let (name, ty) = (&field.rust_name, field.ty.rust());
+            let end = offset + tp_size(&field.ty).unwrap_or(0);
+            self.line(format!("    // `{}` is bytes {offset} to {end}", field.name));
+            // A `string[n]` (or an array of them) needs its capacity: the
+            // `PString` doesn't know it.
+            match string_capacity(&field.ty) {
+                Some(cap) => {
+                    self.line(format!(
+                        "    {vis}fn {name}(&self) -> {ty} {{ self.variants.get_string({offset}, {cap}) }}"
+                    ));
+                    self.line(format!(
+                        "    {vis}fn set_{name}(&mut self, {name}: {ty}) {{ self.variants.set_string({offset}, {cap}, {name}) }}"
+                    ));
+                    self.line(format!(
+                        "    {vis}fn {name}_mut(&mut self) -> StringField<'_, {ty}> {{ self.variants.string_field({offset}, {cap}) }}"
+                    ));
+                }
+                None => {
+                    self.line(format!("    {vis}fn {name}(&self) -> {ty} {{ self.variants.get({offset}) }}"));
+                    self.line(format!(
+                        "    {vis}fn set_{name}(&mut self, {name}: {ty}) {{ self.variants.set({offset}, {name}) }}"
+                    ));
+                    self.line(format!(
+                        "    {vis}fn {name}_mut(&mut self) -> VariantField<'_, {ty}> {{ self.variants.field({offset}) }}"
+                    ));
                 }
             }
         }
@@ -666,6 +679,15 @@ impl<'a> Codegen<'a> {
         let tag_name = &r.fields[tag].rust_name;
         self.line(format!("// A variant record keeps one variant in a file: the one `{tag_name}` selects,"));
         self.line(format!("// padded with zeros to the {area} bytes the variants share in TP."));
+        format!("; {}", self.case_clause(r, part))
+    }
+
+    /// `case kind: 4 { Shape::Circle => [r], ... }`, with a variant's
+    /// nested part inside its brackets: `[w, h; case k: 2 { ... }]`.
+    fn case_clause(&self, r: &RecordType, part: &VariantPart) -> String {
+        let tag = part.tag.expect("a flattened variant part has a tag");
+        let area = part.area(&r.fields).unwrap_or(0);
+        let tag_name = &r.fields[tag].rust_name;
         let mut arms: Vec<String> = Vec::new();
         let mut covered = 0;
         for variant in &part.variants {
@@ -676,7 +698,16 @@ impl<'a> Codegen<'a> {
                 variant.labels.iter().map(|&n| self.ord_range_pattern(&part.tag_type, n, n)).collect();
             covered += variant.labels.len() as i64;
             let fields: Vec<String> = r.fields[variant.fields.clone()].iter().map(file_record_field).collect();
-            arms.push(format!("{} => [{}]", pattern.join(" | "), fields.join(", ")));
+            let nested = match &variant.nested {
+                Some(nested) => {
+                    // The nested part's tag is one of this variant's fields.
+                    let tag = file_record_field(&r.fields[nested.tag.expect("a nested flattened part has a tag")]);
+                    let separator = if fields.is_empty() { "" } else { ", " };
+                    format!("{separator}{tag}; {}", self.case_clause(r, nested))
+                }
+                None => String::new(),
+            };
+            arms.push(format!("{} => [{}{nested}]", pattern.join(" | "), fields.join(", ")));
         }
         // A tag value no variant has stores no fields. (Rust warns about a
         // `_` arm when the others already cover every value.)
@@ -690,7 +721,7 @@ impl<'a> Codegen<'a> {
         if covered < domain {
             arms.push("_ => []".to_string());
         }
-        format!("; case {tag_name}: {area} {{ {} }}", arms.join(", "))
+        format!("case {tag_name}: {area} {{ {} }}", arms.join(", "))
     }
 
     /// `file_record!(...)`: let a `file of T` store this type.

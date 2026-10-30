@@ -204,9 +204,64 @@ pub struct VariantPart {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Variant {
     pub labels: Vec<i64>,
+    /// The variant's own fields; a nested part's are in `nested`.
     pub fields: std::ops::Range<usize>,
     /// Where each field starts in the variants' shared bytes.
     pub offsets: Vec<i64>,
+    /// A variant part at the end of this variant's fields (`1: (A: Integer;
+    /// case B: Boolean of ...)`), which starts after them.
+    pub nested: Option<Box<VariantPart>>,
+}
+
+impl VariantPart {
+    /// The bytes this part's variants share: the largest variant, its own
+    /// fields and its nested part (tag and variants) together.
+    pub fn area(&self, fields: &[Field]) -> Option<i64> {
+        let mut largest = 0;
+        for variant in &self.variants {
+            let own = fields[variant.fields.clone()].iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()?;
+            let nested = match &variant.nested {
+                Some(part) => part.tag_size(fields)? + part.area(fields)?,
+                None => 0,
+            };
+            largest = largest.max(own + nested);
+        }
+        Some(largest)
+    }
+
+    fn tag_size(&self, fields: &[Field]) -> Option<i64> {
+        self.tag.map_or(Some(0), |tag| tp_size(&fields[tag].ty))
+    }
+
+    /// Where field `index` starts, counting from the start of the bytes
+    /// this part's variants share; `None` if it's not in this part.
+    pub fn offset_of(&self, fields: &[Field], index: usize) -> Option<i64> {
+        for variant in &self.variants {
+            if variant.fields.contains(&index) {
+                return Some(variant.offsets[index - variant.fields.start]);
+            }
+            if let Some(part) = &variant.nested {
+                let start = fields[variant.fields.clone()].iter().map(|f| tp_size(&f.ty).unwrap_or(0)).sum::<i64>();
+                if part.tag == Some(index) {
+                    return Some(start);
+                }
+                if let Some(offset) = part.offset_of(fields, index) {
+                    return Some(start + part.tag_size(fields).unwrap_or(0) + offset);
+                }
+            }
+        }
+        None
+    }
+
+    /// Mark this part and every part nested in it as kept in bytes.
+    pub fn set_bytes(&mut self) {
+        self.bytes = true;
+        for variant in &mut self.variants {
+            if let Some(part) = &mut variant.nested {
+                part.set_bytes();
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -319,10 +374,8 @@ impl RecordType {
     pub fn field_offset(&self, name: &str) -> i64 {
         let size = |fields: &[Field]| fields.iter().map(|f| tp_size(&f.ty).unwrap_or(0)).sum::<i64>();
         let Some(index) = self.fields.iter().position(|f| f.name.eq_ignore_ascii_case(name)) else { return 0 };
-        let in_variant =
-            self.variant.as_ref().and_then(|part| part.variants.iter().find(|v| v.fields.contains(&index)));
-        match in_variant {
-            Some(variant) => size(self.fixed_fields()) + variant.offsets[index - variant.fields.start],
+        match self.variant.as_ref().and_then(|part| part.offset_of(&self.fields, index)) {
+            Some(offset) => size(self.fixed_fields()) + offset,
             None => size(&self.fields[..index]),
         }
     }
@@ -331,8 +384,7 @@ impl RecordType {
     /// part kept as bytes.
     pub fn byte_offset(&self, index: usize) -> Option<i64> {
         let part = self.variant.as_ref().filter(|part| part.bytes)?;
-        let variant = part.variants.iter().find(|v| v.fields.contains(&index))?;
-        Some(variant.offsets[index - variant.fields.start])
+        part.offset_of(&self.fields, index)
     }
 
     /// The same, by the field's name.
@@ -360,9 +412,10 @@ impl RecordType {
     /// The bytes the variants share: the largest variant's size, since in
     /// TP they all start at the same place.
     pub fn variant_area(&self) -> Option<i64> {
-        let Some(part) = &self.variant else { return Some(0) };
-        let sizes = part.variants.iter().map(|v| self.fields[v.fields.clone()].iter().map(|f| tp_size(&f.ty)).sum());
-        sizes.collect::<Option<Vec<i64>>>().map(|sizes| sizes.into_iter().max().unwrap_or(0))
+        match &self.variant {
+            Some(part) => part.area(&self.fields),
+            None => Some(0),
+        }
     }
 }
 

@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/variant_nested_errors.pas
+---
+variant_nested_errors.pas:7:5: error: a variant part without a tag field inside a variant with a tag isn't supported yet; give it a tag field
+    case Kind: Integer of
+    ^^^^^^^^^^^^^^^^^^^^^^^^^

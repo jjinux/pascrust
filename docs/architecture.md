@@ -369,6 +369,15 @@ part decides the representation:
   can't be stored in a file or seen as bytes (an error); a set in a tagless
   part is refused for now (its encoding needs its size).
 
+A variant part nested at the end of a variant (`Variant::nested`) follows
+the same rules: inside a part kept as bytes, everything is bytes (offsets
+from `VariantPart::offset_of`, which walks the nesting); a tagged part
+inside a tagged one is flattened, and `file_record!`'s `case` clause
+nests (`1 => [width, filled; case filled: 4 { ... }]`, through the
+macro's internal `@encode_case`/`@decode_case` rules). A tagless part
+inside a tagged one is refused: the flattened outer part has no bytes to
+keep it in.
+
 Rejected: flattening everything (punning silently wrong), bytes for every
 variant part (pointers can't be bytes, and the tagged case would read
 `fig.w()` everywhere), a Rust `enum` (needs the tag before the fields, and

@@ -584,29 +584,44 @@ macro_rules! file_record {
     // A variant record (`case kind: 6 { Shape::Circle => [r], ... }`): the
     // fixed fields (the tag among them), then the fields of the variant the
     // tag selects, padded with zeros to the `6` bytes the variants share.
-    // Reading fills that variant and leaves the others at their defaults.
-    ($ty:ident { $($field:ident $(: $kind:ident $size:literal)?),* ;
-        case $tag:ident : $area:literal { $($pattern:pat => [$($vfield:ident $(: $vkind:ident $vsize:literal)?),*]),* $(,)? } }) => {
+    // Reading fills that variant and leaves the others at their defaults. A
+    // variant's brackets may end in a nested part of its own, `[w, k; case
+    // k: 2 { ... }]`, which the `@case` rules below handle the same way.
+    ($ty:ident { $($field:ident $(: $kind:ident $size:literal)?),* ; case $($variants:tt)* }) => {
         impl $crate::io::FileRecord for $ty {
             fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
                 $( $crate::file_record!(@encode self.$field, out $(, $kind $size)?); )*
-                let start = out.len();
-                match self.$tag {
-                    $( $pattern => { $( $crate::file_record!(@encode self.$vfield, out $(, $vkind $vsize)?); )* } )*
-                }
-                out.resize(start + $area, 0);
+                $crate::file_record!(@encode_case self, out, $($variants)*);
             }
             fn decode(input: &mut &[u8]) -> Self {
                 let mut value = $ty { $( $field: $crate::file_record!(@decode input $(, $kind $size)?), )* ..Default::default() };
-                let before = input.len();
-                match value.$tag {
-                    $( $pattern => { $( value.$vfield = $crate::file_record!(@decode input $(, $vkind $vsize)?); )* } )*
-                }
-                let used = before - input.len();
-                *input = &input[($area - used).min(input.len())..];
+                $crate::file_record!(@decode_case value, input, $($variants)*);
                 value
             }
         }
+    };
+    (@encode_case $record:ident, $out:ident, $tag:ident : $area:literal { $($pattern:pat => [$($body:tt)*]),* $(,)? }) => {{
+        let start = $out.len();
+        match $record.$tag {
+            $( $pattern => { $crate::file_record!(@encode_fields $record, $out, $($body)*); } )*
+        }
+        $out.resize(start + $area, 0);
+    }};
+    (@encode_fields $record:ident, $out:ident, $($field:ident $(: $kind:ident $size:literal)?),* $(; case $($nested:tt)*)?) => {
+        $( $crate::file_record!(@encode $record.$field, $out $(, $kind $size)?); )*
+        $( $crate::file_record!(@encode_case $record, $out, $($nested)*); )?
+    };
+    (@decode_case $value:ident, $input:ident, $tag:ident : $area:literal { $($pattern:pat => [$($body:tt)*]),* $(,)? }) => {{
+        let before = $input.len();
+        match $value.$tag {
+            $( $pattern => { $crate::file_record!(@decode_fields $value, $input, $($body)*); } )*
+        }
+        let used = before - $input.len();
+        *$input = &$input[($area - used).min($input.len())..];
+    }};
+    (@decode_fields $value:ident, $input:ident, $($field:ident $(: $kind:ident $size:literal)?),* $(; case $($nested:tt)*)?) => {
+        $( $value.$field = $crate::file_record!(@decode $input $(, $kind $size)?); )*
+        $( $crate::file_record!(@decode_case $value, $input, $($nested)*); )?
     };
     ($ty:ident { $($field:ident $(: $kind:ident $size:literal)?),* $(,)? }) => {
         impl $crate::io::FileRecord for $ty {
