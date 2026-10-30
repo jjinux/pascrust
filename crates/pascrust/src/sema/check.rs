@@ -3036,6 +3036,7 @@ impl Checker {
             through_pointer: Self::through_pointer(receiver),
             // Objects have no variant parts.
             variant_bytes: false,
+            untyped: false,
             span: receiver.span,
         });
         self.user_call_with(e, pid, args, receiver_arg)
@@ -3103,6 +3104,24 @@ impl Checker {
             let Var { ty, role, .. } = self.a.var(param).clone();
             if role == VarRole::Param(ParamMode::Var) && ty == Type::Untyped {
                 self.untyped_arg(arg);
+                // The view borrows the whole variable (its bytes run on to
+                // the end of it), so it overlaps any other part of it. It's
+                // never `whole`, so the parameter isn't unified with a
+                // global (it stays a byte view).
+                if let Some(root) = self.place_root(arg) {
+                    let through_pointer = Self::through_pointer(arg);
+                    var_args.push(VarArg {
+                        param,
+                        root,
+                        whole: false,
+                        fields: if through_pointer { Self::place_fields(arg).0 } else { Vec::new() },
+                        indexed: true,
+                        through_pointer,
+                        variant_bytes: false,
+                        untyped: true,
+                        span: arg.span,
+                    });
+                }
                 continue;
             }
             if role == VarRole::Param(ParamMode::Var) {
@@ -3130,6 +3149,7 @@ impl Checker {
                         indexed: bytes || !Self::place_fields(arg).1,
                         through_pointer: Self::through_pointer(arg),
                         variant_bytes: bytes,
+                        untyped: false,
                         span: arg.span,
                     });
                 }

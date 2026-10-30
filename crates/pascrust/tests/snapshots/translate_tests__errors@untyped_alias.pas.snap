@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/untyped_alias.pas
+---
+untyped_alias.pas:28:14: error: `a` is passed by `var` more than once in this call to `Both`; Rust doesn't allow two mutable references to the same variable (an untyped parameter's bytes run on to the end of the whole variable, which Rust borrows); how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#two-var-arguments
+  Both(a[1], a[2], 2);
+             ^^^^
+
+untyped_alias.pas:29:12: error: `a` is passed by `var` more than once in this call to `Mixed`; Rust doesn't allow two mutable references to the same variable (an untyped parameter's bytes run on to the end of the whole variable, which Rust borrows); how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#two-var-arguments
+  Mixed(a, a[3]);
+           ^^^^
+
+untyped_alias.pas:30:9: error: `g` is passed by `var` to `Clear`, which also uses `g` directly; Rust doesn't allow two references to the same variable when one of them is mutable; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#var-and-global
+  Clear(g);
+        ^

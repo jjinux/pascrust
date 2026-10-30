@@ -24,7 +24,9 @@ mutable references into one variable at once. It borrows a whole array to
 reach one element, so `a[i]` and `a[j]` count as the same place even when
 `i <> j`. The same goes for two fields of one record kept in a variant
 part's bytes, and for two `var` arguments in one heap record (`p^.a` and
-`p^.a`).
+`p^.a`). An untyped `var` parameter (`var Buf`) borrows even more: its
+bytes run on to the end of the whole variable, so `Both(a[1], a[2], 2)`
+with two untyped parameters is refused too.
 
 Refused:
 
@@ -58,6 +60,10 @@ end;
 ...
 SwapItems(a, i, j);
 ```
+
+For an untyped parameter, pass the variable once and offsets into it, or
+copy one part into a local variable first. (`Move(a[1], a[2], 2)` itself
+is fine: PascRust copies the bytes within the one variable.)
 
 For two fields of one record, pass the record (and say which fields in
 another parameter if needed), or copy one field into a local variable,

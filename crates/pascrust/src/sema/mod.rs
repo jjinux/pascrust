@@ -511,6 +511,9 @@ pub struct VarArg {
     /// True if the argument is a field kept in a variant part's bytes
     /// (`p.Lo`), reached through a guard that borrows the whole record.
     pub variant_bytes: bool,
+    /// True if the parameter is untyped (`var Buf`): its bytes run on to
+    /// the end of the whole variable, which they borrow.
+    pub untyped: bool,
     pub span: Span,
 }
 
