@@ -564,6 +564,20 @@ impl<'a> Codegen<'a> {
                     let alias = a.alias.as_deref().expect("only named array types are emitted");
                     self.line(format!("{}type {alias} = {};", self.vis, a.rust_unaliased()));
                 }
+                Type::Proc(p) => {
+                    let class = self.a.procs[p.class].rust_name.clone();
+                    if p.alias == class {
+                        if self.first_time("proc_type") {
+                            self.line("///");
+                            self.line("/// A procedural type is a function pointer that may be nil. Every routine");
+                            self.line("/// kept in one has this Rust signature, so the globals any of them uses are");
+                            self.line("/// parameters of them all (and of every call through one).");
+                        }
+                        self.line(format!("{}type {class} = ProcVar<{}>;", self.vis, self.fn_pointer_type(p.class)));
+                    } else {
+                        self.line(format!("{}type {} = {class};", self.vis, p.alias));
+                    }
+                }
                 _ => {}
             }
             if self.stored_in_files().contains(&ty.rust()) {
@@ -1182,6 +1196,14 @@ impl<'a> Codegen<'a> {
             } else {
                 self.line(format!("/// Nested inside `{parent}`; lifted, with outer variables passed in."));
             }
+        } else if let Some(&class) = self.a.proc_classes.iter().find(|&&class| self.a.procs[class].calls.contains(&pid))
+            && !info.captures.is_empty()
+        {
+            // Kept in a procedural variable: it takes the globals any
+            // routine of that type uses, whether it uses them or not.
+            let class = &self.a.procs[class].rust_name;
+            self.line("///");
+            self.line(format!("/// Kept in a `{class}`, so it takes the globals any `{class}` routine uses."));
         } else if !info.captures.is_empty() {
             self.line("///");
             if self.first_time("globals") {
@@ -1236,41 +1258,57 @@ impl<'a> Codegen<'a> {
     /// The parameter list of a procedure's Rust function: captured outer
     /// variables first, then the Pascal parameters.
     fn signature_params(&self, pid: ProcId) -> String {
+        let parts = self.signature_parts(pid);
+        parts.into_iter().map(|(name, ty)| format!("{name}: {ty}")).collect::<Vec<_>>().join(", ")
+    }
+
+    /// The function-pointer type of a procedural type's class: what every
+    /// routine kept in one is, `fn(&mut f64, f64) -> f64`.
+    fn fn_pointer_type(&self, class: ProcId) -> String {
+        let params: Vec<String> = self.signature_parts(class).into_iter().map(|(_, ty)| ty).collect();
+        match &self.a.procs[class].ret {
+            Some(ret) => format!("fn({}) -> {}", params.join(", "), ret.rust()),
+            None => format!("fn({})", params.join(", ")),
+        }
+    }
+
+    /// A routine's parameters, captured globals first, as (pattern, type).
+    fn signature_parts(&self, pid: ProcId) -> Vec<(String, String)> {
         let info = &self.a.procs[pid];
         let mut params = Vec::new();
         for cap in &info.captures {
-            let name = self.a.var_name(pid, cap.sym);
+            let name = self.a.var_name(pid, cap.sym).to_string();
             let ty = self.a.var(cap.sym).ty.rust();
             // An outer routine's untyped parameter: its `Bytes` guard.
             if self.a.var(cap.sym).ty == Type::Untyped {
                 let reference = if cap.mode == CaptureMode::RefMut { "&mut" } else { "&" };
-                params.push(format!("{name}: {reference} Bytes<'_>"));
+                params.push((name, format!("{reference} Bytes<'_>")));
                 continue;
             }
             params.push(match cap.mode {
-                CaptureMode::RefMut => format!("{name}: &mut {ty}"),
-                CaptureMode::Ref => format!("{name}: &{ty}"),
-                CaptureMode::Value => format!("{name}: {ty}"),
+                CaptureMode::RefMut => (name, format!("&mut {ty}")),
+                CaptureMode::Ref => (name, format!("&{ty}")),
+                CaptureMode::Value => (name, ty),
             });
         }
         for &param in &info.params {
-            let name = &self.a.sym(param).rust_name;
+            let name = self.a.sym(param).rust_name.clone();
             let var = self.a.var(param);
             let ty = var.ty.rust();
             params.push(match (&var.role, &var.ty) {
                 // A `var` parameter of an object type with virtual methods
                 // takes any object descended from it.
                 (VarRole::Param(ParamMode::Var), Type::Object(o)) if self.in_dispatch(o) => {
-                    format!("{name}: &mut dyn {}", trait_name(o))
+                    (name, format!("&mut dyn {}", trait_name(o)))
                 }
                 // An untyped `var Data`: any variable, as its bytes.
-                (VarRole::Param(ParamMode::Var), Type::Untyped) => format!("{name}: &mut dyn ByteView"),
-                (VarRole::Param(ParamMode::Var), _) => format!("{name}: &mut {ty}"),
-                _ if self.a.mutated.contains(&param) => format!("mut {name}: {ty}"),
-                _ => format!("{name}: {ty}"),
+                (VarRole::Param(ParamMode::Var), Type::Untyped) => (name, "&mut dyn ByteView".to_string()),
+                (VarRole::Param(ParamMode::Var), _) => (name, format!("&mut {ty}")),
+                _ if self.a.mutated.contains(&param) => (format!("mut {name}"), ty),
+                _ => (name, ty),
             });
         }
-        params.join(", ")
+        params
     }
 
     /// An untyped `var Data` parameter is the variable's bytes from here
@@ -2323,6 +2361,7 @@ fn default_value(ty: &Type) -> String {
         Type::Pointer(_) => "Ptr::nil()".to_string(),
         Type::AnyPointer => "AnyPtr::nil()".to_string(),
         Type::PChar => "PChar::nil()".to_string(),
+        Type::Proc(_) => "ProcVar::nil()".to_string(),
         Type::Text => "PText::default()".to_string(),
         Type::File(elem) if **elem == Type::Untyped => "PBlockFile::default()".to_string(),
         // `file of string[10]`: its records take 11 bytes, which the

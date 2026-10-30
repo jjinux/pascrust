@@ -189,6 +189,20 @@ Built-ins (System unit)
 - A variant part nested at the end of a variant, and records inside a
   variant: in a tagged part, flattened, and a file keeps the variants each
   tag selects; in a tagless part, all of it TP's bytes
+- Procedural types (`type Func = function(X: Real): Real`; anonymous in a
+  `var`, too): variables, parameters, record fields, array elements and
+  typed constants of them; a routine of the program as a value (`F :=
+  Square`, `Plot(Square)`); calls through them (`F(x)`, `R.F(x)`,
+  `Ops[i](x)`, with `var` parameters too); a parameterless function value
+  called in an expression (`N := F`); `nil`, `Assigned(F)`, `@F` as a
+  `Pointer`, and `@F = @Square`, `@F = nil`. A routine that uses globals
+  works too: every routine of the type takes the globals any of them
+  uses. Refused, with TP's reasons: a nested routine, a method or a
+  standard routine as a value, a function returning a procedural type,
+  and `F = G` (which calls them in TP; write `@F = @G`). `{$F+}` and `far`
+  aren't required. A procedural value is 4 bytes (`SizeOf`), stored in a
+  file or seen as bytes as 4 zeros, and reads back as nil. Calling a nil
+  one is runtime error 210
 - Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
   routine sees the caller's variable as TP's bytes, through a typecast
   (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a
@@ -458,8 +472,8 @@ Later (real TP features, not in the examples, worth doing in order)
    tag field
 3. (Done, now in tier 2: `virtual` methods, constructors and destructors,
    polymorphic pointers to objects.)
-4. Procedural types and procedure parameters (`type Func = function(x: real):
-   real`), `@proc`
+4. (Procedural types are done, in tier 2.) A `Pointer` cast back to a
+   routine (`Func(P)`, `@F := P`)
 5. `goto` / `label` (only the structured uses: jump forward out of nested
    loops, which Rust can express with labeled `break`)
 6. (Untyped `var` parameters, `GetMem`/`FreeMem` and the untyped `Pointer`

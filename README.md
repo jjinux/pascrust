@@ -131,7 +131,8 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 ### What's supported
 
 Most of Turbo Pascal 5.5/6.0 as students used it: the usual types, strings,
-arrays, records, enums, sets, pointers, nested procedures, `with`, units,
+arrays, records (variant records too), enums, sets, pointers, procedural
+types, nested procedures, `with`, units,
 objects with inheritance and virtual methods (constructors, destructors,
 `inherited`, polymorphic pointers, `TypeOf`), text and typed files with
 `{$I-}`/`IOResult`, `PChar` strings, and the `Crt`, `Dos`, `Graph`,
@@ -141,12 +142,12 @@ a file or a command (see [Printing](docs/printing.md)), overlays need no `.OVR`
 file, `MemAvail` reports plenty of memory, and interrupt vectors keep the
 handlers set in them (which never run).
 
-Not supported yet: procedural types, `goto`, pointer arithmetic other than
-on `PChar`, keeping a `PChar` into a `Char` array (`P := A`; a `PChar` from
-`StrNew` or `GetMem` works), and interrupts (`SetIntVec` keeps a handler, with a warning, but never calls
-it). See the [language spec](docs/language_spec.md) for the details and
-[`TODO.md`](TODO.md) for what's next. Runtime errors print Turbo Pascal's
-message and exit code (e.g. `Runtime error 201: Range check error ...`).
+Not supported yet: `goto`, pointer arithmetic other than on `PChar`,
+keeping a `PChar` into a `Char` array (`P := A`; a `PChar` from `StrNew`
+or `GetMem` works), and interrupts (`SetIntVec` keeps a handler, with a
+warning, but never calls it). See the [language spec](docs/language_spec.md)
+for the details and [`TODO.md`](TODO.md) for what's next. Runtime errors
+print Turbo Pascal's message and exit code (e.g. `Runtime error 201: Range check error ...`).
 
 ## Examples
 

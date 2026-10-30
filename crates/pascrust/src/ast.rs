@@ -131,6 +131,9 @@ pub enum TypeExpr {
     Subrange { lo: Box<Expr>, hi: Box<Expr>, span: Span },
     /// `(red, green, blue)`.
     Enum(Vec<Ident>, Span),
+    /// A procedural type: `procedure(var X, Y: Integer)` or `function(X:
+    /// Real): Real`. The parameter names are only decoration.
+    Proc { kind: ProcKind, params: Vec<ParamGroup>, ret: Option<Box<TypeExpr>>, span: Span },
     /// `record ... end`, with its variant part (`case ... of`) if it has one.
     Record(Vec<FieldDecl>, Option<Box<VariantDecl>>, Span),
     /// `^Name`. Pascal allows a pointer to a type that's declared later in
@@ -157,7 +160,8 @@ impl TypeExpr {
             | TypeExpr::Pointer(_, span)
             | TypeExpr::Set(_, span)
             | TypeExpr::File(_, span)
-            | TypeExpr::Object { span, .. } => *span,
+            | TypeExpr::Object { span, .. }
+            | TypeExpr::Proc { span, .. } => *span,
         }
     }
 }

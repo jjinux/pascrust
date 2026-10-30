@@ -155,13 +155,17 @@ impl ByteView for At<'_> {
 pub struct Bytes<'a> {
     view: &'a mut dyn ByteView,
     bytes: Vec<u8>,
+    /// The bytes as they came in: unchanged bytes aren't written back, so a
+    /// pointer (or procedural) field the routine didn't touch keeps its
+    /// value, though as bytes it's only 4 zeros.
+    original: Vec<u8>,
 }
 
 impl<'a> Bytes<'a> {
     /// `let mut data = Bytes::of(data);` at the start of the routine.
     pub fn of(view: &'a mut dyn ByteView) -> Bytes<'a> {
         let bytes = view.to_bytes();
-        Bytes { view, bytes }
+        Bytes { view, original: bytes.clone(), bytes }
     }
 
     /// `TRec(Data)`: the bytes read as a `TRec`. Bytes past the end of the
@@ -199,7 +203,9 @@ impl<'a> Bytes<'a> {
 
 impl Drop for Bytes<'_> {
     fn drop(&mut self) {
-        self.view.set_bytes(&self.bytes);
+        if self.bytes != self.original {
+            self.view.set_bytes(&self.bytes);
+        }
     }
 }
 

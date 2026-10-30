@@ -15,7 +15,7 @@ pub use crate::ordinal::{Enumerated, Ordinal, enum_range};
 pub use crate::overlay::*;
 pub use crate::pchar::*;
 pub use crate::printer::Lst;
-pub use crate::ptr::{AnyPtr, Ptr};
+pub use crate::ptr::{AnyPtr, ProcVar, Ptr};
 pub use crate::run::{halt, io_result, io_unchecked, rte, run_error};
 pub use crate::set::PSet;
 pub use crate::string::{PString, pos, pstr};

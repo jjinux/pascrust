@@ -145,7 +145,7 @@ fn pascal_main() {
     check(&mut checks, &mut failures, i.swap_bytes() == 513, pstr("Swap(Integer)"));
     check(&mut checks, &mut failures, 52651_u16 == 52651, pstr("Swap of a Word literal"));
     p = Ptr::nil();
-    check(&mut checks, &mut failures, !!p.is_nil(), pstr("Assigned(nil)"));
+    check(&mut checks, &mut failures, p.is_nil(), pstr("Assigned(nil)"));
     p = Ptr::alloc();
     check(&mut checks, &mut failures, !p.is_nil(), pstr("Assigned(p)"));
     p.dispose();

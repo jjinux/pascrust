@@ -281,6 +281,17 @@ pub struct Analysis {
     /// Calls of the program's routines that may change an array their
     /// statement lends later: codegen runs them first, into a `let`.
     pub calls_before_lend: HashSet<NodeId>,
+    /// The signature classes of procedural types (see `types::ProcType`):
+    /// pseudo routines with no body, which codegen doesn't emit.
+    pub proc_classes: Vec<ProcId>,
+    /// Routines taken as procedural values (`F := Square`), by the name's
+    /// expression.
+    pub proc_values: HashMap<NodeId, ProcId>,
+    /// Calls through a procedural value (`F(x)`), by the callee's
+    /// expression (`F`), with the class called.
+    pub proc_calls: HashMap<NodeId, ProcId>,
+    /// `@F` of a procedural value (`F.address()`), by the `@` expression.
+    pub proc_addresses_of_values: HashSet<NodeId>,
     /// `@Handler` expressions, with the procedure's name.
     pub proc_addresses: HashMap<NodeId, String>,
     /// `Move` and `FillChar` calls (by callee) that work on the variables'

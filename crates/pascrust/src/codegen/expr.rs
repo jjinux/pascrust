@@ -41,6 +41,15 @@ impl<'a> Codegen<'a> {
         if let Some(name) = self.hoisted.get(&e.id) {
             return (name.clone(), prec::ATOM);
         }
+        // `F := Square`: the routine as a procedural value.
+        if let Some(&p) = self.a.proc_values.get(&e.id) {
+            let info = &self.a.procs[p];
+            return (format!("ProcVar::of({}, \"{}\")", info.rust_name, info.name), prec::POSTFIX);
+        }
+        // `N := F` for a function value without parameters: a call.
+        if self.a.proc_calls.contains_key(&e.id) && matches!(e.kind, ExprKind::Name(_)) {
+            return (self.call(e, &[]), prec::POSTFIX);
+        }
         // A call that may change an array the statement lends to a `PChar`
         // later: it runs first, into a `let`, before the array is copied.
         if self.a.calls_before_lend.contains(&e.id) && self.running_first.insert(e.id) {
@@ -119,6 +128,8 @@ impl<'a> Codegen<'a> {
                     // `--x` reads like C's decrement, and rustc warns about it.
                     UnaryOp::Neg if inner.starts_with('-') => (format!("-({inner})"), prec::UNARY),
                     UnaryOp::Neg => (format!("-{inner}"), prec::UNARY),
+                    // `not Assigned(p)`: the two negations cancel out.
+                    UnaryOp::Not if inner.starts_with('!') => (inner[1..].to_string(), prec::POSTFIX),
                     UnaryOp::Not => (format!("!{inner}"), prec::UNARY),
                     UnaryOp::Plus => self.coerce(operand, &ty),
                 }
@@ -146,6 +157,9 @@ impl<'a> Codegen<'a> {
             }
             ExprKind::Field(..) | ExprKind::Index(..) => (self.selector(e), prec::POSTFIX),
             ExprKind::Set(elems) => (self.set_literal(e, elems), prec::POSTFIX),
+            ExprKind::AddrOf(base) if self.a.proc_addresses_of_values.contains(&e.id) => {
+                (format!("{}.address()", paren(self.expr(base), prec::POSTFIX)), prec::POSTFIX)
+            }
             ExprKind::AddrOf(_) => {
                 let name = &self.a.proc_addresses[&e.id];
                 (format!("AnyPtr::code(\"{name}\")"), prec::POSTFIX)
@@ -357,6 +371,7 @@ impl<'a> Codegen<'a> {
                 return (format!("PChar::literal({})", self.expr(e).0), prec::POSTFIX);
             }
             (Type::PChar, Type::Nil) => return ("PChar::nil()".to_string(), prec::POSTFIX),
+            (Type::Proc(_), Type::Nil) => return ("ProcVar::nil()".to_string(), prec::POSTFIX),
             (Type::PChar, Type::AnyPointer) => {
                 return (format!("PChar::from_any(&{})", self.selector_base(e)), prec::POSTFIX);
             }
@@ -565,6 +580,10 @@ impl<'a> Codegen<'a> {
             let pointer = if lt == Type::Nil { rhs } else { lhs };
             // No `.clone()` needed just to look at the pointer.
             let receiver = match &pointer.kind {
+                // `@F = nil` is `f.is_nil()`.
+                ExprKind::AddrOf(value) if self.a.proc_addresses_of_values.contains(&pointer.id) => {
+                    paren(self.expr(value), prec::POSTFIX)
+                }
                 ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => {
                     self.selector_base(pointer)
                 }
@@ -1024,6 +1043,17 @@ impl<'a> Codegen<'a> {
     pub(super) fn call(&mut self, callee: &Expr, args: &[Expr]) -> String {
         if let Some((pid, path)) = self.a.method_calls.get(&callee.id).cloned() {
             return self.method_call(callee, pid, &path, args);
+        }
+        // `F(x)` through a procedural variable: its routine, called with
+        // its class's globals and the arguments.
+        if let Some(&class) = self.a.proc_calls.get(&callee.id) {
+            let value = match &callee.kind {
+                ExprKind::Name(_) => self.a.var_name(self.proc, self.a.refs[&callee.id]).to_string(),
+                // `R.F(x)`, `Handlers[i](x)`: the value is copied out first.
+                _ => paren(self.expr(callee), prec::POSTFIX),
+            };
+            let (args, records) = self.call_args(class, args, None);
+            return wrap_with_mut(format!("{value}.get()({args})"), records);
         }
         let sym = self.a.refs[&callee.id];
         match &self.a.sym(sym).kind {

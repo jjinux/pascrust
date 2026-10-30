@@ -133,6 +133,8 @@ pub enum Type {
     /// The untyped `Pointer`: `nil`, a block from `GetMem`, or any typed
     /// pointer with its type forgotten.
     AnyPointer,
+    /// A procedural type, `function(X: Real): Real`: a routine, or nil.
+    Proc(Rc<ProcType>),
     /// `PChar`, TP 7's `^Char` for C-style strings ending in `#0`, with
     /// pointer arithmetic (`P + 1`) and indexing (`P[i]`).
     PChar,
@@ -197,6 +199,31 @@ pub struct VariantPart {
     /// tagged part, or one with a field that can't be bytes (a pointer), is
     /// flattened instead.
     pub bytes: bool,
+}
+
+/// A procedural type. Its routines must all share one Rust signature,
+/// globals included, so each signature belongs to a *class*: a pseudo
+/// routine (`class`) that sema has every routine stored in such a value
+/// "call", and that "calls" them, so lifting gives them all the same
+/// globals (the trick `dispatch` uses for virtual methods).
+#[derive(Debug, Clone)]
+pub struct ProcType {
+    pub params: Vec<(crate::ast::ParamMode, Type)>,
+    pub ret: Option<Type>,
+    /// The Rust type: the class's alias (`Func`), or this type's own name
+    /// for another type with the same signature (`type MathFunc = Func;`).
+    pub alias: String,
+    /// How Pascal spells the type, for messages.
+    pub pascal: String,
+    pub class: usize,
+}
+
+/// Procedural types with the same parameters (modes and types) and result
+/// are the same type, whatever they're called.
+impl PartialEq for ProcType {
+    fn eq(&self, other: &ProcType) -> bool {
+        self.params == other.params && self.ret == other.ret
+    }
 }
 
 /// One variant: the tag values that select it, and its fields (a range of
@@ -477,6 +504,7 @@ impl Type {
             Type::Untyped => "&mut dyn ByteView".to_string(),
             Type::AnyPointer => "AnyPtr".to_string(),
             Type::PChar => "PChar".to_string(),
+            Type::Proc(p) => p.alias.clone(),
             Type::Set(elem) => format!("PSet<{}>", elem.concrete().rust()),
             Type::Nil | Type::Void | Type::Error => "()".to_string(),
         }
@@ -564,6 +592,7 @@ impl Type {
             // `array[0..N] of Char` can be used as a `PChar`. And `PChar` is
             // a pointer type, so it goes with `Pointer` and `nil`.
             (Type::PChar, Type::Nil | Type::StrLit(_) | Type::AnyPointer) => true,
+            (Type::Proc(_), Type::Nil) => true,
             (Type::PChar, t) if t.is_char_array0() => true,
             (Type::AnyPointer, Type::PChar) => true,
             (Type::Set(a), Type::Set(b)) => **b == Type::Void || same_ordinal_kind(a, b),
@@ -612,6 +641,7 @@ impl fmt::Display for Type {
             Type::Untyped => write!(f, "untyped"),
             Type::AnyPointer => write!(f, "Pointer"),
             Type::PChar => write!(f, "PChar"),
+            Type::Proc(p) => write!(f, "{}", p.pascal),
             Type::Set(elem) if **elem == Type::Void => write!(f, "empty set"),
             Type::Set(elem) => write!(f, "set of {elem}"),
             Type::Void => write!(f, "no value"),
@@ -645,7 +675,8 @@ pub fn tp_size(ty: &Type) -> Option<i64> {
             let own = o.fields.iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()?;
             own + o.parent.as_ref().map_or(Some(0), |p| tp_size(&Type::Object(p.clone())))?
         }
-        Type::Pointer(_) | Type::AnyPointer | Type::PChar => 4,
+        // A procedural value was a 4-byte far address in TP.
+        Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Proc(_) => 4,
         // A set has a bit per value, up to 256 values (32 bytes).
         Type::Set(elem) => match &**elem {
             Type::Bool => 1,

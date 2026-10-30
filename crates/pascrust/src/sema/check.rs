@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use super::names::{self, screaming_snake_case, snake_case};
 use super::types::{
-    ArrayType, EnumType, Field, ObjectType, PointerType, RecordType, Variant, VariantPart, same_ordinal_kind,
+    ArrayType, EnumType, Field, ObjectType, PointerType, ProcType, RecordType, Variant, VariantPart, same_ordinal_kind,
 };
 use super::*;
 use crate::ast::*;
@@ -89,10 +89,34 @@ pub(super) struct Checker {
     pchar_arg_flows: Vec<super::pchar::ArgFlow>,
     /// The variable each array lent a `PChar` belongs to.
     pchar_array_roots: HashMap<NodeId, SymId>,
+    /// The signature classes of procedural types made so far: parameters,
+    /// result, and the class's pseudo routine.
+    signature_classes: Vec<(Signature, ProcId)>,
     /// The statements being checked, innermost last, with what they lend
     /// and call, in order (`event` counts).
     lend_frames: Vec<super::pchar::LendingStmt>,
     event: u32,
+}
+
+/// A procedural type's parameters (modes and types) and result.
+type Signature = (Vec<(ParamMode, Type)>, Option<Type>);
+
+/// A procedural type without a name, for messages: `function(Real): Real`.
+fn signature_spelling(kind: ProcKind, params: &[(ParamMode, Type)], ret: Option<&Type>) -> String {
+    let keyword = if kind == ProcKind::Function { "function" } else { "procedure" };
+    let params: Vec<String> = params
+        .iter()
+        .map(|(mode, ty)| match mode {
+            ParamMode::Var => format!("var {ty}"),
+            ParamMode::Const => format!("const {ty}"),
+            ParamMode::Value => ty.to_string(),
+        })
+        .collect();
+    let params = if params.is_empty() { String::new() } else { format!("({})", params.join(", ")) };
+    match ret {
+        Some(ret) => format!("{keyword}{params}: {ret}"),
+        None => format!("{keyword}{params}"),
+    }
 }
 
 /// Why a record with a flattened tagless variant part can't be bytes.
@@ -136,6 +160,7 @@ impl Checker {
             pchar_arg_flows: Vec::new(),
             pchar_array_roots: HashMap::new(),
             lend_frames: Vec::new(),
+            signature_classes: Vec::new(),
             event: 0,
         };
         checker.a.procs.push(ProcInfo {
@@ -591,7 +616,10 @@ impl Checker {
     fn const_value(&mut self, value: &ConstValue, ty: &Type) {
         match (value, ty) {
             (ConstValue::Expr(e), _) => {
-                let value_ty = self.expr(e);
+                let value_ty = match self.proc_value(e, ty) {
+                    Some(value_ty) => value_ty,
+                    None => self.expr(e),
+                };
                 if !ty.accepts(&value_ty) {
                     self.error(e.span, format!("expected a {ty} value, found {value_ty}"));
                 } else if *ty == Type::PChar && value_ty.is_char_array0() {
@@ -970,6 +998,7 @@ impl Checker {
                 }
                 ty
             }
+            TypeExpr::Proc { kind, params, ret, span } => self.proc_type(*kind, params, ret.as_deref(), *span, name),
             TypeExpr::Record(fields, variant, _) => {
                 let rust_name = self.type_name(name.unwrap_or("Record"));
                 let mut resolved: Vec<Field> = Vec::new();
@@ -1017,6 +1046,86 @@ impl Checker {
                 Type::Error
             }
         }
+    }
+
+    /// `function(X: Real): Real`: a procedural type, in the signature class
+    /// of every procedural type with these parameters and result (made the
+    /// first time; see `types::ProcType`).
+    fn proc_type(
+        &mut self,
+        kind: ProcKind,
+        params: &[ParamGroup],
+        ret: Option<&TypeExpr>,
+        span: Span,
+        name: Option<&str>,
+    ) -> Type {
+        let mut signature = Vec::new();
+        for group in params {
+            let ty = match &group.ty {
+                Some(t) => self.resolve_type(t),
+                None if group.mode == ParamMode::Var => Type::Untyped,
+                None => {
+                    self.error(group.names[0].span, "an untyped parameter must be `var`");
+                    Type::Error
+                }
+            };
+            signature.extend(group.names.iter().map(|_| (group.mode, ty.clone())));
+        }
+        let ret = ret.map(|t| self.resolve_type(t));
+        if let Some(Type::Proc(_)) = &ret {
+            self.error(span, "Turbo Pascal doesn't allow a function to return a procedural type");
+        }
+        let pascal = name.map_or_else(|| signature_spelling(kind, &signature, ret.as_ref()), str::to_string);
+        let existing = self.signature_classes.iter().find(|((p, r), _)| *p == signature && *r == ret).map(|c| c.1);
+        let declared = self.declaring_type && name.is_some();
+        let class = match existing {
+            Some(class) => class,
+            None => {
+                // The class's pseudo routine: the type's parameters, no body.
+                let class = self.a.procs.len();
+                let base = name.unwrap_or(if kind == ProcKind::Function { "FunctionType" } else { "ProcedureType" });
+                let rust_name = self.type_name(base);
+                self.a.procs.push(ProcInfo {
+                    name: pascal.clone(),
+                    rust_name: rust_name.clone(),
+                    kind,
+                    parent: Some(MAIN),
+                    params: Vec::new(),
+                    ret: ret.clone(),
+                    result: None,
+                    locals: Vec::new(),
+                    uses: Default::default(),
+                    writes: Default::default(),
+                    calls: Default::default(),
+                    captures: Vec::new(),
+                    has_body: true,
+                    self_param: None,
+                    span,
+                });
+                self.used_names.push(HashSet::new());
+                for (i, (mode, ty)) in signature.iter().enumerate() {
+                    let role = VarRole::Param(*mode);
+                    let param = self.add_symbol(
+                        &format!("p{i}"),
+                        format!("p{i}"),
+                        SymKind::Var(Var { ty: ty.clone(), owner: class, role }),
+                    );
+                    self.a.procs[class].params.push(param);
+                }
+                self.signature_classes.push(((signature.clone(), ret.clone()), class));
+                self.a.proc_classes.push(class);
+                let ty = Type::Proc(Rc::new(ProcType { params: signature, ret, alias: rust_name, pascal, class }));
+                self.a.type_defs.push((ty.clone(), span));
+                return ty;
+            }
+        };
+        // Another name for a signature that has a class already.
+        let alias = if declared { self.type_name(name.unwrap()) } else { self.a.procs[class].rust_name.clone() };
+        let ty = Type::Proc(Rc::new(ProcType { params: signature, ret, alias, pascal, class }));
+        if declared {
+            self.a.type_defs.push((ty.clone(), span));
+        }
+        ty
     }
 
     /// A record's fields, added to `resolved` (where a name may not repeat:
@@ -1365,7 +1474,10 @@ impl Checker {
             }
             StmtKind::Assign { target, value } => {
                 let target_ty = self.place(target, true);
-                let value_ty = self.expr(value);
+                let value_ty = match self.proc_value(value, &target_ty) {
+                    Some(ty) => ty,
+                    None => self.expr(value),
+                };
                 self.check_assignable(&target_ty, &value_ty, value.span);
                 self.check_constant_range(&target_ty, value);
                 self.note_pchar_array(value, &target_ty, false);
@@ -2064,6 +2176,11 @@ impl Checker {
                 };
                 self.a.refs.insert(e.id, sym);
                 match self.a.symbols[sym].kind.clone() {
+                    // A function value without parameters, in an expression,
+                    // is called (TP's rule: `N := F` calls `F`).
+                    SymKind::Var(Var { ty: Type::Proc(p), .. }) if p.ret.is_some() && p.params.is_empty() => {
+                        self.proc_call(e, e, Some(sym), &p, &[])
+                    }
                     SymKind::Var(v) => {
                         self.use_var(sym, false);
                         v.ty
@@ -2178,6 +2295,13 @@ impl Checker {
                 self.a.proc_addresses.insert(e.id, self.a.procs[p].name.clone());
                 Type::AnyPointer
             }
+            // `@F` of a procedural variable (or field, element): the routine's
+            // address, a `Pointer`, for `@F = @Square` and `@F = nil`.
+            ExprKind::AddrOf(base) if matches!(self.place_type(base), Some(Type::Proc(_))) => {
+                self.expr(base);
+                self.a.proc_addresses_of_values.insert(e.id);
+                Type::AnyPointer
+            }
             ExprKind::AddrOf(_) => {
                 self.error(e.span, "`@` is only supported on a procedure (for `SetIntVec`) so far");
                 Type::Error
@@ -2195,6 +2319,15 @@ impl Checker {
             && let Some(ConstVal::Int(v)) = self.eval_const(e)
         {
             return Type::IntLit(v);
+        }
+        // `F = nil` or `F = G` calls the routines in TP (and is an error when
+        // they need arguments); comparing the routines themselves takes `@`.
+        if matches!(l, Type::Proc(_)) || matches!(r, Type::Proc(_)) {
+            self.error(
+                e.span,
+                "in Turbo Pascal this calls the routines; to compare the procedural values themselves write `@F = @G` (or `Assigned(F)`, `@F = nil`)",
+            );
+            return Type::Error;
         }
         let result = match (op, l, r) {
             // `PChar` arithmetic (TP 7's extended syntax): `P + I`, `I + P`
@@ -2531,6 +2664,12 @@ impl Checker {
             return self.method_call(e, callee, receiver, method, args);
         }
         let ExprKind::Name(ident) = &callee.kind else {
+            // `Handlers[i](x)`, `P^(x)`: a call through a procedural value.
+            if matches!(callee.kind, ExprKind::Index(..) | ExprKind::Deref(_))
+                && let Type::Proc(p) = self.expr(callee)
+            {
+                return self.proc_call(e, callee, None, &p, args);
+            }
             self.error(callee.span, "expected the name of a procedure or function");
             return Type::Error;
         };
@@ -2586,6 +2725,8 @@ impl Checker {
                 }
                 target
             }
+            // `F(x)`: a call through a procedural variable.
+            SymKind::Var(Var { ty: Type::Proc(p), .. }) => self.proc_call(e, callee, Some(sym), &p, args),
             SymKind::Var(_) | SymKind::Const { .. } | SymKind::RuntimeVar { .. } | SymKind::StdText(_) => {
                 if !args.is_empty() {
                     self.error(ident.span, format!("`{}` is not a procedure or function", ident.name));
@@ -2593,6 +2734,85 @@ impl Checker {
                 }
                 self.expr(callee)
             }
+        }
+    }
+
+    /// A call through the procedural variable `sym`: a call of its class,
+    /// so it's checked, and its globals lifted, as one.
+    fn proc_call(&mut self, e: &Expr, callee: &Expr, sym: Option<SymId>, p: &ProcType, args: &[Expr]) -> Type {
+        if let Some(sym) = sym {
+            self.use_var(sym, false);
+        }
+        self.a.proc_calls.insert(callee.id, p.class);
+        self.user_call_with(e, p.class, args, None)
+    }
+
+    /// In a place that wants a procedural value (the right side of `:=` to
+    /// a procedural variable, an argument for a procedural parameter, a
+    /// typed constant), a routine's name is the routine, not a call, and a
+    /// procedural variable is copied. `None` if `e` isn't one of those.
+    fn proc_value(&mut self, e: &Expr, expected: &Type) -> Option<Type> {
+        let Type::Proc(wanted) = expected else { return None };
+        // `F := Obj.Method`.
+        if let ExprKind::Field(receiver, method) = &e.kind
+            && let Some(Type::Object(object)) = self.place_type(receiver)
+            && self.find_method(&object, &method.key()).is_some()
+        {
+            self.error(
+                e.span,
+                format!("`{}` is a method; Turbo Pascal doesn't allow a method as a procedural value", method.name),
+            );
+            return Some(Type::Error);
+        }
+        let ExprKind::Name(id) = &e.kind else { return None };
+        let sym = self.lookup(&id.key())?;
+        match self.a.symbols[sym].kind.clone() {
+            SymKind::Proc(p) => {
+                self.a.refs.insert(e.id, sym);
+                let info = &self.a.procs[p];
+                let signature: Vec<(ParamMode, Type)> = info
+                    .params
+                    .iter()
+                    .map(|&s| {
+                        let var = self.a.var(s);
+                        let VarRole::Param(mode) = var.role else { unreachable!("a parameter") };
+                        (mode, var.ty.clone())
+                    })
+                    .collect();
+                let name = &id.name;
+                if info.self_param.is_some() {
+                    self.error(
+                        e.span,
+                        format!("`{name}` is a method; Turbo Pascal doesn't allow a method as a procedural value"),
+                    );
+                } else if info.parent != Some(MAIN) {
+                    self.error(
+                        e.span,
+                        format!("`{name}` is nested inside `{}`; Turbo Pascal doesn't allow a nested routine as a procedural value", self.a.procs[info.parent.unwrap()].name),
+                    );
+                } else if signature != wanted.params || info.ret != wanted.ret {
+                    self.error(
+                        e.span,
+                        format!("`{name}` doesn't fit {}: the parameters and result must be the same", wanted.pascal),
+                    );
+                } else {
+                    // `p` and the class "call" each other, so lifting gives
+                    // every routine of the class the same globals.
+                    self.a.procs[p].calls.insert(wanted.class);
+                    self.a.procs[wanted.class].calls.insert(p);
+                    self.a.proc_values.insert(e.id, p);
+                }
+                self.a.types.insert(e.id, expected.clone());
+                Some(expected.clone())
+            }
+            SymKind::Builtin(_) | SymKind::UnitRoutine(_) => {
+                self.error(
+                    e.span,
+                    format!("`{}` is a standard routine; Turbo Pascal wants a routine of the program as a procedural value (one that calls it)", id.name),
+                );
+                Some(Type::Error)
+            }
+            _ => None,
         }
     }
 
@@ -2781,6 +3001,14 @@ impl Checker {
                 return self.static_method_call(e, callee, Some(object), method, args);
             }
         }
+        // `R.F(x)`: a call through a record's procedural field.
+        if let Some(Type::Record(r)) = self.place_type(receiver)
+            && let Some(field) = r.field(&method.name)
+            && let Type::Proc(p) = field.ty.clone()
+        {
+            self.expr(callee);
+            return self.proc_call(e, callee, None, &p, args);
+        }
         // The receiver is passed as `&mut self`, so it counts as a write.
         let receiver_ty = self.place(receiver, true);
         let Type::Object(object) = &receiver_ty else {
@@ -2904,7 +3132,10 @@ impl Checker {
                     });
                 }
             } else {
-                let arg_ty = self.expr(arg);
+                let arg_ty = match self.proc_value(arg, &ty) {
+                    Some(arg_ty) => arg_ty,
+                    None => self.expr(arg),
+                };
                 if !ty.accepts(&arg_ty) {
                     self.error(arg.span, format!("expected a {ty} argument, found {arg_ty}"));
                 }
@@ -3417,7 +3648,7 @@ impl Checker {
                 span,
                 args,
                 &name,
-                |t| matches!(t, Type::Pointer(_) | Type::AnyPointer | Type::PChar),
+                |t| matches!(t, Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Proc(_)),
                 |_| Type::Bool,
             ),
             // `GetMem(p, Size)` and `FreeMem(p, Size)`.

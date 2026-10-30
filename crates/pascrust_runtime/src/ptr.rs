@@ -361,3 +361,76 @@ mod any_ptr_tests {
         assert_eq!(p.bytes().to_bytes(), [1, 2, 0, 0]);
     }
 }
+
+/// A Turbo Pascal procedural variable: a routine, or nil. `F` is the
+/// function-pointer type (`fn(f64) -> f64`), so a `ProcVar` is `Copy` and
+/// calling one is an ordinary call: `f.get()(x)`. It keeps the routine's
+/// name too, which is what `@F = @Square` compares: Rust warns that two
+/// function pointers to the same code may not compare equal.
+#[derive(Clone, Copy)]
+pub struct ProcVar<F: Copy> {
+    routine: Option<F>,
+    name: &'static str,
+}
+
+impl<F: Copy> ProcVar<F> {
+    pub const fn nil() -> Self {
+        ProcVar { routine: None, name: "" }
+    }
+
+    /// `F := Square`.
+    pub const fn of(routine: F, name: &'static str) -> Self {
+        ProcVar { routine: Some(routine), name }
+    }
+
+    /// `F = nil`, `not Assigned(F)`.
+    pub fn is_nil(&self) -> bool {
+        self.routine.is_none()
+    }
+
+    /// The routine, to call. Calling a nil procedural variable is runtime
+    /// error 210, where TP jumped to address 0.
+    pub fn get(&self) -> F {
+        match self.routine {
+            Some(routine) => routine,
+            None => crate::rte(210, "Call of a nil procedural variable"),
+        }
+    }
+
+    /// `@F` as a `Pointer`: the routine's address, compared by name.
+    pub fn address(&self) -> AnyPtr {
+        if self.is_nil() { AnyPtr::Nil } else { AnyPtr::code(self.name) }
+    }
+}
+
+impl<F: Copy> Default for ProcVar<F> {
+    fn default() -> Self {
+        ProcVar::nil()
+    }
+}
+
+/// Two procedural values are equal when they're the same routine (or both
+/// nil).
+impl<F: Copy> PartialEq for ProcVar<F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.routine.is_some() == other.routine.is_some() && self.name == other.name
+    }
+}
+
+impl<F: Copy> fmt::Debug for ProcVar<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_nil() { write!(f, "nil") } else { write!(f, "@{}", self.name) }
+    }
+}
+
+/// As for other pointers, a stored procedural value is 4 zero bytes and
+/// reads back as nil.
+impl<F: Copy> crate::io::FileRecord for ProcVar<F> {
+    fn encode(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&[0; 4]);
+    }
+    fn decode(input: &mut &[u8]) -> Self {
+        *input = &input[4.min(input.len())..];
+        ProcVar::nil()
+    }
+}

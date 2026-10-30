@@ -210,12 +210,19 @@ pub(super) fn find_param_aliases(a: &mut Analysis, sites: &[CallSite]) {
         }
         sym
     };
+    // Not for a procedural type's class, or a routine kept in one: they must
+    // keep one signature with every global, however a call passes them.
+    let in_class: HashSet<ProcId> = a
+        .proc_classes
+        .iter()
+        .flat_map(|&class| std::iter::once(class).chain(a.procs[class].calls.iter().copied()))
+        .collect();
     let mut changed = true;
     while changed {
         changed = false;
         for p in 0..a.procs.len() {
             let calls: Vec<&CallSite> = sites.iter().filter(|s| s.callee == p).collect();
-            if calls.is_empty() {
+            if calls.is_empty() || in_class.contains(&p) {
                 continue;
             }
             for &param in &a.procs[p].params {

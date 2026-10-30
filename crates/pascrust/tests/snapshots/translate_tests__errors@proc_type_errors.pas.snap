@@ -1,0 +1,32 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/proc_type_errors.pas
+---
+proc_type_errors.pas:8:12: error: Turbo Pascal doesn't allow a function to return a procedural type
+   Maker = function: Func;
+           ^^^^^^^^^^^^^^
+
+proc_type_errors.pas:39:12: error: `Inner` is nested inside `Outer`; Turbo Pascal doesn't allow a nested routine as a procedural value
+      F := Inner;
+           ^^^^^
+
+proc_type_errors.pas:43:9: error: `Half` is a method; Turbo Pascal doesn't allow a method as a procedural value
+   F := O.Half;
+        ^^^^^^
+
+proc_type_errors.pas:44:9: error: `Sin` is a standard routine; Turbo Pascal wants a routine of the program as a procedural value (one that calls it)
+   F := Sin;
+        ^^^
+
+proc_type_errors.pas:45:9: error: `Twice` doesn't fit Func: the parameters and result must be the same
+   F := Twice;
+        ^^^^^
+
+proc_type_errors.pas:46:7: error: in Turbo Pascal this calls the routines; to compare the procedural values themselves write `@F = @G` (or `Assigned(F)`, `@F = nil`)
+   if F = G then
+      ^^^^^
+
+proc_type_errors.pas:48:10: error: cannot assign to `Twice`
+   Reset(Twice);
+         ^^^^^

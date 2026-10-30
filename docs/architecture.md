@@ -687,6 +687,32 @@ accepts. (See `notes/p2c.md` for Gillespie's description of the struct scheme.)
 Nested procedures inside object methods that use `Self` fields (the examples'
 `Winner` inside `BoardType.Finish`) receive `this: &mut BoardType`.
 
+### Procedural types
+
+Following `notes/variant_records_and_procedural_types.md` (steps 4-6). A
+procedural type is the runtime's `ProcVar<F>`: an `Option` of a Rust
+function pointer `F` and the routine's name, `Copy`, nil by default:
+`type Func = ProcVar<fn(f64, f64) -> f64>;`. `F := Square` is
+`ProcVar::of(square, "Square")`, a call `F(x)` is `f.get()(globals...,
+x)` (runtime error 210 for nil), `@F` is `f.address()`, an `AnyPtr::Code`
+compared by name, as `@Handler` is (Rust warns that comparing function
+pointers is unreliable).
+
+Routines kept in one type must share one Rust signature, globals
+included, so procedural types with the same parameters and result form a
+*signature class*: a pseudo routine (`Analysis::proc_classes`) with the
+type's parameters and no body. A routine taken as a value "calls" its
+class and the class "calls" it, and a call through a value is a call of
+the class, so lifting gives the class and every routine kept in it the
+union of their globals (the trick `dispatch` uses for virtual methods),
+and `check_aliasing` sees a global passed by `var` through a value whose
+routines use it. Classes and their routines are kept out of
+`find_param_aliases`, which could otherwise drop a global from one
+signature. Sema decides where a routine's name is a value rather than a
+call (`proc_value`: the right side of `:=` to a procedural place, an
+argument for a procedural parameter, a typed constant), as TP's rule
+says; elsewhere a parameterless function value is called.
+
 ## 16. Objects (Turbo Pascal 5.5 OOP)
 
 The examples use `object` types heavily, always with static methods. Virtual

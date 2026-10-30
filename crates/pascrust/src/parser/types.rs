@@ -25,6 +25,19 @@ impl Parser {
                 let elem = Box::new(self.type_expr()?);
                 Ok(TypeExpr::Array { indexes, elem, span: start.to(self.prev_span()) })
             }
+            // A procedural type: `procedure(X: Integer)`, `function: Real`.
+            TokenKind::Keyword(keyword @ (Keyword::Procedure | Keyword::Function)) => {
+                self.bump();
+                let kind = if keyword == Keyword::Function { ProcKind::Function } else { ProcKind::Procedure };
+                let params = if self.at(&TokenKind::LParen) { self.param_list()? } else { Vec::new() };
+                let ret = if kind == ProcKind::Function {
+                    self.expect(&TokenKind::Colon)?;
+                    Some(Box::new(self.type_expr()?))
+                } else {
+                    None
+                };
+                Ok(TypeExpr::Proc { kind, params, ret, span: start.to(self.prev_span()) })
+            }
             TokenKind::Keyword(Keyword::Record) => {
                 self.bump();
                 let (fields, variant) = self.field_list()?;

@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/proc_globals_errors.pas
+---
+proc_globals_errors.pas:7:24: error: `Count` is passed by `var` to `Bump`, which also uses `Count` directly; Rust doesn't allow two references to the same variable when one of them is mutable; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#var-and-global
+begin P := AddCount; P(Count); end.
+                       ^^^^^
