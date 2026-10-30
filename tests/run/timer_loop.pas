@@ -8,7 +8,7 @@ const
    TickMs = 55; { the PC timer's 18.2 ticks a second }
 var
    ticks: LongInt;
-   lastTick, elapsed: LongInt;
+   lastTick, elapsed, current: LongInt;
 
 { Milliseconds since midnight. }
 function NowMs: LongInt;
@@ -34,7 +34,12 @@ begin
       elapsed := NowMs - lastTick;
       if (elapsed >= 0) and (elapsed < TickMs) then
          Delay(TickMs - elapsed);
-      lastTick := lastTick + TickMs;
+      { Delay may wait longer than asked, so look at the clock again. }
+      current := NowMs;
+      if (current < lastTick) or (current - lastTick >= 2 * TickMs) then
+         lastTick := current { past midnight, or a tick behind: start again }
+      else
+         lastTick := lastTick + TickMs; { on time: keep a steady 18.2 a second }
    until ticks = 10;
    WriteLn(ticks, ' ticks');
 end.

@@ -47,6 +47,7 @@ fn pascal_main() {
     let mut ticks: i32 = 0;
     let mut last_tick: i32 = 0;
     let mut elapsed: i32 = 0;
+    let mut current: i32 = 0;
     ticks = 0;
     last_tick = now_ms();
     // Pascal `repeat ... until`: the body always runs at least once.
@@ -57,7 +58,13 @@ fn pascal_main() {
         if elapsed >= 0 && elapsed < i32::from(TICK_MS) {
             delay(i32::from(TICK_MS) - elapsed);
         }
-        last_tick += i32::from(TICK_MS);
+        // Delay may wait longer than asked, so look at the clock again.
+        current = now_ms();
+        if current < last_tick || current - last_tick >= i32::from(2 * TICK_MS) {
+            last_tick = current; // past midnight, or a tick behind: start again
+        } else {
+            last_tick += i32::from(TICK_MS); // on time: keep a steady 18.2 a second
+        }
         if ticks == 10 {
             break;
         }
