@@ -560,7 +560,11 @@ impl<'a> Codegen<'a> {
             let (comments, lets): (Vec<String>, Vec<String>) =
                 self.pending.split_off(mark).into_iter().partition(|line| line.starts_with("//"));
             self.pending.extend(comments);
-            (format!("{{ {} {} }}", lets.join(" "), right.0), prec::ATOM)
+            if lets.is_empty() {
+                right
+            } else {
+                (format!("{{ {} {} }}", lets.join(" "), right.0), prec::ATOM)
+            }
         } else {
             right
         };

@@ -1702,7 +1702,19 @@ impl<'a> Codegen<'a> {
             return self.with_after(code);
         }
         self.lent.clear();
-        let lets = std::mem::take(&mut self.pending).join(" ");
+        // A teaching comment can't go inside the one-line block (it would
+        // swallow the rest of the line), so it goes on the lines before.
+        let (comments, lets): (Vec<String>, Vec<String>) =
+            std::mem::take(&mut self.pending).into_iter().partition(|line| line.starts_with("//"));
+        let after = std::mem::take(&mut self.after);
+        for comment in comments {
+            self.line(comment);
+        }
+        self.after = after;
+        if lets.is_empty() {
+            return self.with_after(code);
+        }
+        let lets = lets.join(" ");
         if self.after.is_empty() {
             return format!("{{ {lets} {code} }}");
         }
