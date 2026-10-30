@@ -5,6 +5,7 @@ use std::cell::Cell;
 
 use chrono::{Datelike, Local, TimeZone, Timelike};
 
+use crate::ptr::AnyPtr;
 use crate::string::PString;
 use crate::system::dos_path;
 
@@ -728,6 +729,31 @@ pub fn set_f_attr(f: &mut impl crate::io::AnyFile, attr: impl Into<i32>) {
         }
         Err(e) => set_dos_error(io_dos_error(&e, &path)),
     }
+}
+
+// ----- Interrupt vectors, faked -------------------------------------------
+
+thread_local! {
+    /// The 256 interrupt vectors. Each starts as a stand-in for the handler
+    /// DOS had there, so a program that saves a vector and puts it back
+    /// later works. (An `Rc` isn't thread-safe, hence `thread_local!`.)
+    static VECTORS: std::cell::RefCell<Vec<AnyPtr>> = std::cell::RefCell::new(
+        (0..256).map(|n| AnyPtr::code(&format!("DOS's handler for interrupt ${n:02X}"))).collect(),
+    );
+}
+
+/// `GetIntVec(IntNo, Vector)`: what the vector holds. PascRust has no
+/// interrupts, so a handler a program installs with `SetIntVec` is kept
+/// but never called: a timer tick or key press handler just never runs.
+pub fn get_int_vec(int_no: impl Into<i32>, vector: &mut AnyPtr) {
+    let n = (int_no.into() & 0xFF) as usize;
+    *vector = VECTORS.with_borrow(|vectors| vectors[n].clone());
+}
+
+/// `SetIntVec(IntNo, Vector)`: install a handler (which is never called).
+pub fn set_int_vec(int_no: impl Into<i32>, vector: AnyPtr) {
+    let n = (int_no.into() & 0xFF) as usize;
+    VECTORS.with_borrow_mut(|vectors| vectors[n] = vector);
 }
 
 #[cfg(test)]

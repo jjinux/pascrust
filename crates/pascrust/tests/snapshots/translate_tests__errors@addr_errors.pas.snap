@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/addr_errors.pas
+---
+addr_errors.pas:9:8: error: `@` is only supported on a procedure (for `SetIntVec`) so far
+  p := @n;
+       ^^
+
+addr_errors.pas:10:18: error: expected a Pointer, found Integer
+  SetIntVec($1C, n);
+                 ^
+
+addr_errors.pas:11:18: error: expected a Pointer variable, found Integer
+  GetIntVec($1C, n);
+                 ^

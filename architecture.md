@@ -848,8 +848,14 @@ window meanwhile (§19).
   `FExpand`/`FSearch`/`FSplit` with a DOS-path translation layer (`a:\x` →
   a directory from a config map; open question), `Exec` → `std::process::
   Command` (the examples run `turbo.exe`, which will simply fail), `ChDir`,
-  `GetEnv`, `DosVersion` stub. `Intr`, `MsDos`, `Keep`, interrupt vectors:
-  unsupported.
+  `GetEnv`, `DosVersion` stub. `Intr`, `MsDos`, `Keep`: unsupported.
+  Interrupt vectors are faked (the user's call): a thread-local table of
+  256 `AnyPtr`s, each starting as `AnyPtr::Code("DOS's handler for
+  interrupt $nn")`, and `@Handler` is `AnyPtr::code("Handler")` (the
+  `Code` variant compares by name). `SetIntVec` just stores; nothing is
+  ever called. Installing the program's own handler (`SetIntVec(n,
+  @Handler)`) gives a translation-time warning; putting back a saved
+  vector doesn't.
 - **Graph** (`feature = "graph"`): a software-rendered BGI emulation. A
   640x480 framebuffer of colour *numbers* (`Vec<u8>`) plus a 16-entry EGA
   palette, Bresenham lines (styles, thickness, XOR mode), arcs and ellipses
@@ -962,7 +968,7 @@ sense; only what can't be real is faked.
   `DirectVideo`/`CheckSnow`/`CheckEOF` are remembered and ignored): see
   `language_spec.md`.
 - Not faked, but refused with a clear error: what needs real DOS or raw
-  memory (`Intr`, `MsDos`, `Mem`, `Port`, `GetIntVec`, `Keep`). A unit
+  memory (`Intr`, `MsDos`, `Mem`, `Port`, `Keep`). A unit
   routine can be declared `refused` in `units.rs`, so calling it says why
   instead of "unknown identifier".
 

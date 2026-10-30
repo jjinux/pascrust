@@ -2008,8 +2008,18 @@ impl Checker {
                 }
                 Type::Set(Rc::new(elem_ty))
             }
+            // `@Handler`: a procedure's address, a `Pointer`, for `SetIntVec`.
+            ExprKind::AddrOf(base)
+                if let ExprKind::Name(id) = &base.kind
+                    && let Some(sym) = self.lookup(&id.key())
+                    && let SymKind::Proc(p) = self.a.symbols[sym].kind =>
+            {
+                self.a.refs.insert(base.id, sym);
+                self.a.proc_addresses.insert(e.id, self.a.procs[p].name.clone());
+                Type::AnyPointer
+            }
             ExprKind::AddrOf(_) => {
-                self.error(e.span, "this kind of expression is not supported yet");
+                self.error(e.span, "`@` is only supported on a procedure (for `SetIntVec`) so far");
                 Type::Error
             }
         }
@@ -2416,6 +2426,20 @@ impl Checker {
         if r.params.len() != args.len() {
             self.error(e.span, format!("`{name}` takes {} argument(s) but {} were given", r.params.len(), args.len()));
         }
+        // `SetIntVec($1C, @Tick)` installs a handler that will never run.
+        // (Putting back a vector saved by `GetIntVec` needs no warning.)
+        if r.name == "setintvec"
+            && let Some(ExprKind::AddrOf(handler)) = args.get(1).map(|arg| &arg.kind)
+            && let ExprKind::Name(handler) = &handler.kind
+        {
+            self.a.warnings.push(Diagnostic::warning(
+                e.span,
+                format!(
+                    "PascRust has no interrupts: `SetIntVec` sets the vector, but `{}` will never be called",
+                    handler.name
+                ),
+            ));
+        }
         for (param, arg) in r.params.iter().zip(args) {
             match param {
                 Param::Int => self.int_arg(arg),
@@ -2442,6 +2466,18 @@ impl Checker {
                     if written {
                         let srcs = self.pchar_sources(arg);
                         self.mark_written(&srcs);
+                    }
+                }
+                Param::Pointer => {
+                    let ty = self.expr(arg);
+                    if !Type::AnyPointer.accepts(&ty) {
+                        self.error(arg.span, format!("expected a Pointer, found {ty}"));
+                    }
+                }
+                Param::VarPointer => {
+                    let ty = self.place(arg, true);
+                    if ty != Type::AnyPointer && ty != Type::Error {
+                        self.error(arg.span, format!("expected a Pointer variable, found {ty}"));
                     }
                 }
                 Param::Char => {

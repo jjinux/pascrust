@@ -118,7 +118,10 @@ impl<'a> Codegen<'a> {
             }
             ExprKind::Field(..) | ExprKind::Index(..) => (self.selector(e), prec::POSTFIX),
             ExprKind::Set(elems) => (self.set_literal(e, elems), prec::POSTFIX),
-            _ => unreachable!("sema rejects this expression"),
+            ExprKind::AddrOf(_) => {
+                let name = &self.a.proc_addresses[&e.id];
+                (format!("AnyPtr::code(\"{name}\")"), prec::POSTFIX)
+            }
         }
     }
 
@@ -898,6 +901,8 @@ impl<'a> Codegen<'a> {
                         Param::Str => self.string_arg(arg),
                         Param::Bool => self.expr(arg).0,
                         Param::Char => self.coerce(arg, &Type::Char).0,
+                        Param::Pointer => self.coerce(arg, &Type::AnyPointer).0,
+                        Param::VarPointer => self.place_mut(arg),
                         // The `Strings` functions borrow their `PChar`s.
                         Param::PChar | Param::PCharDest => format!("&{}", self.pchar_operand(arg)),
                         Param::FillPattern => self.coerce(arg, &crate::sema::units::fill_pattern_type()).0,

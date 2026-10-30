@@ -319,9 +319,15 @@ Dos unit
   `SetDate`/`SetTime` (don't change the computer's clock),
   `GetCBreak`/`SetCBreak` and `GetVerify`/`SetVerify` (remembered),
   `SwapVectors` (does nothing)
+- `GetIntVec`/`SetIntVec` (faked): the 256 vectors hold what a program
+  puts in them, and start as stand-ins for DOS's handlers, so saving a
+  vector and restoring it works. `interrupt` procedures compile as ordinary
+  procedures and `@Handler` gives their address, but there are no
+  interrupts, so a handler is never called: `SetIntVec(..., @Handler)`
+  gives a warning saying so
 - Refused with a clear error, since they need real DOS: `Intr`, `MsDos`,
-  `Keep`, `GetIntVec`, `SetIntVec` (`Registers` is declared, with its
-  `Word` registers, so a program using it gets that error)
+  `Keep` (`Registers` is declared, with its `Word` registers, so a program
+  using it gets that error)
 - `GetFTime`/`SetFTime` (the file's real modification time, packed as DOS
   did), `PackTime`/`UnpackTime` with `DateTime` (seconds kept to 2; as in
   TP, an out-of-range field spills into the next, within the date or
@@ -417,8 +423,9 @@ Later (real TP features, not in the examples, worth doing in order)
 
 Never (DOS/x86 machinery with no sensible Rust translation)
 
-- `asm ... end`, `inline(...)`, `interrupt` procedures, `Intr`, `MsDos`,
-  `GetIntVec`/`SetIntVec`, `Keep`
+- `asm ... end`, `inline(...)`, `Intr`, `MsDos`, `Keep`, and calling an
+  `interrupt` procedure as an interrupt (it compiles, and `SetIntVec`
+  keeps it, but it never runs)
 - `Mem`, `MemW`, `MemL`, `Port`, `PortW`, `Seg`, `Ofs`, `Ptr`, `CSeg`,
   `DSeg`, `SPtr`, `Addr` arithmetic, `absolute` at fixed addresses
 - `Overlay` behaviour, `OvrInit` and friends (parse, ignore)

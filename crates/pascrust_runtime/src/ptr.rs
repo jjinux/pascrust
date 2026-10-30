@@ -222,6 +222,10 @@ pub enum AnyPtr {
     /// A typed pointer's record cell, its type erased. (`dyn Any` is Rust's
     /// way of holding "a value of some type", which `downcast` recovers.)
     Typed(Rc<dyn std::any::Any>),
+    /// The address of code: `@Handler` of a procedure, or an interrupt
+    /// vector's original handler (see `GetIntVec`). Only kept and compared:
+    /// PascRust never calls through it.
+    Code(Rc<str>),
 }
 
 impl AnyPtr {
@@ -245,7 +249,7 @@ impl AnyPtr {
         match self {
             AnyPtr::Bytes(bytes) => bytes.borrow_mut().clear(),
             AnyPtr::Nil => crate::rte(204, "Invalid pointer operation: FreeMem(nil)"),
-            AnyPtr::Typed(_) => {}
+            AnyPtr::Typed(_) | AnyPtr::Code(_) => {}
         }
     }
 
@@ -266,7 +270,13 @@ impl AnyPtr {
                 Err(_) => crate::rte(204, "Invalid pointer operation: a Pointer used as a pointer to another type"),
             },
             AnyPtr::Bytes(_) => crate::rte(204, "Invalid pointer operation: memory from GetMem used as a typed record"),
+            AnyPtr::Code(_) => crate::rte(204, "Invalid pointer operation: a procedure's address used as a record"),
         }
+    }
+
+    /// `@Handler`: a procedure's address, by its name.
+    pub fn code(name: &str) -> AnyPtr {
+        AnyPtr::Code(Rc::from(name))
     }
 
     /// `p^` as untyped memory (`BlockRead(f, p^, n)`): its bytes.
@@ -275,6 +285,7 @@ impl AnyPtr {
             AnyPtr::Bytes(bytes) => BufferView(bytes.clone()),
             AnyPtr::Nil => crate::rte(204, "Invalid pointer operation: dereferencing nil"),
             AnyPtr::Typed(_) => crate::rte(204, "Invalid pointer operation: a typed record used as untyped memory"),
+            AnyPtr::Code(_) => crate::rte(204, "Invalid pointer operation: a procedure's address used as memory"),
         }
     }
 }
@@ -286,6 +297,7 @@ impl PartialEq for AnyPtr {
             (AnyPtr::Nil, AnyPtr::Nil) => true,
             (AnyPtr::Bytes(a), AnyPtr::Bytes(b)) => Rc::ptr_eq(a, b),
             (AnyPtr::Typed(a), AnyPtr::Typed(b)) => Rc::ptr_eq(a, b),
+            (AnyPtr::Code(a), AnyPtr::Code(b)) => a == b,
             _ => false,
         }
     }
@@ -297,6 +309,7 @@ impl fmt::Debug for AnyPtr {
             AnyPtr::Nil => write!(f, "nil"),
             AnyPtr::Bytes(bytes) => write!(f, "Pointer({} bytes)", bytes.borrow().len()),
             AnyPtr::Typed(_) => write!(f, "Pointer(..)"),
+            AnyPtr::Code(name) => write!(f, "@{name}"),
         }
     }
 }

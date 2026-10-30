@@ -238,7 +238,8 @@ Dos, the rest
 - [x] `GetFTime`/`SetFTime` with `PackTime`/`UnpackTime` and the `DateTime` record; `GetFAttr`/`SetFAttr` (read-only from the file's permissions, directory from its type; hidden/system/archive faked from the name and kept in memory).
 - [x] `DiskFree`/`DiskSize`, faked (as the user suggested): real disks overflow a `LongInt`, so every drive is a 1 GB disk with 512 MB free; past Z: is -1.
 - [x] Fake: `SetDate`/`SetTime` don't change the machine's clock; `GetCBreak`/`SetCBreak` and `GetVerify`/`SetVerify` remember a flag; `SwapVectors` does nothing.
-- [x] Never: `Intr`, `MsDos`, `Keep`, `GetIntVec`/`SetIntVec` are a clear "needs real DOS" error (`UnitRoutine::refused`).
+- [x] Never: `Intr`, `MsDos`, `Keep` are a clear "needs real DOS" error (`UnitRoutine::refused`).
+- [x] `GetIntVec`/`SetIntVec` faked: vectors are kept and given back, handlers (`interrupt` procedures, `@Handler`) never run, and installing one gives a warning (the user's call).
 
 Graph, the rest
 - [x] `DrawPoly`/`FillPoly` (arrays of `PointType`), `GetArcCoords`, and the `Get*Settings` records (`GetLineSettings`, `GetFillSettings`, `GetTextSettings`, `GetViewSettings`).

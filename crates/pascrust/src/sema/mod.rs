@@ -264,6 +264,10 @@ pub struct Analysis {
     /// whether the `PChar` may be written through, so the characters must
     /// be copied back after the statement.
     pub pchar_arrays: HashMap<NodeId, bool>,
+    /// Warnings: things that translate, but won't act as in Turbo Pascal.
+    pub warnings: Vec<Diagnostic>,
+    /// `@Handler` expressions, with the procedure's name.
+    pub proc_addresses: HashMap<NodeId, String>,
     /// `Move` and `FillChar` calls (by callee) that work on the variables'
     /// bytes (`move_bytes`, `fill_bytes`) rather than on the values.
     pub byte_moves: HashSet<NodeId>,

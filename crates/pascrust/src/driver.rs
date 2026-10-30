@@ -117,6 +117,8 @@ fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[Str
 
     let analysis = sema::analyze(&program, &units)
         .map_err(|errors| errors.iter().map(|d| map.render(d)).collect::<Vec<_>>().join("\n\n"))?;
+    let mut warnings: Vec<String> = warnings;
+    warnings.extend(analysis.warnings.iter().map(|d| map.render(d)));
     let files = codegen::generate(&program, &units, &analysis, &map, &io_unchecked, &comments);
     let files = files.into_iter().map(|(name, code)| (name, format_rust(&code))).collect();
 
@@ -370,6 +372,15 @@ mod tests {
         assert_eq!(generated.warnings.len(), 2);
         assert!(generated.warnings[0].starts_with("p.pas:2:1: warning: `{$R+}`"));
         assert!(generated.warnings[1].starts_with("p.pas:5:1: warning: `{$Q+}`"));
+    }
+
+    #[test]
+    fn installing_an_interrupt_handler_gives_a_warning() {
+        let source = b"program P;\nuses Dos;\nvar old: Pointer;\nprocedure Tick; interrupt;\nbegin\nend;\nbegin\n  GetIntVec($1C, old);\n  SetIntVec($1C, @Tick);\n  SetIntVec($1C, old);\nend.\n";
+        let generated = transpile_source(source, "p.pas").unwrap();
+        assert_eq!(generated.warnings.len(), 1, "{:?}", generated.warnings);
+        assert!(generated.warnings[0].starts_with("p.pas:9:3: warning: PascRust has no interrupts"));
+        assert!(generated.warnings[0].contains("`Tick` will never be called"));
     }
 
     #[test]

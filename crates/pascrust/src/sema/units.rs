@@ -52,6 +52,9 @@ pub enum Param {
     /// A `PChar` that's only read: a `PChar`, `nil`, a string constant, or
     /// a zero-based `Char` array (lent a `PChar` for the statement).
     PChar,
+    /// A `Pointer`, by value and as a `var` parameter.
+    Pointer,
+    VarPointer,
     /// A `PChar` the routine writes through (`StrCopy`'s `Dest`).
     PCharDest,
     Char,
@@ -297,8 +300,8 @@ pub static DOS: &[UnitRoutine] = &[
     routine!("intr" => refused "it calls a DOS or BIOS interrupt, which needs real DOS"),
     routine!("msdos" => refused "it calls DOS itself (interrupt 21h), which needs real DOS"),
     routine!("keep" => refused "it leaves the program resident in DOS memory, which needs real DOS"),
-    routine!("getintvec" => refused "interrupt vectors only exist in real DOS"),
-    routine!("setintvec" => refused "interrupt vectors only exist in real DOS"),
+    routine!("getintvec" => "get_int_vec"(Int, VarPointer)),
+    routine!("setintvec" => "set_int_vec"(Int, Pointer)),
 ];
 
 /// A constant a unit exports: Pascal name, Rust name, value.

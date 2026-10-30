@@ -408,6 +408,8 @@ impl Parser {
 
         // Directives after the header. `far` and `near` were about 16-bit
         // x86 memory models and mean nothing to us, so they're skipped.
+        // So is `interrupt`: an interrupt handler is an ordinary procedure
+        // here, which `SetIntVec` keeps but nothing ever calls.
         let mut body = None;
         let mut is_virtual = false;
         loop {
@@ -417,7 +419,7 @@ impl Parser {
             } else if self.peek().is_ident("external") {
                 self.bump();
                 body = Some(ProcBody::External);
-            } else if self.peek().is_ident("far") || self.peek().is_ident("near") {
+            } else if self.peek().is_ident("far") || self.peek().is_ident("near") || self.peek().is_ident("interrupt") {
                 self.bump();
             } else if self.peek().is_ident("virtual") {
                 self.bump();

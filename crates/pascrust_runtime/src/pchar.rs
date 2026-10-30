@@ -77,7 +77,9 @@ impl PChar {
         match pointer {
             AnyPtr::Nil => PChar::nil(),
             AnyPtr::Bytes(bytes) => PChar { buffer: Some(bytes.clone()), offset: 0 },
-            AnyPtr::Typed(_) => crate::rte(204, "Invalid pointer operation: a typed record used as a PChar"),
+            AnyPtr::Typed(_) | AnyPtr::Code(_) => {
+                crate::rte(204, "Invalid pointer operation: a Pointer to something else used as a PChar")
+            }
         }
     }
 
