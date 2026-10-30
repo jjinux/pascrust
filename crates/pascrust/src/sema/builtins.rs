@@ -65,6 +65,8 @@ impl Builtin {
                 | Readln
                 | Reset
                 | Rewrite
+                | BlockRead
+                | BlockWrite
                 | Append
                 | Close
                 | Erase

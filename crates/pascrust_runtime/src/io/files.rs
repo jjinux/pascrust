@@ -911,10 +911,11 @@ impl PBlockFile {
         }
     }
 
-    /// Pascal `Eof(f)`.
+    /// Pascal `Eof(f)`: past the last whole record, counting in records as
+    /// `FilePos` and `FileSize` do (so a part of a record at the end, too
+    /// short to read, is at the end too).
     pub fn eof(&self) -> bool {
-        let pos = self.file_ref().stream_position().unwrap_or(0);
-        pos >= self.file_ref().metadata().map_or(0, |m| m.len())
+        self.file_pos() >= self.file_size()
     }
 
     /// Pascal `Truncate(f)`.
