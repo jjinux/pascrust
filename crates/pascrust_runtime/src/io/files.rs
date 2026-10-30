@@ -495,6 +495,19 @@ impl FileRecord for PString {
 pub trait FileString: Sized {
     fn encode_string(&self, capacity: usize, out: &mut Vec<u8>);
     fn decode_string(capacity: usize, input: &mut &[u8]) -> Self;
+
+    /// A string kept in a variant part's bytes, read: everything its
+    /// `capacity + 1` bytes hold, the length byte as it is too, since other
+    /// variants may have put anything there.
+    fn decode_kept(capacity: usize, input: &mut &[u8]) -> Self {
+        Self::decode_string(capacity, input)
+    }
+
+    /// Written there: the bytes TP's string assignment changed, the length
+    /// byte and the characters, leaving the rest as it was.
+    fn encode_written(&self, capacity: usize, out: &mut Vec<u8>) {
+        self.encode_string(capacity, out);
+    }
 }
 
 impl FileString for PString {
@@ -510,6 +523,14 @@ impl FileString for PString {
         // A length byte from another program may claim more than fits.
         let length = usize::from(bytes[0]).min(capacity);
         PString::from_bytes(&bytes[1..=length])
+    }
+    fn decode_kept(capacity: usize, input: &mut &[u8]) -> PString {
+        PString::from_raw(take(input, capacity + 1))
+    }
+    fn encode_written(&self, capacity: usize, out: &mut Vec<u8>) {
+        let raw = self.raw(capacity);
+        let length = usize::from(raw[0]).min(capacity);
+        out.extend_from_slice(&raw[..=length]);
     }
 }
 

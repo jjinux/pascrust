@@ -46,13 +46,16 @@ impl<const N: usize> VariantPart<N> {
 
     /// A `string[cap]` field (or an array of them): its type says how many
     /// bytes it takes, which the `PString` alone doesn't know.
+    /// (As TP's memory, the bytes past the string's length stay as they
+    /// are, and its length byte is kept whatever it says: see
+    /// `FileString::decode_kept`.)
     pub fn get_string<T: FileString>(&self, offset: usize, cap: usize) -> T {
-        T::decode_string(cap, &mut &self.0[offset..])
+        T::decode_kept(cap, &mut &self.0[offset..])
     }
 
     pub fn set_string<T: FileString>(&mut self, offset: usize, cap: usize, value: T) {
         let mut bytes = Vec::new();
-        value.encode_string(cap, &mut bytes);
+        value.encode_written(cap, &mut bytes);
         put(&mut self.0[offset..], &bytes);
     }
 
@@ -123,7 +126,7 @@ impl<T: FileString> DerefMut for StringField<'_, T> {
 impl<T: FileString> Drop for StringField<'_, T> {
     fn drop(&mut self) {
         let mut bytes = Vec::new();
-        self.value.encode_string(self.cap, &mut bytes);
+        self.value.encode_written(self.cap, &mut bytes);
         put(self.bytes, &bytes);
     }
 }

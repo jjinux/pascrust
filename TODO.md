@@ -254,12 +254,12 @@ Last: raw bytes and C strings
 - [ ] Findings of review batch D (697e1d1..d1097cb), to fix:
   - [x] A routine that changes a lent Char array through a `var` argument or as a method isn't run first (check_lends looks at captures only; use the call site's var_args too).
   - [x] A record or enum field in a tagless variant part doesn't compile (its type needs a FileRecord: register it); then a nested setter that reads its own record needs the value in a `let` first.
-  - [ ] Insert/Delete/FillChar on a `string[n]` field of a tagless part, and `Delete(p^, ...)`: `place()`'s leading `*` before a method; and `S4(data) := t + 'z'` needs parentheses in `write_string(&(...), n)`.
+  - [x] Insert/Delete/FillChar on a `string[n]` field of a tagless part, and `Delete(p^, ...)`: `place()`'s leading `*` before a method; and `S4(data) := t + 'z'` needs parentheses in `write_string(&(...), n)`.
   - [ ] An index inside a byte-field place is evaluated as a mutable place (`p.B[p.B[0]] := 9` borrows `p` twice).
   - [ ] Sets of a subrange take 32 bytes in SizeOf, byte views and files; TP sizes them by range (`(Max div 8) - (Min div 8) + 1`).
   - [ ] Move between two fields of one heap record of different types is still runtime error 204.
   - [ ] A cast on the left of `<` doesn't compile (`i shr 1 < 50`, `Word(i) < w`).
-  - [ ] A `string[n]` field of a tagless part writes cap+1 bytes and clamps the length; TP touches Length+1 bytes (the `S[0] := #3` overlay idiom).
+  - [x] A `string[n]` field of a tagless part writes cap+1 bytes and clamps the length; TP touches Length+1 bytes (the `S[0] := #3` overlay idiom).
   - [ ] Untyped var arguments skip the aliasing check (a rustc error instead of PascRust's message).
   - [ ] Smaller: `Str(1234:5, s)` into a `string[3]` isn't cut; `New(PNode(q))` through a Pointer; a typed constant whose tag selects another variant than its fields; the accessor comment's "bytes 0 to 4".
 - [x] Untyped memory, as planned in `notes/untyped_memory.md` (agreed with Fable's review; the user said go ahead). Done: step 0 (TP-exact typed files), step 1 (untyped `var` parameters, byte views, `Move`/`FillChar` between types), step 2 (untyped files, `BlockRead`/`BlockWrite`), step 3 (the untyped `Pointer`, `GetMem`/`FreeMem`), step 4 (`GetImage`/`PutImage` in TP's layout), step 5 (`PChar` and `Strings`, with `Char` arrays lent a copy for one statement).

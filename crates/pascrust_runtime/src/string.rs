@@ -35,6 +35,22 @@ impl PString {
         s
     }
 
+    /// A string's bytes as TP kept them in memory, `raw[0]` its length
+    /// byte and the characters after it, taken as they are: the length isn't
+    /// checked against the bytes, and the bytes past it are kept (TP
+    /// programs set `s[0]` to change a string's length).
+    pub fn from_raw(raw: &[u8]) -> PString {
+        let mut s = PString::new();
+        let n = raw.len().min(256);
+        s.bytes[..n].copy_from_slice(&raw[..n]);
+        s
+    }
+
+    /// The length byte and the characters, as many as `capacity` allows.
+    pub fn raw(&self, capacity: usize) -> &[u8] {
+        &self.bytes[..=capacity.min(255)]
+    }
+
     /// The characters, without the length byte.
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes[1..=self.bytes[0] as usize]

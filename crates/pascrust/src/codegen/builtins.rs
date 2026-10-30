@@ -448,7 +448,12 @@ impl<'a> Codegen<'a> {
             ExprKind::Name(_) if !self.a.self_fields.contains_key(&e.id) => {
                 self.a.var_name(self.proc, self.a.refs[&e.id]).to_string()
             }
-            _ => self.place(e),
+            // `*p.get_mut()` or `*p.s_mut()`: a method call dereferences the
+            // guard by itself (`p.s_mut().insert(...)`).
+            _ => {
+                let place = self.place(e);
+                place.strip_prefix('*').map_or(place.clone(), str::to_string)
+            }
         }
     }
 }

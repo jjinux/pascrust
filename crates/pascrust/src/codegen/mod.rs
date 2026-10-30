@@ -1974,7 +1974,8 @@ impl<'a> Codegen<'a> {
         let target_ty = self.a.type_of(target.id).clone();
         // `TRec(Data) := r`: an untyped parameter's bytes, set from a `TRec`.
         if let Some(bytes) = self.view_cast_guard(target) {
-            let value = self.coerce(value, &target_ty).0;
+            // `&(t + "z")`: the borrow is of the whole value.
+            let value = expr::paren(self.coerce(value, &target_ty), expr::prec::UNARY);
             return match string_capacity(&target_ty) {
                 Some(cap) => format!("{bytes}.write_string(&{value}, {cap});"),
                 None => format!("{bytes}.write(&{value});"),
