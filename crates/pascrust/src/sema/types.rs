@@ -313,6 +313,20 @@ impl RecordType {
         &self.fields[..end]
     }
 
+    /// Where field `name` starts in the record's bytes, as TP laid it out:
+    /// after the fields before it, but a variant's fields all start where
+    /// the variants do, after the fixed fields.
+    pub fn field_offset(&self, name: &str) -> i64 {
+        let size = |fields: &[Field]| fields.iter().map(|f| tp_size(&f.ty).unwrap_or(0)).sum::<i64>();
+        let Some(index) = self.fields.iter().position(|f| f.name.eq_ignore_ascii_case(name)) else { return 0 };
+        let in_variant =
+            self.variant.as_ref().and_then(|part| part.variants.iter().find(|v| v.fields.contains(&index)));
+        match in_variant {
+            Some(variant) => size(self.fixed_fields()) + variant.offsets[index - variant.fields.start],
+            None => size(&self.fields[..index]),
+        }
+    }
+
     /// Where field `index` starts in the variant part's bytes, if it's in a
     /// part kept as bytes.
     pub fn byte_offset(&self, index: usize) -> Option<i64> {

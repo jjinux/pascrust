@@ -77,7 +77,7 @@ fn pascal_main() {
     // a string's characters
     s = pstr("hello world");
     f.rewrite_records(1);
-    f.block_write(&string_view_bytes(&s, 255)[1..], s.length());
+    f.block_write(bytes_after(&string_view_bytes(&s, 255), 1), s.length());
     f.close();
     f.reset_records(1);
     pwriteln!("text ", f.file_size());

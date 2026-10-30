@@ -49,7 +49,7 @@ fn dump(data: &mut dyn ByteView, size: u16) {
 fn tail(buf: &mut PArray<u8, 1, 4>, data: &mut dyn ByteView, size: u16) {
     let mut data = Bytes::of(data);
     dump(&mut bytes_from(&mut data, 2), size - 2);
-    move_bytes(&data.to_bytes()[1..], buf, 2);
+    move_bytes(bytes_after(&data.to_bytes(), 1), buf, 2);
     pwriteln!(i16::from(buf[1]), " ", i16::from(buf[2]));
 }
 

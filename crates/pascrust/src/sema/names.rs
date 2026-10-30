@@ -150,6 +150,7 @@ const RESERVED: &[&str] = &[
     "io_unchecked",
     "pas_str",
     "bytes_from",
+    "bytes_after",
     "fill_bytes",
     "move_bytes",
     "string_bytes",

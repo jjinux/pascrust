@@ -111,8 +111,27 @@ pub struct At<'a> {
     offset: usize,
 }
 
-pub fn bytes_from(view: &mut dyn ByteView, offset: usize) -> At<'_> {
+pub fn bytes_from(view: &mut dyn ByteView, offset: impl Into<i64>) -> At<'_> {
+    let offset = checked_offset(offset.into(), view.to_bytes().len());
     At { view, offset }
+}
+
+/// The bytes of a variable from `offset` on, to read from (`Move`'s
+/// source): `bytes_after(&buf.to_bytes(), 9)`.
+pub fn bytes_after(bytes: &[u8], offset: impl Into<i64>) -> &[u8] {
+    &bytes[checked_offset(offset.into(), bytes.len())..]
+}
+
+/// An argument that starts outside its variable (`buf[0]` of an
+/// `array[1..10]`, out of range) is runtime error 201, where TP used
+/// whatever was there in memory.
+fn checked_offset(offset: i64, len: usize) -> usize {
+    match usize::try_from(offset) {
+        Ok(at) if at < len => at,
+        _ => {
+            crate::rte(201, format!("Range check error: an untyped argument at byte {offset} of a {len}-byte variable"))
+        }
+    }
 }
 
 impl ByteView for At<'_> {

@@ -897,7 +897,7 @@ impl<'a> Codegen<'a> {
         if let Some(bytes) = self.view_cast_guard(root) {
             return match offset {
                 None => format!("&{bytes}"),
-                Some(offset) => format!("&{bytes}.to_bytes()[{offset}..]"),
+                Some(offset) => format!("bytes_after(&{bytes}.to_bytes(), {offset})"),
             };
         }
         let all = match self.a.type_of(root.id).clone() {
@@ -909,7 +909,7 @@ impl<'a> Codegen<'a> {
         };
         match offset {
             None => format!("&{all}"),
-            Some(offset) => format!("&{all}[{offset}..]"),
+            Some(offset) => format!("bytes_after(&{all}, {offset})"),
         }
     }
 
@@ -941,11 +941,17 @@ impl<'a> Codegen<'a> {
                         };
                         match literal {
                             Some(n) => constant += (n - lo) * size,
+                            // In `i64`, so an index out of range gives a
+                            // negative or too large offset, which the
+                            // runtime reports as runtime error 201.
                             None => {
                                 let i = paren(self.expr(index), prec::AS);
-                                let start =
-                                    if lo == 0 { format!("{i} as usize") } else { format!("({i} as usize - {lo})") };
-                                parts.push(if size == 1 { start } else { format!("{start} * {size}") });
+                                let start = if lo == 0 { format!("{i} as i64") } else { format!("{i} as i64 - {lo}") };
+                                parts.push(match (size, lo) {
+                                    (1, _) => start,
+                                    (_, 0) => format!("{start} * {size}"),
+                                    _ => format!("({start}) * {size}"),
+                                });
                             }
                         }
                         ty = next;
@@ -954,8 +960,7 @@ impl<'a> Codegen<'a> {
                 }
                 ExprKind::Field(base, field) => {
                     if let Type::Record(r) = self.a.type_of(base.id) {
-                        let before = r.fields.iter().take_while(|f| !f.name.eq_ignore_ascii_case(&field.name));
-                        constant += before.map(|f| tp_size(&f.ty).unwrap_or(0)).sum::<i64>();
+                        constant += r.field_offset(&field.name);
                     }
                     node = base;
                 }
