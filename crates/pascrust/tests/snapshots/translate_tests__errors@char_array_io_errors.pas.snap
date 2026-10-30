@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/char_array_io_errors.pas
+---
+char_array_io_errors.pas:7:11: error: expected a string variable, found array[1..10] of Char
+  Str(42, name);
+          ^^^^
+
+char_array_io_errors.pas:8:10: error: cannot read a array[1..10] of Char value
+  ReadLn(name);
+         ^^^^
+
+char_array_io_errors.pas:9:7: error: expected a string, found array[1..10] of Char
+  Val(name, n, code);
+      ^^^^

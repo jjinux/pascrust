@@ -94,6 +94,17 @@ impl<const N: usize> PasWrite for [u8; N] {
     }
 }
 
+/// An `array[0..N] of Char` is a C-style string (TP 7's extended syntax):
+/// its characters up to the first `#0`. A `Char` array that starts at
+/// another index is a "packed string", written whole.
+impl<const LO: i64, const N: usize> PasWrite for crate::array::PArray<u8, LO, N> {
+    fn pas_write(&self, out: &mut Vec<u8>) {
+        let chars = self.as_slice();
+        let end = if LO == 0 { chars.iter().position(|&c| c == 0).unwrap_or(N) } else { N };
+        out.extend_from_slice(&chars[..end]);
+    }
+}
+
 impl PasWrite for [u8] {
     fn pas_write(&self, out: &mut Vec<u8>) {
         out.extend_from_slice(self);

@@ -226,6 +226,24 @@ impl crate::io::FileRecord for PChar {
     }
 }
 
+/// A zero-based `Char` array's characters up to its `#0`, as a string:
+/// `Val(A, ...)`, `Assign(F, A)`.
+pub fn chars_str(chars: &[u8]) -> PString {
+    let end = chars.iter().position(|&c| c == 0).unwrap_or(chars.len());
+    PString::from(&chars[..end.min(255)])
+}
+
+/// Store a string in a zero-based `Char` array, ended by `#0`, cut to fit:
+/// `Str(X, A)`, `Read(A)`.
+pub fn set_chars(chars: &mut [u8], text: impl Into<PString>) {
+    let text = text.into();
+    let n = text.as_bytes().len().min(chars.len().saturating_sub(1));
+    chars[..n].copy_from_slice(&text.as_bytes()[..n]);
+    if let Some(end) = chars.get_mut(n) {
+        *end = 0;
+    }
+}
+
 // ----- The Strings unit -----------------------------------------------------
 
 /// `StrLen(Str)`: the number of characters before the `#0`.

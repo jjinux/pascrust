@@ -2833,6 +2833,7 @@ impl Checker {
                         || ty.is_numeric()
                         || ty.is_stringish()
                         || ty == Type::PChar
+                        || matches!(&ty, Type::Array(a) if a.elem == Type::Char)
                         || ty == Type::Error;
                     if !writable {
                         let message = if ty == Type::Untyped {
@@ -2877,7 +2878,13 @@ impl Checker {
                 }
                 for arg in args {
                     let ty = self.place(arg, true);
-                    if !(ty.is_numeric() || ty == Type::Char || matches!(ty, Type::Str { .. }) || ty == Type::Error) {
+                    // TP 7 reads a line into a zero-based `Char` array too.
+                    let readable = ty.is_numeric()
+                        || ty == Type::Char
+                        || matches!(ty, Type::Str { .. })
+                        || ty.is_char_array0()
+                        || ty == Type::Error;
+                    if !readable {
                         self.error(arg.span, format!("cannot read a {ty} value"));
                     }
                 }
@@ -2892,7 +2899,7 @@ impl Checker {
             Assign | Rename => {
                 if arity(&mut self.errors, span, args.len(), 2..=2, &name) {
                     self.file_arg(&args[0], &name, false);
-                    self.string_arg(&args[1]);
+                    self.name_arg(&args[1]);
                 }
                 Type::Void
             }
@@ -3323,13 +3330,18 @@ impl Checker {
                     for n in width.into_iter().chain(decimals) {
                         self.int_arg(n);
                     }
-                    self.string_place(&args[1]);
+                    // TP 7 can also put the digits in a zero-based `Char`
+                    // array, ended by `#0`.
+                    let target = self.place(&args[1], true);
+                    if !matches!(target, Type::Str { .. } | Type::Error) && !target.is_char_array0() {
+                        self.error(args[1].span, format!("expected a string variable, found {target}"));
+                    }
                 }
                 Type::Void
             }
             Val => {
                 if arity(&mut self.errors, span, args.len(), 3..=3, &name) {
-                    self.string_arg(&args[0]);
+                    self.name_arg(&args[0]);
                     let ty = self.place(&args[1], true);
                     if !ty.is_numeric() && ty != Type::Error {
                         self.error(args[1].span, format!("`Val` needs a numeric variable, found {ty}"));
@@ -3462,6 +3474,15 @@ impl Checker {
     fn string_arg(&mut self, e: &Expr) {
         let ty = self.expr(e);
         if !ty.is_stringish() && ty != Type::Error {
+            self.error(e.span, format!("expected a string, found {ty}"));
+        }
+    }
+
+    /// A string for `Val`, `Assign` or `Rename`, which TP 7 also takes as a
+    /// `PChar` or a zero-based `Char` array (up to its `#0`).
+    fn name_arg(&mut self, e: &Expr) {
+        let ty = self.expr(e);
+        if !ty.is_stringish() && !ty.is_pcharish() && ty != Type::Error {
             self.error(e.span, format!("expected a string, found {ty}"));
         }
     }

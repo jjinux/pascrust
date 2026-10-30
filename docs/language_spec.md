@@ -150,8 +150,12 @@ Built-ins (System unit)
   '.')`, returning one, or passing the array to a routine that keeps its
   `PChar` parameter is an error at compile time (a routine that only
   reads or writes the characters, or keeps them in a local, is fine).
-  Not yet: `Read`, `Str`, `Val`, `Assign` and `Rename` on `Char` arrays
-  and `PChar`s
+  The standard routines take C-style strings too (TP 7, chapter 16):
+  `Write` prints a zero-based `Char` array up to its `#0` (any other
+  `Char` array whole), `Read` fills one with the rest of the line (cut to
+  fit) and a `#0`, `Str` puts its digits in one, and `Val`, `Assign` and
+  `Rename` take one or a `PChar`. Not yet: assigning a string constant to
+  a `Char` array (`Name := 'Smith'`)
 - Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
   routine sees the caller's variable as TP's bytes, through a typecast
   (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a

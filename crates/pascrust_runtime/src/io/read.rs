@@ -222,6 +222,16 @@ impl PasRead for PString {
     }
 }
 
+/// Reading into an `array[0..N] of Char` (TP 7's extended syntax) takes
+/// the rest of the line, up to `N - 1` characters, and ends them with `#0`.
+impl<const N: usize> PasRead for crate::array::PArray<u8, 0, N> {
+    fn pas_read(&mut self, input: &mut LineReader) {
+        let mut line = PString::new();
+        read_string(&mut line, N.saturating_sub(1).min(255) as u8, input);
+        crate::pchar::set_chars(self.as_mut_slice(), line);
+    }
+}
+
 /// A `string[cap]` variable as a target for `Read`: see [`PString::capped`].
 pub struct Capped<'a> {
     string: &'a mut PString,

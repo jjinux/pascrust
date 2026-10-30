@@ -359,6 +359,10 @@ impl<'a> Codegen<'a> {
             Str => {
                 let value = self.write_arg(&args[0]);
                 let place = self.place(&args[1]);
+                if ty(self, &args[1]).is_char_array0() {
+                    let place = place.strip_prefix('*').unwrap_or(&place);
+                    return format!("set_chars({place}.as_mut_slice(), pas_str({value}));");
+                }
                 format!("{place} = pas_str({value});")
             }
             Val => {
@@ -406,7 +410,13 @@ impl<'a> Codegen<'a> {
         if let ExprKind::Str(bytes) = &e.kind {
             return super::expr::str_literal(bytes);
         }
-        self.expr(e).0
+        // TP 7 takes a C-style string too (`Val`, `Assign`, `Rename`): the
+        // characters up to the `#0`.
+        match self.a.type_of(e.id).clone() {
+            Type::PChar => format!("str_pas(&{})", self.pchar_operand(e)),
+            t if t.is_char_array0() => format!("chars_str({}.as_slice())", paren(self.expr(e), prec::POSTFIX)),
+            _ => self.expr(e).0,
+        }
     }
 
     /// A variable used as the receiver of a mutating method (`s.delete(..)`).
