@@ -856,9 +856,19 @@ impl<'a> Codegen<'a> {
             return format!("&mut {}.bytes()", self.selector_base(pointer));
         }
         if *self.a.type_of(arg.id) == Type::Untyped {
-            return format!("&mut {}", self.untyped_name(arg));
+            // A nested routine holds a reference to the outer one's guard.
+            let sym = self.a.refs[&arg.id];
+            let star = if self.a.var(sym).owner == self.proc { "" } else { "*" };
+            return format!("&mut {star}{}", self.untyped_name(arg));
         }
         let (root, offset) = self.view_offset(arg);
+        // `TBytes(Data)[2]`: part of an untyped parameter, passed on.
+        if let Some(bytes) = self.view_cast_guard(root) {
+            return match offset {
+                None => format!("&mut {bytes}"),
+                Some(offset) => format!("&mut bytes_from(&mut {bytes}, {offset})"),
+            };
+        }
         let root_view = match self.a.type_of(root.id).clone() {
             Type::Str { cap } => format!("&mut string_bytes({}, {cap})", self.place_mut(root)),
             // An array of `string[n]`s or of small sets: their real sizes.
@@ -884,6 +894,12 @@ impl<'a> Codegen<'a> {
             return format!("&{}", self.untyped_name(arg));
         }
         let (root, offset) = self.view_offset(arg);
+        if let Some(bytes) = self.view_cast_guard(root) {
+            return match offset {
+                None => format!("&{bytes}"),
+                Some(offset) => format!("&{bytes}.to_bytes()[{offset}..]"),
+            };
+        }
         let all = match self.a.type_of(root.id).clone() {
             Type::Str { cap } => format!("string_view_bytes(&{}, {cap})", paren(self.expr(root), prec::UNARY)),
             ty => match super::size_hint(&ty) {
@@ -1216,6 +1232,15 @@ impl<'a> Codegen<'a> {
                 name = expr.clone();
             }
             let access = self.a.access(self.proc, cap.sym);
+            // An untyped parameter: the routine that has it holds its
+            // `Bytes` guard, which is lent; a nested routine holds a
+            // reference to it, which is passed on.
+            if self.a.var(cap.sym).ty == Type::Untyped {
+                let own = self.a.var(cap.sym).owner == self.proc;
+                let reference = if cap.mode == crate::sema::CaptureMode::RefMut { "&mut " } else { "&" };
+                parts.push(if own { format!("{reference}{name}") } else { name });
+                continue;
+            }
             parts.push(match (cap.mode, access) {
                 (crate::sema::CaptureMode::RefMut, Access::Direct) => format!("&mut {name}"),
                 (crate::sema::CaptureMode::Ref, Access::Direct) => format!("&{name}"),

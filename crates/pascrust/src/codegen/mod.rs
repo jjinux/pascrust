@@ -1210,6 +1210,12 @@ impl<'a> Codegen<'a> {
         for cap in &info.captures {
             let name = self.a.var_name(pid, cap.sym);
             let ty = self.a.var(cap.sym).ty.rust();
+            // An outer routine's untyped parameter: its `Bytes` guard.
+            if self.a.var(cap.sym).ty == Type::Untyped {
+                let reference = if cap.mode == CaptureMode::RefMut { "&mut" } else { "&" };
+                params.push(format!("{name}: {reference} Bytes<'_>"));
+                continue;
+            }
             params.push(match cap.mode {
                 CaptureMode::RefMut => format!("{name}: &mut {ty}"),
                 CaptureMode::Ref => format!("{name}: &{ty}"),
