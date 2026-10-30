@@ -254,7 +254,26 @@ impl<'a> Codegen<'a> {
             }
             // Between different types, or with untyped parameters: the bytes.
             Move if self.a.byte_moves.contains(&call_id) => {
-                let (source, dest) = (self.view_bytes(&args[0]), self.view_arg(&args[1]));
+                let mut source = self.view_bytes(&args[0]);
+                // A source on the heap (`p^.w`) is read while the statement
+                // also changes the heap record behind `dest`, so its bytes
+                // are copied out first, in a `let`, and `p` isn't borrowed
+                // twice at once.
+                if source.contains(".get()") {
+                    let owned = match source.strip_prefix('&') {
+                        Some(vec) => vec.to_string(),
+                        None => format!("{source}.to_vec()"),
+                    };
+                    if self.first_time("move_heap_source") {
+                        self.pending
+                            .push("// The source's bytes are copied out first: reading the heap record".to_string());
+                        self.pending.push("// while `move_bytes` changes it would borrow it twice.".to_string());
+                    }
+                    let name = self.temp_name("source");
+                    self.pending.push(format!("let {name} = {owned};"));
+                    source = format!("&{name}");
+                }
+                let dest = self.view_arg(&args[1]);
                 format!("move_bytes({source}, {dest}, {});", self.expr(&args[2]).0)
             }
             // A whole variable to one of the same type: an assignment, with
