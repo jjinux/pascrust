@@ -688,6 +688,7 @@ impl<'a> Codegen<'a> {
     /// The Rust place expression for an assignment target.
     pub(super) fn place(&mut self, e: &Expr) -> String {
         self.hoist_target_indexes(e);
+        self.view_for_place(e);
         if let Some((self_sym, path)) = self.a.self_fields.get(&e.id) {
             return format!("{}.{}", self.self_place(*self_sym), path.join("."));
         }
@@ -796,6 +797,46 @@ impl<'a> Codegen<'a> {
 
     /// If `e` is a typecast of an untyped parameter (`TBytes(Data)`), the
     /// parameter's `Bytes`.
+    /// A place inside a typecast of an untyped parameter, `TWords(Data)[1]`
+    /// or `Rec(Data).b`: the bytes are read into a `view` before the
+    /// statement, the statement changes that, and it's written back after.
+    /// (A byte of a byte array, `TBytes(Data)[i]`, is changed in place.)
+    fn view_for_place(&mut self, e: &Expr) {
+        let mut inner = e;
+        let cast = loop {
+            match &inner.kind {
+                ExprKind::Field(base, _) | ExprKind::Index(base, _) => {
+                    if self.view_cast_guard(base).is_some() {
+                        break base;
+                    }
+                    inner = base;
+                }
+                _ => return,
+            }
+        };
+        let byte_element = matches!(&inner.kind, ExprKind::Index(_, indexes) if indexes.len() == 1)
+            && std::ptr::eq(inner, e)
+            && matches!(self.a.type_of(cast.id), Type::Array(a) if super::super::sema::types::tp_size(&a.elem) == Some(1));
+        if byte_element || self.hoisted.contains_key(&cast.id) {
+            return;
+        }
+        let bytes = self.view_cast_guard(cast).expect("a view cast");
+        let ty = self.a.type_of(cast.id).clone();
+        let (read, write) = match super::string_capacity(&ty) {
+            Some(cap) => (format!("read_string::<{}>({cap})", ty.rust()), format!("write_string(&{{}}, {cap})")),
+            None => (format!("read::<{}>()", ty.rust()), "write(&{})".to_string()),
+        };
+        let name = self.temp_name("view");
+        if self.first_time("view_for_place") {
+            self.pending
+                .push(format!("// Part of an untyped parameter seen as a `{}`: its bytes are read into", ty.rust()));
+            self.pending.push(format!("// `{name}`, which the statement changes, and written back after it."));
+        }
+        self.pending.push(format!("let mut {name} = {bytes}.{read};"));
+        self.after.push(format!("{bytes}.{};", write.replace("{}", &name)));
+        self.hoisted.insert(cast.id, name);
+    }
+
     pub(super) fn view_cast_guard(&self, e: &Expr) -> Option<String> {
         let ExprKind::Call { args, .. } = &e.kind else { return None };
         match args.as_slice() {
@@ -1017,7 +1058,10 @@ impl<'a> Codegen<'a> {
             // `TRec(Data)`: an untyped parameter's bytes, read as a `TRec`.
             SymKind::TypeName(ty) if *self.a.type_of(args[0].id) == Type::Untyped => {
                 let bytes = self.untyped_name(&args[0]);
-                format!("{bytes}.read::<{}>()", ty.rust())
+                match super::string_capacity(ty) {
+                    Some(cap) => format!("{bytes}.read_string::<{}>({cap})", ty.rust()),
+                    None => format!("{bytes}.read::<{}>()", ty.rust()),
+                }
             }
             // `PNode(p)`, `Pointer(Node1)`: the conversions `coerce` makes.
             SymKind::TypeName(ty @ (Type::AnyPointer | Type::Pointer(_)))

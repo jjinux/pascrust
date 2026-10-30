@@ -120,6 +120,22 @@ impl<'a> Bytes<'a> {
         T::decode(&mut &bytes[..])
     }
 
+    /// `TName(Data)` for a `string[n]` (or an array of them), which takes
+    /// n+1 bytes: its type says how many, which the `PString` doesn't know.
+    pub fn read_string<T: FileString>(&self, capacity: usize) -> T {
+        let mut bytes = self.bytes.clone();
+        bytes.resize(bytes.len().max(capacity + 1), 0);
+        T::decode_string(capacity, &mut &bytes[..])
+    }
+
+    /// `TName(Data) := s` for a `string[n]`.
+    pub fn write_string<T: FileString>(&mut self, value: &T, capacity: usize) {
+        let mut new = Vec::new();
+        value.encode_string(capacity, &mut new);
+        let n = new.len().min(self.bytes.len());
+        self.bytes[..n].copy_from_slice(&new[..n]);
+    }
+
     /// `TRec(Data) := r`: the bytes set from a `TRec`.
     pub fn write<T: FileRecord>(&mut self, value: &T) {
         let mut new = Vec::new();

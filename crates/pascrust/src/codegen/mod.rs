@@ -1898,7 +1898,11 @@ impl<'a> Codegen<'a> {
         let target_ty = self.a.type_of(target.id).clone();
         // `TRec(Data) := r`: an untyped parameter's bytes, set from a `TRec`.
         if let Some(bytes) = self.view_cast_guard(target) {
-            return format!("{bytes}.write(&{});", self.coerce(value, &target_ty).0);
+            let value = self.coerce(value, &target_ty).0;
+            return match string_capacity(&target_ty) {
+                Some(cap) => format!("{bytes}.write_string(&{value}, {cap});"),
+                None => format!("{bytes}.write(&{value});"),
+            };
         }
         // `p.Lo := 5` for a field kept in a variant part's bytes:
         // `p.set_lo(5)`.
@@ -2160,7 +2164,7 @@ fn file_record_field(field: &crate::sema::types::Field) -> String {
 
 /// The capacity of a `string[n]`, or of the strings in an array of them,
 /// which their bytes depend on.
-fn string_capacity(ty: &Type) -> Option<u8> {
+pub(super) fn string_capacity(ty: &Type) -> Option<u8> {
     match ty {
         Type::Str { cap } => Some(*cap),
         Type::Array(a) => string_capacity(&a.elem),
