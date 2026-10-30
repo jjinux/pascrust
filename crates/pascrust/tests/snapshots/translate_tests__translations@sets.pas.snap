@@ -71,14 +71,14 @@ fn show(s: PSet<u8>) {
 }
 
 /// Pascal: `procedure AddDigit(var s: Digits; n: Integer);`
-fn add_digit(s: &mut PSet<i16>, n: i16) {
+fn add_digit(s: &mut PSet<i8>, n: i16) {
     if matches!(n, 0..=9) {
-        s.include(n);
+        s.include(n as i8);
     }
 }
 
 /// Pascal: `function Count(s: Digits): Integer;`
-fn count(s: PSet<i16>) -> i16 {
+fn count(s: PSet<i8>) -> i16 {
     let mut result: i16 = 0;
     let mut k: i16 = 0;
     k = 0;
@@ -99,7 +99,7 @@ fn pascal_main() {
     let mut letters: PSet<u8> = PSet::new();
     let mut found: PSet<u8> = PSet::new();
     let mut c: u8 = 0;
-    let mut d: PSet<i16> = PSet::new();
+    let mut d: PSet<i8> = PSet::new();
     let mut i: i16 = 0;
     let mut p: Palette = Palette::default();
     let mut warm: PSet<Color> = PSet::new();

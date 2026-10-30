@@ -523,7 +523,12 @@ integer types implement it too; `Enumerated` lists an enum's values in
 order, which is all that's needed to go back (`Color(2)`, `Succ`, `Pred`,
 `for x := Lo to Hi`). Enum-indexed arrays go through `Ordinal`.
 
-Subranges (`0..maxsize`, `'A'..'Z'`) are their host type; a `--range-checks`
+Subranges (`0..maxsize`, `'A'..'Z'`) are their host type. For integers
+that's TP's: the smallest of `ShortInt`, `Byte`, `Integer`, `Word` and
+`LongInt` that holds both bounds (`1..12` is a `u8`, `-5..5` an `i8`,
+`0..65535` a `u16`), so `SizeOf` and a record in a file match TP's (from
+the Fable review of f310f56; it used to be `Integer` for anything that
+fit). Arithmetic still follows TP's rules for the host types. A `--range-checks`
 flag makes codegen wrap assignments into subrange variables with
 `check_range(v, lo, hi)`. Off by default because TP's default is `{$R-}`.
 

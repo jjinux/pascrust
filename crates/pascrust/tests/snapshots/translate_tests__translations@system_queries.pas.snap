@@ -70,7 +70,7 @@ type Letters = PArray<bool, 97, 26>;
 type PPoint = Ptr<Point>;
 
 /// Pascal: `function TopOf(d: Digit): Integer;`
-fn top_of(d: i16) -> i16 {
+fn top_of(d: i8) -> i16 {
     let mut result: i16 = 0;
     result = 9;
     result
@@ -102,9 +102,9 @@ fn pascal_main() {
     let mut w_: u16 = 0;
     let mut i: i16 = 0;
     let small: PArray<u8, 0, 10> = PArray::default();
-    let one: i16 = 0;
-    let centered: i16 = 0;
-    let a_digit: i16 = 0;
+    let one: i8 = 0;
+    let centered: i8 = 0;
+    let a_digit: i8 = 0;
     checks = 0;
     failures = 0;
     check(&mut checks, &mut failures, 2 == 2, pstr("SizeOf(Integer)"));

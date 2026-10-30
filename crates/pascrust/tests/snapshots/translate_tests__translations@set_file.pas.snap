@@ -17,7 +17,7 @@ use pascrust_runtime::prelude::*;
 #[derive(Clone, Copy, Debug, Default)]
 struct Rec {
     n: i16,
-    flags: PSet<i16>,
+    flags: PSet<i8>,
     letters: PSet<u8>,
 }
 

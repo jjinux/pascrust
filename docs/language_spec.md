@@ -53,7 +53,8 @@ Types
 - `Integer`, `LongInt`, `ShortInt`, `Word`, `Byte`, `Real`, `Boolean`, `Char`
 - `String`, `String[n]`
 - Enumerated types `(Red, Green, Blue)`; subranges `1..10`, `'A'..'Z'`,
-  `Red..Blue`
+  `Red..Blue`, an integer subrange stored in the smallest type that holds
+  its bounds, as in TP (`1..12` is a byte, in `SizeOf` and in files)
 - `array[lo..hi] of T`, multi-dimensional `array[a..b, c..d]`, nested arrays,
   any ordinal index type (integer, char, enum, subrange); `packed` accepted and
   ignored

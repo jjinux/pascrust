@@ -1126,16 +1126,14 @@ impl Checker {
             return None;
         }
         let host = match lo_ty.concrete() {
-            // The host is `Integer` if both bounds fit; otherwise the lower
-            // bound's type, if the upper bound fits it too (`0..70000` mustn't
-            // be stored in 16 bits), and `LongInt` if not.
-            Type::Int(k) => Type::Int(if IntKind::Integer.contains(l) && IntKind::Integer.contains(h) {
-                IntKind::Integer
-            } else if k.contains(l) && k.contains(h) {
-                k
-            } else {
-                IntKind::LongInt
-            }),
+            // As in TP, the smallest integer type that holds both bounds:
+            // `1..12` is a byte, `-5..5` a `ShortInt`, `0..65535` a `Word`.
+            // That's what `SizeOf` and a record in a file see.
+            Type::Int(_) => {
+                let kinds = [IntKind::ShortInt, IntKind::Byte, IntKind::Integer, IntKind::Word, IntKind::LongInt];
+                let kind = kinds.into_iter().find(|k| k.contains(l) && k.contains(h)).unwrap_or(IntKind::LongInt);
+                Type::Int(kind)
+            }
             other => other,
         };
         Some((host, l, h))
