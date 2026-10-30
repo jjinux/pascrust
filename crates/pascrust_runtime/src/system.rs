@@ -125,9 +125,10 @@ macro_rules! impl_val_int {
                 if $unsigned && text.starts_with('-') {
                     return None;
                 }
-                // A sign may come before `$`: `-$1` is -1.
-                let (negative, unsigned) = match text.strip_prefix('-') {
-                    Some(rest) if rest.starts_with('$') => (true, rest),
+                // A sign may come before `$`: `-$1` is -1, `+$10` is 16.
+                let (negative, unsigned) = match (text.strip_prefix('-'), text.strip_prefix('+')) {
+                    (Some(rest), _) if rest.starts_with('$') => (true, rest),
+                    (_, Some(rest)) if rest.starts_with('$') => (false, rest),
                     _ => (false, text),
                 };
                 let wide = match unsigned.strip_prefix('$') {

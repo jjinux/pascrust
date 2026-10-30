@@ -40,6 +40,8 @@ fn pascal_main() {
     pwriteln!(i, " ", code);
     val("-$10", &mut i, &mut code);
     pwriteln!(i, " ", code);
+    val("+$10", &mut w_, &mut code);
+    pwriteln!(w_, " ", code);
 }
 
 fn main() {

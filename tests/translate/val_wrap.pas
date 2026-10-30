@@ -17,4 +17,5 @@ begin
   Val('3000000000', l, code); WriteLn(l, ' ', code);
   Val('12x', i, code); WriteLn(i, ' ', code);
   Val('-$10', i, code); WriteLn(i, ' ', code);
+  Val('+$10', w, code); WriteLn(w, ' ', code);
 end.
