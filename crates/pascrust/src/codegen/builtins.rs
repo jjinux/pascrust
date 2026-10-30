@@ -304,7 +304,17 @@ impl<'a> Codegen<'a> {
             GetMem => match self.a.type_of(args[0].id).clone() {
                 Type::AnyPointer => format!("{} = AnyPtr::alloc({});", self.place(&args[0]), self.expr(&args[1]).0),
                 Type::PChar => format!("{} = PChar::alloc({});", self.place(&args[0]), self.expr(&args[1]).0),
-                ty => format!("{} = {};", self.place(&args[0]), self.alloc(&ty)),
+                ty => {
+                    if self.first_time("getmem_typed") {
+                        self.pending.push(
+                            "// `GetMem` for a typed pointer: the whole type it points to, as `New` gives,".to_string(),
+                        );
+                        self.pending.push(
+                            "// whatever size was asked for; past that size is a range error, not memory.".to_string(),
+                        );
+                    }
+                    format!("{} = {};", self.place(&args[0]), self.alloc(&ty))
+                }
             },
             FreeMem => match self.a.type_of(args[0].id) {
                 Type::AnyPointer | Type::PChar => format!("{}.free();", self.place_receiver(&args[0])),

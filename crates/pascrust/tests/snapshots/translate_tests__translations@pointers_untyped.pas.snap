@@ -58,6 +58,8 @@ fn pascal_main() {
     q = p.clone();
     pwriteln!(q == p, " ", p == list[1]);
     pwriteln!(list[1] == p, " ", list[2].is_nil());
+    // `GetMem` for a typed pointer: the whole type it points to, as `New` gives,
+    // whatever size was asked for; past that size is a range error, not memory.
     a = Ptr::alloc();
     // `i` is also used outside this loop (Pascal leaves it holding the
     // last value), so the loop updates it on every pass instead of declaring

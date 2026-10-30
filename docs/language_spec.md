@@ -126,7 +126,11 @@ Built-ins (System unit)
   `BlockWrite` into and from any variable's bytes (also from inside one:
   `BlockWrite(f, s[1], Length(s))`), `Seek`/`FilePos`/`FileSize`/`Eof`/
   `Truncate` in records. Without `Result`, reading fewer than `Count`
-  records is runtime error 100; with it, only the bytes read change
+  records is runtime error 100; with it, only the bytes read change. A
+  `Count` whose records don't fit the buffer is runtime error 201 before
+  anything is read, even if the file has less left (the user's call; TP
+  would have overwritten what followed the buffer had the file been
+  longer)
 - The untyped `Pointer`: it holds any typed pointer (`p := node`), is cast
   back with `PNode(p)^.x` (a cast to the wrong type is runtime error 204),
   compares with typed pointers and `nil`, and gets raw memory from
