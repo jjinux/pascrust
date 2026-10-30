@@ -120,7 +120,12 @@ impl<'a> Codegen<'a> {
             ExprKind::Str(bytes) => (str_literal(bytes), prec::ATOM),
             ExprKind::Nil => ("Ptr::nil()".to_string(), prec::POSTFIX),
             ExprKind::Name(_) => self.name(e),
-            ExprKind::Call { callee, args } => (self.call(callee, args), prec::POSTFIX),
+            // A conversion like `Word(i)` keeps its precedence (`i as u16`
+            // needs parentheses before `<`); other calls bind tightly.
+            ExprKind::Call { callee, args } => match self.value_cast(callee, args) {
+                Some(code) => code,
+                None => (self.call(callee, args), prec::POSTFIX),
+            },
             ExprKind::Unary { op, operand } => {
                 let ty = self.a.type_of(e.id).clone();
                 let inner = paren(self.coerce(operand, &ty), prec::UNARY);
@@ -634,11 +639,16 @@ impl<'a> Codegen<'a> {
         }
         // `x as i16 < y` would parse `<` as the start of generic arguments,
         // so a cast on the left of `<` or `<<` always gets parentheses.
-        let left_min = if left.1 == prec::AS && op == Lt { prec::UNARY } else { p };
         // Comparisons don't chain in Rust, so both sides need higher
         // precedence; arithmetic is left-associative, so only the right side
         // does.
-        let left_min = if p == prec::CMP { p + 1 } else { left_min };
+        let left_min = if left.1 == prec::AS && op == Lt {
+            prec::UNARY
+        } else if p == prec::CMP {
+            p + 1
+        } else {
+            p
+        };
         let code = format!("{} {rust_op} {}", paren(left, left_min), paren(right, p + 1));
         (code, p)
     }
@@ -1146,16 +1156,28 @@ impl<'a> Codegen<'a> {
                 let ty = ty.clone();
                 self.coerce(&args[0], &ty).0
             }
-            SymKind::TypeName(ty) => {
-                let ty = ty.clone();
-                let from = self.a.type_of(args[0].id).clone();
-                let code = self.coerce(&args[0], &from.concrete());
-                cast(code, &from.concrete(), &ty).0
-            }
+            SymKind::TypeName(_) => self.value_cast(callee, args).expect("a conversion between values").0,
             SymKind::Var(_) | SymKind::Const { .. } | SymKind::RuntimeVar { .. } | SymKind::StdText { .. } => {
                 self.expr(callee).0
             }
         }
+    }
+
+    /// `Word(i)`, `Char(n)`: a conversion between ordinal (or other value)
+    /// types, if `callee` names a type and the argument isn't an untyped
+    /// parameter or a pointer (`call` handles those).
+    fn value_cast(&mut self, callee: &Expr, args: &[Expr]) -> Option<Code> {
+        let sym = *self.a.refs.get(&callee.id)?;
+        let SymKind::TypeName(ty) = &self.a.sym(sym).kind else { return None };
+        let from = self.a.type_of(args.first()?.id).clone();
+        let pointers =
+            matches!(ty, Type::AnyPointer | Type::Pointer(_)) && matches!(from, Type::AnyPointer | Type::Pointer(_));
+        if from == Type::Untyped || pointers {
+            return None;
+        }
+        let ty = ty.clone();
+        let code = self.coerce(&args[0], &from.concrete());
+        Some(cast(code, &from.concrete(), &ty))
     }
 
     /// An I/O call at `span`: as is, or, if it was compiled with `{$I-}`,

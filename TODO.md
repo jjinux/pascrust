@@ -258,7 +258,7 @@ Last: raw bytes and C strings
   - [x] An index inside a byte-field place is evaluated as a mutable place (`p.B[p.B[0]] := 9` borrows `p` twice).
   - [x] Sets of a subrange take 32 bytes in SizeOf, byte views and files; TP sizes them by range (`(Max div 8) - (Min div 8) + 1`).
   - [ ] Move between two fields of one heap record of different types is still runtime error 204.
-  - [ ] A cast on the left of `<` doesn't compile (`i shr 1 < 50`, `Word(i) < w`).
+  - [x] A cast on the left of `<` doesn't compile (`i shr 1 < 50`, `Word(i) < w`).
   - [x] A `string[n]` field of a tagless part writes cap+1 bytes and clamps the length; TP touches Length+1 bytes (the `S[0] := #3` overlay idiom).
   - [ ] Untyped var arguments skip the aliasing check (a rustc error instead of PascRust's message).
   - [ ] Smaller: `Str(1234:5, s)` into a `string[3]` isn't cut; `New(PNode(q))` through a Pointer; a typed constant whose tag selects another variant than its fields; the accessor comment's "bytes 0 to 4".
