@@ -1,0 +1,12 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/packed_string_errors.pas
+---
+packed_string_errors.pas:8:11: error: a string constant for array[1..5] of Char needs exactly 5 characters, not 2
+  name := 'Ab';
+          ^^^^
+
+packed_string_errors.pas:9:8: error: a string constant for array[0..3] of Char needs at most 4 characters, not 5
+  z := 'abcde';
+       ^^^^^^^

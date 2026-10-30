@@ -13,6 +13,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::rc::Rc;
 
+use crate::array::PArray;
 use crate::ptr::AnyPtr;
 use crate::string::PString;
 
@@ -242,6 +243,16 @@ pub fn set_chars(chars: &mut [u8], text: impl Into<PString>) {
     if let Some(end) = chars.get_mut(n) {
         *end = 0;
     }
+}
+
+/// `Name := 'Smith'` for a packed string, `array[1..5] of Char`: the
+/// characters, and `#0`s after them if the constant is shorter (only a
+/// zero-based array takes a shorter one). The array's bounds are const
+/// generic parameters, which Rust works out from where the value goes.
+pub fn char_array<const LO: i64, const N: usize>(text: impl Into<PString>) -> PArray<u8, LO, N> {
+    let text = text.into();
+    let bytes = text.as_bytes();
+    PArray::new(std::array::from_fn(|i| bytes.get(i).copied().unwrap_or(0)))
 }
 
 // ----- The Strings unit -----------------------------------------------------

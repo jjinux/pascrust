@@ -1826,6 +1826,12 @@ impl Checker {
     fn check_assignable(&mut self, target: &Type, value: &Type, span: Span) {
         if *value == Type::Untyped {
             self.error(span, UNTYPED_USE);
+        } else if let (Type::Array(a), Type::StrLit(n)) = (target, value)
+            && target.is_packed_string()
+            && !target.accepts(value)
+        {
+            let fits = if a.lo == 0 { format!("at most {}", a.count()) } else { format!("exactly {}", a.count()) };
+            self.error(span, format!("a string constant for {target} needs {fits} characters, not {n}"));
         } else if !target.accepts(value) {
             self.error(span, format!("cannot assign a {value} value to a {target} variable"));
         }
@@ -2069,7 +2075,7 @@ impl Checker {
             _ => None,
         };
         let result = result.or_else(|| match op {
-            Add if l.is_stringish() && r.is_stringish() => Some(Type::Str { cap: 255 }),
+            Add if l.is_text() && r.is_text() => Some(Type::Str { cap: 255 }),
             Add | Sub | Mul => numeric_common(l, r),
             RealDiv if l.is_numeric() && r.is_numeric() => Some(Type::Real),
             // A shift has the type of the number being shifted: the count
@@ -3522,7 +3528,7 @@ pub fn int_common(l: &Type, r: &Type) -> Option<Type> {
 /// Can `l` and `r` be compared with `=`, `<` and friends?
 fn comparable(l: &Type, r: &Type) -> bool {
     (l.is_numeric() && r.is_numeric())
-        || (l.is_stringish() && r.is_stringish())
+        || (l.is_text() && r.is_text())
         || (l == r && (l.is_ordinal() || matches!(l, Type::Pointer(_))))
         || (matches!(l, Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Nil)
             && matches!(r, Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Nil))

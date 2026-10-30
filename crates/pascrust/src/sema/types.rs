@@ -348,6 +348,19 @@ impl Type {
         matches!(self, Type::Array(a) if a.lo == 0 && a.elem == Type::Char)
     }
 
+    /// A "packed string", `array[M..N] of Char` (M < N): it can be given a
+    /// string constant, and used as a string value (assigned to a string,
+    /// compared, joined with `+`).
+    pub fn is_packed_string(&self) -> bool {
+        matches!(self, Type::Array(a) if a.elem == Type::Char && a.lo < a.hi)
+    }
+
+    /// A string, `Char` or packed string value: what `+` joins and what
+    /// compares as text.
+    pub fn is_text(&self) -> bool {
+        self.is_stringish() || self.is_packed_string()
+    }
+
     /// `PChar`, or something that can be used as one in an expression.
     pub fn is_pcharish(&self) -> bool {
         *self == Type::PChar || self.is_char_array0()
@@ -375,7 +388,14 @@ impl Type {
             (Type::Int(_), t) if t.is_integer() => true,
             (Type::Real, t) if t.is_numeric() => true,
             (Type::Char, Type::Char | Type::StrLit(1)) => true,
-            (Type::Str { .. }, t) if t.is_stringish() => true,
+            (Type::Str { .. }, t) if t.is_stringish() || t.is_packed_string() => true,
+            // A string constant of exactly N characters fits a packed string
+            // of N; a zero-based array also takes a shorter one, padded
+            // with `#0` (as Free Pascal does; TP's docs only say so for
+            // typed constants).
+            (Type::Array(a), Type::StrLit(n)) if self.is_packed_string() => {
+                *n as i64 == a.count() || (a.lo == 0 && (*n as i64) < a.count())
+            }
             (Type::Pointer(_) | Type::AnyPointer, Type::Nil) => true,
             // `Pointer` and the typed pointers can be assigned to each other.
             (Type::AnyPointer, Type::Pointer(_)) | (Type::Pointer(_), Type::AnyPointer) => true,

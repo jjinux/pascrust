@@ -257,7 +257,7 @@ Last: raw bytes and C strings
 - [x] `PChar` and the `Strings` unit, as a byte buffer plus an offset; a `Char` array used as a `PChar` is lent a copy for the statement, and keeping a `PChar` into one is a compile error (the user chose this over shared arrays, 2026-10-29).
 - [x] `WinDos`: the `Dos` routines, and wrappers with `PChar` strings.
 - [x] `Write`/`Read`/`Str`/`Val`/`Assign`/`Rename` on `Char` arrays and `PChar`s (TP 7's extended syntax).
-- [ ] Assigning a string constant to a `Char` array (`Name := 'Smith'` for `array[1..5] of Char`, and a shorter one to a zero-based array, padded with `#0`), and comparing one with a string.
+- [x] Packed strings: a string constant assigned to a `Char` array, and one used as a string (assigned, compared, joined, passed).
 - [ ] Skip: `Graph3` and `Turbo3` (Turbo Pascal 3.0 compatibility).
 
 ## Phase 8: Tier 3 and FFI (as interest dictates)

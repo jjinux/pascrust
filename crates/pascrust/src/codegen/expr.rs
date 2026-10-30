@@ -305,6 +305,24 @@ impl<'a> Codegen<'a> {
         {
             return ("PString::new()".to_string(), prec::POSTFIX);
         }
+        // A packed string used as a string: its characters (a zero-based
+        // array's up to its `#0`).
+        if let Type::Str { .. } = to
+            && from.is_packed_string()
+        {
+            let chars = format!("{}.as_slice()", paren(self.expr(e), prec::POSTFIX));
+            return if from.is_char_array0() {
+                (format!("chars_str({chars})"), prec::POSTFIX)
+            } else {
+                (format!("PString::from({chars})"), prec::POSTFIX)
+            };
+        }
+        // `Name := 'Smith'`: a string constant as a packed string.
+        if to.is_packed_string()
+            && let Type::StrLit(_) = from
+        {
+            return (format!("char_array({})", self.string_arg(e)), prec::POSTFIX);
+        }
         // `PChar`s from string constants, arrays and `Pointer`s.
         match (to, &from) {
             (Type::PChar, Type::StrLit(_)) => {
@@ -1369,7 +1387,7 @@ fn comparison_type(l: &Type, r: &Type) -> Type {
     match (l, r) {
         _ if l.is_numeric() && r.is_numeric() => numeric_common(l, r).unwrap_or(Type::Error),
         (Type::Char | Type::StrLit(1), Type::Char | Type::StrLit(1)) => Type::Char,
-        _ if l.is_stringish() && r.is_stringish() => Type::Str { cap: 255 },
+        _ if l.is_text() && r.is_text() => Type::Str { cap: 255 },
         // A `Pointer` and a typed pointer are compared as `Pointer`s.
         (Type::AnyPointer, _) | (_, Type::AnyPointer) => Type::AnyPointer,
         (Type::PChar, _) | (_, Type::PChar) => Type::PChar,
