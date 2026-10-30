@@ -1914,8 +1914,12 @@ impl<'a> Codegen<'a> {
         match &target.kind {
             ExprKind::Index(base, indexes) => {
                 self.hoist_target_indexes(base);
+                // `p.B[p.B[0]] := 9`: the place holds `p.b_mut()`'s guard,
+                // so an index reading `p` is worked out first too.
+                let guarded = self.through_byte_field(base);
                 for index in indexes {
-                    if self.has_call(index) && !self.hoisted.contains_key(&index.id) {
+                    let reads_guarded = guarded && expr::mentions(index, &expr::root_key(base));
+                    if (self.has_call(index) || reads_guarded) && !self.hoisted.contains_key(&index.id) {
                         let code = self.expr(index).0;
                         let name = self.temp_name("index");
                         self.pending.push(format!("let {name} = {code};"));

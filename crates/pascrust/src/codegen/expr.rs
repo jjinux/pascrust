@@ -800,12 +800,16 @@ impl<'a> Codegen<'a> {
                 let mut ty = self.a.type_of(base.id).clone();
                 let mut code = self.selector_base(base);
                 for index in indexes {
+                    // The index is only read, even in a place being written
+                    // (`p.B[q.B[0]] := 9` needs no guard on `q`).
+                    let saved = std::mem::replace(&mut self.mutable_place, false);
                     let index_code = match &ty {
                         // A character literal index must become a byte
                         // literal: `counts['a']` → `counts[b'a']`.
                         Type::Array(a) if a.index == Type::Char => self.coerce(index, &Type::Char).0,
                         _ => self.expr(index).0,
                     };
+                    self.mutable_place = saved;
                     code.push_str(&format!("[{index_code}]"));
                     ty = match &ty {
                         Type::Array(a) => a.elem.clone(),
