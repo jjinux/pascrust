@@ -857,11 +857,29 @@ window meanwhile (§19).
   @Handler)`) gives a translation-time warning; putting back a saved
   vector doesn't. For the timer's vectors the warning says how to get the
   tick another way (docs/timer_interrupts.md: the main loop calls
-  the handler and waits out each tick with `Delay`). Rejected for now:
-  calling handlers at safe points (every loop's top, `Delay`, `ReadKey`)
-  from a real 18.2 Hz clock, which needs the safe points to count as calls
-  in the lifting of globals; a real timer thread would race with the
-  program for its globals.
+  the handler and waits out each tick with `Delay`).
+
+  Possible future enhancements, if real programs need them:
+
+  - **Calling handlers at safe points**: a real 18.2 Hz clock in the
+    runtime, and in a program that installs a handler, a check at the top
+    of every loop and in `Delay`, `ReadKey`, `KeyPressed` and the screen
+    routines that calls the handlers once for each tick due. A handler
+    could then count ticks as in TP, though never in the middle of a
+    statement. The cost: the safe points must count as calls to the
+    handlers when sema lifts globals into parameters, and every loop gets
+    a check. (A real timer thread is out: it would race with the program
+    for its globals.)
+  - **A millisecond clock**: `GetTime` counts hundredths of a second, so
+    the main-loop tick in docs/timer_interrupts.md can wait up to 10 ms
+    short, without drifting. That's plenty for 18.2 ticks a second (real
+    DOS's `GetTime` only changed every 55 ms), but not for faster ticks,
+    such as a music player at hundreds of Hz. TP for DOS had no
+    millisecond clock (programs read the timer chip through `Port[$40]`),
+    so it would be PascRust's own routine, such as Turbo Pascal for
+    Windows's `GetTickCount` (milliseconds since start-up). It would go in
+    a small PascRust-only unit the program names in its `uses` clause, so
+    that a program which no longer compiles in real TP says so up front.
 - **WinDos** (TP 7, in the `dos` feature): the routines without strings
   are the `Dos` unit's own (the same `units.rs` entries); the ones with
   `PChar`s wrap theirs (`file_expand` is `str_p_copy(dest,
