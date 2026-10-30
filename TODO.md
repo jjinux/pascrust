@@ -280,7 +280,7 @@ Last: raw bytes and C strings
 - [x] Field names needn't avoid the runtime's function names (done: `names::field_name` escapes only Rust keywords): a field `W` becomes `w_` because `w` is the runtime's width helper, but a struct field can't clash with a function.
 - [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, docs/architecture.md §16), and `TypeOf`.
 - [ ] Procedural types and procedure parameters.
-- [ ] Structured `goto` (forward jumps out of loops → labeled `break`).
+- [ ] Structured `goto`, the user's idea (2026-10-30): a forward jump to a label later in the same or an enclosing block wraps the statements from the jump's block up to the label in a labeled block, `'done: { ... break 'done; ... }` (Rust's labeled blocks, stable since 1.65, are a loop that runs once without the loop), so `goto Done` becomes `break 'done`. A backward jump could be a labeled `loop` and `continue`. Jumps into a block stay refused.
 - [x] TP-exact binary file layout including 6-byte `Real`, so `examples/database/mark.dat` can be read (step 0 of `notes/untyped_memory.md`).
 - [ ] The per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
 - [ ] Bundled-globals option (`struct Globals` per unit) for programs with very many globals.
