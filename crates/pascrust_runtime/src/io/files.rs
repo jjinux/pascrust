@@ -359,6 +359,19 @@ pub trait FileRecord: Default {
     /// used.
     fn decode(input: &mut &[u8]) -> Self;
 
+    /// Like `encode`, for a type whose size the Rust type doesn't say: a
+    /// `string[n]` (`size` is n), a set kept in `size` bytes, or an array of
+    /// either. Every other type ignores `size`.
+    fn encode_sized(&self, size: usize, out: &mut Vec<u8>) {
+        let _ = size;
+        self.encode(out);
+    }
+
+    fn decode_sized(size: usize, input: &mut &[u8]) -> Self {
+        let _ = size;
+        Self::decode(input)
+    }
+
     /// The size of one record, found by encoding the default value.
     fn record_size() -> usize {
         let mut bytes = Vec::new();
@@ -468,6 +481,13 @@ impl FileRecord for PString {
     fn decode(input: &mut &[u8]) -> PString {
         PString::decode_string(255, input)
     }
+    // A `string[n]`: n+1 bytes.
+    fn encode_sized(&self, size: usize, out: &mut Vec<u8>) {
+        self.encode_string(if size == 0 { 255 } else { size }, out);
+    }
+    fn decode_sized(size: usize, input: &mut &[u8]) -> PString {
+        PString::decode_string(if size == 0 { 255 } else { size }, input)
+    }
 }
 
 /// Strings stored with a capacity: a `string[30]` is a length byte and 30
@@ -512,6 +532,15 @@ impl<T: FileRecord, const LO: i64, const N: usize> FileRecord for crate::array::
     }
     fn decode(input: &mut &[u8]) -> Self {
         crate::array::PArray::new(std::array::from_fn(|_| T::decode(input)))
+    }
+    // The size is each element's.
+    fn encode_sized(&self, size: usize, out: &mut Vec<u8>) {
+        for item in self.iter() {
+            item.encode_sized(size, out);
+        }
+    }
+    fn decode_sized(size: usize, input: &mut &[u8]) -> Self {
+        crate::array::PArray::new(std::array::from_fn(|_| T::decode_sized(size, input)))
     }
 }
 
@@ -600,7 +629,7 @@ macro_rules! file_record {
         $crate::io::FileString::encode_string(&$value, $cap, $out)
     };
     (@encode $value:expr, $out:ident, set $bytes:literal) => {
-        $value.encode_bytes($bytes, $out)
+        $crate::io::FileRecord::encode_sized(&$value, $bytes, $out)
     };
     (@decode $input:ident) => {
         $crate::io::FileRecord::decode($input)
@@ -609,7 +638,7 @@ macro_rules! file_record {
         $crate::io::FileString::decode_string($cap, $input)
     };
     (@decode $input:ident, set $bytes:literal) => {
-        $crate::set::PSet::decode_bytes($bytes, $input)
+        $crate::io::FileRecord::decode_sized($bytes, $input)
     };
 }
 
@@ -617,20 +646,23 @@ macro_rules! file_record {
 pub struct PFile<T> {
     name: Option<PString>,
     file: Option<File>,
+    /// For a `file of string[n]` (or of a small set, or an array of them),
+    /// the size its type gives each record's strings or sets; 0 otherwise.
+    size: usize,
     // `PhantomData` says "this type is about `T`" without storing a `T`.
     _record: PhantomData<T>,
 }
 
 impl<T> Default for PFile<T> {
     fn default() -> Self {
-        PFile { name: None, file: None, _record: PhantomData }
+        PFile { name: None, file: None, size: 0, _record: PhantomData }
     }
 }
 
 /// As for [`PText`], a copy is closed.
 impl<T> Clone for PFile<T> {
     fn clone(&self) -> Self {
-        PFile { name: self.name, file: None, _record: PhantomData }
+        PFile { name: self.name, file: None, size: self.size, _record: PhantomData }
     }
 }
 
@@ -719,16 +751,29 @@ impl<T: FileRecord> PFile<T> {
         self.name = Some(new_name);
     }
 
+    /// A `file of string[n]` (`size` n) or of a set kept in `size` bytes
+    /// (or of an array of either): see `FileRecord::encode_sized`.
+    pub fn sized(size: usize) -> Self {
+        PFile { size, ..PFile::default() }
+    }
+
+    /// The bytes one record takes.
+    fn record_size(&self) -> usize {
+        let mut bytes = Vec::new();
+        T::default().encode_sized(self.size, &mut bytes);
+        bytes.len()
+    }
+
     /// Pascal `FileSize(f)`: the number of records.
     pub fn file_size(&self) -> i32 {
         let bytes = self.file_ref().metadata().map_or(0, |m| m.len());
-        (bytes / T::record_size() as u64) as i32
+        (bytes / self.record_size() as u64) as i32
     }
 
     /// Pascal `FilePos(f)`: the number of the next record (0-based).
     pub fn file_pos(&self) -> i32 {
         let pos = self.file_ref().stream_position().unwrap_or(0);
-        (pos / T::record_size() as u64) as i32
+        (pos / self.record_size() as u64) as i32
     }
 
     /// Pascal `Seek(f, n)`: move to record `n` (0-based).
@@ -737,7 +782,7 @@ impl<T: FileRecord> PFile<T> {
         if n < 0 || n > self.file_size() {
             crate::rte(100, format!("Disk read error: seek to record {n}"));
         }
-        let offset = n as u64 * T::record_size() as u64;
+        let offset = n as u64 * self.record_size() as u64;
         if self.file().seek(SeekFrom::Start(offset)).is_err() {
             crate::rte(100, "Disk read error");
         }
@@ -756,17 +801,17 @@ impl<T: FileRecord> PFile<T> {
 
     /// Pascal `Read(f, x)`: read the next record.
     pub fn read(&mut self, target: &mut T) {
-        let mut bytes = vec![0; T::record_size()];
+        let mut bytes = vec![0; self.record_size()];
         if self.file().read_exact(&mut bytes).is_err() {
             crate::rte(100, "Disk read error: read past the end of the file");
         }
-        *target = T::decode(&mut bytes.as_slice());
+        *target = T::decode_sized(self.size, &mut bytes.as_slice());
     }
 
     /// Pascal `Write(f, x)`: write a record at the current position.
     pub fn write(&mut self, value: &T) {
         let mut bytes = Vec::new();
-        value.encode(&mut bytes);
+        value.encode_sized(self.size, &mut bytes);
         if self.file().write_all(&bytes).is_err() {
             crate::rte(101, "Disk write error");
         }

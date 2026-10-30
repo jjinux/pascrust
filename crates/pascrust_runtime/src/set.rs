@@ -248,6 +248,15 @@ impl<T> PSet<T> {
 /// element `n`, as TP stores a set of 256 elements. (A smaller set in a
 /// record field is stored in fewer bytes: see `encode_bytes`.)
 impl<T> crate::io::FileRecord for PSet<T> {
+    // A set kept in its first `size` bytes (all 32 for 0).
+    fn encode_sized(&self, size: usize, out: &mut Vec<u8>) {
+        if size == 0 { self.encode(out) } else { self.encode_bytes(size, out) }
+    }
+
+    fn decode_sized(size: usize, input: &mut &[u8]) -> PSet<T> {
+        if size == 0 { Self::decode(input) } else { PSet::decode_bytes(size, input) }
+    }
+
     fn encode(&self, out: &mut Vec<u8>) {
         for word in self.bits {
             out.extend_from_slice(&word.to_le_bytes());

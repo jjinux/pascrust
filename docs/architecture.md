@@ -859,7 +859,12 @@ window meanwhile (§19).
   disk is `SizeOf`, and files written by TP programs read correctly (a
   runtime test reads `examples/database/mark.dat`). Reading is lenient: a
   string's length byte is clamped to its capacity, and an enum ordinal past
-  the last value reads as the last value. An untyped `file` is a
+  the last value reads as the last value. Outside a record's direct fields
+  (a `file of string[10]`, an array of `string[4]` or of small sets as
+  untyped bytes or in a record), the size travels as a hint:
+  `FileRecord::encode_sized(size)`, which a `PString` reads as its
+  capacity, a `PSet` as its bytes, and a `PArray` passes to its elements;
+  `PFile::sized(n)` and `sized_bytes(&mut x, n)` carry it. An untyped `file` is a
   `PBlockFile`, which has a record size instead of a record type;
   `BlockRead`/`BlockWrite` move a number of records into and out of any
   variable's byte view (see §12).

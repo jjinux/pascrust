@@ -63,6 +63,39 @@ impl<T: FileString> ByteView for StringBytes<'_, T> {
     }
 }
 
+/// A variable whose type gives it a size its Rust type doesn't say: an
+/// array of `string[n]` or of small sets, as bytes (see
+/// `FileRecord::encode_sized`).
+pub struct SizedBytes<'a, T: FileRecord> {
+    value: &'a mut T,
+    size: usize,
+}
+
+/// `Dump(names, ...)` with `names: array[1..3] of string[4]`: `&mut
+/// sized_bytes(&mut names, 4)`.
+pub fn sized_bytes<T: FileRecord>(value: &mut T, size: usize) -> SizedBytes<'_, T> {
+    SizedBytes { value, size }
+}
+
+impl<T: FileRecord> ByteView for SizedBytes<'_, T> {
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        self.value.encode_sized(self.size, &mut out);
+        out
+    }
+
+    fn set_bytes(&mut self, bytes: &[u8]) {
+        *self.value = T::decode_sized(self.size, &mut &bytes[..]);
+    }
+}
+
+/// The same, to read from (`Move`'s source).
+pub fn sized_view_bytes<T: FileRecord>(value: &T, size: usize) -> Vec<u8> {
+    let mut out = Vec::new();
+    value.encode_sized(size, &mut out);
+    out
+}
+
 /// A `string[n]`'s bytes, to read from (`Move`'s source).
 pub fn string_view_bytes<T: FileString>(value: &T, capacity: usize) -> Vec<u8> {
     let mut out = Vec::new();

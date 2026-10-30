@@ -861,7 +861,11 @@ impl<'a> Codegen<'a> {
         let (root, offset) = self.view_offset(arg);
         let root_view = match self.a.type_of(root.id).clone() {
             Type::Str { cap } => format!("&mut string_bytes({}, {cap})", self.place_mut(root)),
-            _ => self.place_mut(root),
+            // An array of `string[n]`s or of small sets: their real sizes.
+            ty => match super::size_hint(&ty) {
+                Some(size) => format!("&mut sized_bytes({}, {size})", self.place_mut(root)),
+                None => self.place_mut(root),
+            },
         };
         match offset {
             None => root_view,
@@ -882,7 +886,10 @@ impl<'a> Codegen<'a> {
         let (root, offset) = self.view_offset(arg);
         let all = match self.a.type_of(root.id).clone() {
             Type::Str { cap } => format!("string_view_bytes(&{}, {cap})", paren(self.expr(root), prec::UNARY)),
-            _ => format!("{}.to_bytes()", paren(self.expr(root), prec::POSTFIX)),
+            ty => match super::size_hint(&ty) {
+                Some(size) => format!("sized_view_bytes(&{}, {size})", paren(self.expr(root), prec::UNARY)),
+                None => format!("{}.to_bytes()", paren(self.expr(root), prec::POSTFIX)),
+            },
         };
         match offset {
             None => format!("&{all}"),

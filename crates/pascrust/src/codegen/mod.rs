@@ -2156,9 +2156,22 @@ fn file_record_field(field: &crate::sema::types::Field) -> String {
     if let Some(cap) = string_capacity(&field.ty) {
         return format!("{}: string {cap}", field.rust_name);
     }
-    match crate::sema::types::tp_size(&field.ty) {
-        Some(bytes) if matches!(field.ty, Type::Set(_)) && bytes < 32 => format!("{}: set {bytes}", field.rust_name),
-        _ => field.rust_name.clone(),
+    match size_hint(&field.ty) {
+        Some(bytes) => format!("{}: set {bytes}", field.rust_name),
+        None => field.rust_name.clone(),
+    }
+}
+
+/// The size a type gives the strings or small sets in it that their Rust
+/// types don't say (`FileRecord::encode_sized`): a `string[n]`'s n, the
+/// bytes of a set smaller than 32, also for an array of them. `None` when
+/// the default encoding is right.
+pub(super) fn size_hint(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Str { cap } if *cap < 255 => Some(usize::from(*cap)),
+        Type::Set(_) => tp_size(ty).filter(|&bytes| bytes < 32).map(|bytes| bytes as usize),
+        Type::Array(a) => size_hint(&a.elem),
+        _ => None,
     }
 }
 
@@ -2275,7 +2288,12 @@ fn default_value(ty: &Type) -> String {
         Type::PChar => "PChar::nil()".to_string(),
         Type::Text => "PText::default()".to_string(),
         Type::File(elem) if **elem == Type::Untyped => "PBlockFile::default()".to_string(),
-        Type::File(_) => "PFile::default()".to_string(),
+        // `file of string[10]`: its records take 11 bytes, which the
+        // `PString` type alone doesn't say.
+        Type::File(elem) => match size_hint(elem) {
+            Some(size) => format!("PFile::sized({size})"),
+            None => "PFile::default()".to_string(),
+        },
         Type::TypeInfo => "\"\"".to_string(),
         Type::Set(_) => "PSet::new()".to_string(),
         Type::Nil | Type::Untyped | Type::Void | Type::Error => "()".to_string(),
