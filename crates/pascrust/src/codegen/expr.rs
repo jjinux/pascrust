@@ -50,6 +50,17 @@ impl<'a> Codegen<'a> {
         if self.a.proc_calls.contains_key(&e.id) && matches!(e.kind, ExprKind::Name(_)) {
             return (self.call(e, &[]), prec::POSTFIX);
         }
+        // `N := R.Next`: the same for a field or element (whose type is
+        // then the result: `R.Apply` in `R.Apply(2, 3)` stays a value);
+        // `call` asks for the value again, which is then the field itself.
+        if self.a.proc_calls.contains_key(&e.id)
+            && !matches!(self.a.type_of(e.id), Type::Proc(_))
+            && self.calling.insert(e.id)
+        {
+            let code = self.call(e, &[]);
+            self.calling.remove(&e.id);
+            return (code, prec::POSTFIX);
+        }
         // A call that may change an array the statement lends to a `PChar`
         // later: it runs first, into a `let`, before the array is copied.
         if self.a.calls_before_lend.contains(&e.id) && self.running_first.insert(e.id) {

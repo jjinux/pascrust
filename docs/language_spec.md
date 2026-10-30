@@ -196,7 +196,9 @@ Built-ins (System unit)
   typed constants of them; a routine of the program as a value (`F :=
   Square`, `Plot(Square)`); calls through them (`F(x)`, `R.F(x)`,
   `Ops[i](x)`, with `var` parameters too); a parameterless function value
-  called in an expression (`N := F`); `nil`, `Assigned(F)`, `@F` as a
+  (in a variable, field or element) called in an expression (`N := F`,
+  `N := R.Next`) and copied where a procedural value is wanted (`G := F`,
+  `Run(F)`); `nil`, `Assigned(F)`, `@F` as a
   `Pointer`, and `@F = @Square`, `@F = nil`. A routine that uses globals
   works too: every routine of the type takes the globals any of them
   uses. Refused, with TP's reasons: a nested routine, a method or a

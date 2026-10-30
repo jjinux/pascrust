@@ -720,7 +720,10 @@ the program's types that it names (`use crate::Stats;`: the program is the
 crate root, whose private items its modules see). Sema decides where a routine's name is a value rather than a
 call (`proc_value`: the right side of `:=` to a procedural place, an
 argument for a procedural parameter, a typed constant), as TP's rule
-says; elsewhere a parameterless function value is called.
+says, and where a procedural variable, field or element is copied
+(`proc_place`; `Assigned(F)` and `@F` look at the value too); elsewhere a
+parameterless function value is called, in a variable, field or element
+alike.
 
 ## 16. Objects (Turbo Pascal 5.5 OOP)
 

@@ -53,6 +53,7 @@ pub fn generate(
         lent: Vec::new(),
         lent_roots: Vec::new(),
         running_first: HashSet::new(),
+        calling: HashSet::new(),
         loops: Vec::new(),
         io_unchecked,
         self_expr: None,
@@ -113,6 +114,9 @@ struct Codegen<'a> {
     lent_roots: Vec<SymId>,
     /// Calls being run ahead of a lend, into a `let` (`expr` recurses).
     running_first: HashSet<NodeId>,
+    /// Procedural fields and elements being called (`R.Next` with no
+    /// parameters): inside the call, the same expression is the value.
+    calling: HashSet<NodeId>,
     /// The loops we're inside, innermost last: the labels `Break` and
     /// `Continue` must use for a `repeat` that has a `Continue` in it (see
     /// `repeat_loop`), or `None` for a loop where plain `break` and

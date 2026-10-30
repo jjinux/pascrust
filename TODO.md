@@ -253,8 +253,8 @@ Last: raw bytes and C strings
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 3ab3ee4 (batches A-E). Not yet reviewed: `3ab3ee4..HEAD`. Keep this range up to date.
 - [ ] Findings of review batch E (d1097cb..3ab3ee4), to fix:
   - [ ] Question for the user: a routine kept in a procedural type whose globals include a variable of that type (a state machine's `Current := Second`) makes a recursive type alias (rustc E0391). A newtype `struct State(ProcVar<...>)`, or a documented refusal?
-  - [ ] A parameterless function *variable* is called where TP uses its value: `G := F`, `Run(F)`, `Assigned(F)`, `@F`, `@F = nil`.
-  - [ ] The converse: a parameterless function in a field or element (`R.Next`, `Fs[1]`) isn't called in an expression; the `F = G` message is misleading there.
+  - [x] A parameterless function *variable* is called where TP uses its value: `G := F`, `Run(F)`, `Assigned(F)`, `@F`, `@F = nil`.
+  - [x] The converse: a parameterless function in a field or element (`R.Next`, `Fs[1]`) isn't called in an expression; the `F = G` message is misleading there.
   - [x] A unit's procedural type whose routines use a program-declared type: the unit's module spells `Stats` without `crate::`.
   - [x] Two untyped `var` arguments from one heap record (`Both(pp^.y, pp^.x, 2)`) are runtime error 204.
   - [x] The typed-constant tag check doesn't reach nested variant parts.

@@ -56,6 +56,9 @@ pub(super) struct Checker {
     used_fn_names: HashSet<String>,
     used_const_names: HashSet<String>,
     used_type_names: HashSet<String>,
+    /// The procedural place being checked as a value, not called (see
+    /// `proc_place`).
+    uncalled: Option<NodeId>,
     /// For each method body we're inside: the index of its scope in
     /// `scopes` and the method's procedure.
     method_scopes: Vec<(usize, ProcId)>,
@@ -144,6 +147,7 @@ impl Checker {
             used_fn_names: HashSet::new(),
             used_const_names: HashSet::new(),
             used_type_names: HashSet::new(),
+            uncalled: None,
             declaring_type: false,
             unit_exports: HashMap::new(),
             current_unit: None,
@@ -2187,8 +2191,28 @@ impl Checker {
 
     /// Check an expression used as a value and return its type.
     pub(super) fn expr(&mut self, e: &Expr) -> Type {
-        let ty = self.expr_inner(e);
+        let ty = match (&e.kind, self.expr_inner(e)) {
+            // A parameterless function in a field or element (`R.Next`,
+            // `Fs[1]`), in an expression, is called, as a variable's is.
+            (ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_), Type::Proc(p))
+                if p.ret.is_some() && p.params.is_empty() && self.uncalled != Some(e.id) =>
+            {
+                self.proc_call(e, e, None, &p, &[])
+            }
+            (_, ty) => ty,
+        };
         self.a.types.insert(e.id, ty.clone());
+        ty
+    }
+
+    /// A procedural place as a value, not called even if it's a function
+    /// without parameters: `G := F`, `Run(F)`, `Assigned(F)`, `@F`.
+    fn proc_place(&mut self, e: &Expr) -> Type {
+        // `replace` puts the new value in and gives back the old one, which
+        // is put back after (a place inside this one may be checked too).
+        let saved = self.uncalled.replace(e.id);
+        let ty = self.expr(e);
+        self.uncalled = saved;
         ty
     }
 
@@ -2216,7 +2240,9 @@ impl Checker {
                 match self.a.symbols[sym].kind.clone() {
                     // A function value without parameters, in an expression,
                     // is called (TP's rule: `N := F` calls `F`).
-                    SymKind::Var(Var { ty: Type::Proc(p), .. }) if p.ret.is_some() && p.params.is_empty() => {
+                    SymKind::Var(Var { ty: Type::Proc(p), .. })
+                        if p.ret.is_some() && p.params.is_empty() && self.uncalled != Some(e.id) =>
+                    {
                         self.proc_call(e, e, Some(sym), &p, &[])
                     }
                     SymKind::Var(v) => {
@@ -2336,7 +2362,7 @@ impl Checker {
             // `@F` of a procedural variable (or field, element): the routine's
             // address, a `Pointer`, for `@F = @Square` and `@F = nil`.
             ExprKind::AddrOf(base) if matches!(self.place_type(base), Some(Type::Proc(_))) => {
-                self.expr(base);
+                self.proc_place(base);
                 self.a.proc_addresses_of_values.insert(e.id);
                 Type::AnyPointer
             }
@@ -2801,6 +2827,10 @@ impl Checker {
                 format!("`{}` is a method; Turbo Pascal doesn't allow a method as a procedural value", method.name),
             );
             return Some(Type::Error);
+        }
+        // `G := F`, `Run(R.Next)`: a procedural variable is copied.
+        if matches!(self.place_type(e), Some(Type::Proc(_))) {
+            return Some(self.proc_place(e));
         }
         let ExprKind::Name(id) = &e.kind else { return None };
         let sym = self.lookup(&id.key())?;
@@ -3872,7 +3902,12 @@ impl Checker {
             self.error(span, format!("`{name}` takes exactly one argument"));
             return Type::Error;
         }
-        let ty = self.expr(&args[0]);
+        // `Assigned(F)` looks at `F`, it doesn't call it.
+        let ty = if matches!(self.place_type(&args[0]), Some(Type::Proc(_))) {
+            self.proc_place(&args[0])
+        } else {
+            self.expr(&args[0])
+        };
         if ty == Type::Error {
             return Type::Error;
         }
