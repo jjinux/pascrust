@@ -260,7 +260,7 @@ Last: raw bytes and C strings
   - [x] The typed-constant tag check doesn't reach nested variant parts.
   - [x] `Str(p^.v:2, p^.name)` and `Val` into a heap record's field from the same record: runtime error 204 (the value needs a `let`).
   - [ ] Question for the user: a nil procedural call is runtime error 210 (TP: "Object not initialized"); FPC and the design note say 216.
-  - [ ] TODO's "Procedural types and procedure parameters" item; a procedural type alias's doc comment shows the signature, not the declaration.
+  - [x] TODO's "Procedural types and procedure parameters" item; a procedural type alias's doc comment shows the signature, not the declaration (kept: a record's shows its type alone too).
 - [x] Findings of review batch D (697e1d1..d1097cb), fixed:
   - [x] A routine that changes a lent Char array through a `var` argument or as a method isn't run first (check_lends looks at captures only; use the call site's var_args too).
   - [x] A record or enum field in a tagless variant part doesn't compile (its type needs a FileRecord: register it); then a nested setter that reads its own record needs the value in a `let` first.
@@ -289,7 +289,7 @@ Last: raw bytes and C strings
 - [ ] An anonymous record type is named `Record` in Rust (`fn pair(&self) -> Record`); naming it after its field (`Pair`) would read better.
 - [x] Field names needn't avoid the runtime's function names (done: `names::field_name` escapes only Rust keywords): a field `W` becomes `w_` because `w` is the runtime's width helper, but a struct field can't clash with a function.
 - [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, docs/architecture.md §16), and `TypeOf`.
-- [ ] Procedural types and procedure parameters.
+- [x] Procedural types and procedure parameters (steps 4-6 of the variant records and procedural types item).
 - [ ] Structured `goto`, the user's idea (2026-10-30): a forward jump to a label later in the same or an enclosing block wraps the statements from the jump's block up to the label in a labeled block, `'done: { ... break 'done; ... }` (Rust's labeled blocks, stable since 1.65, are a loop that runs once without the loop), so `goto Done` becomes `break 'done`. A backward jump could be a labeled `loop` and `continue`. Jumps into a block stay refused.
 - [x] TP-exact binary file layout including 6-byte `Real`, so `examples/database/mark.dat` can be read (step 0 of `notes/untyped_memory.md`).
 - [ ] The per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
