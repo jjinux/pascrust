@@ -499,6 +499,26 @@ impl Codegen<'_> {
                 }
                 format!("{name}.clone()")
             }
+            // `New(PNode(q))` with `q: Pointer`: a new record, kept in `q`
+            // with its type forgotten. (`None if let ...` is an if-let
+            // guard: the arm matches only if the pattern does too.)
+            None if let ExprKind::Call { args: cast_args, .. } = &args[0].kind => {
+                let place = self.place(&cast_args[0]);
+                let ty = self.a.type_of(args[0].id).clone();
+                let alloc = match (self.alloc(&ty), &ty) {
+                    // `from_ptr` takes any `Ptr<T>`, so name the `T`.
+                    (alloc, Type::Pointer(p)) if alloc == "Ptr::alloc()" => {
+                        format!("Ptr::<{}>::alloc()", p.target().rust())
+                    }
+                    (alloc, _) => alloc,
+                };
+                if *self.a.type_of(cast_args[0].id) == Type::AnyPointer {
+                    format!("{place} = AnyPtr::from_ptr(&{alloc});")
+                } else {
+                    // `New(PNode(n))` with `n: PNode` already: just `New(n)`.
+                    format!("{place} = {alloc};")
+                }
+            }
             init => {
                 let place = self.place(&args[0]);
                 let alloc = self.alloc(&self.a.type_of(args[0].id).clone());

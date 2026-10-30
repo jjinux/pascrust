@@ -3482,9 +3482,9 @@ impl Checker {
                     _ => None,
                 };
                 // `Dispose(PNode(p))`: a `Pointer` cast to the record's type,
-                // to free the record it points to.
-                let cast = b == Dispose
-                    && args.len() == 1
+                // to free the record it points to; `New(PNode(p))` makes one
+                // and keeps it in the `Pointer`.
+                let cast = args.len() == 1
                     && matches!(&args[0].kind, ExprKind::Call { callee, args: cast_args }
                         if cast_args.len() == 1
                             && matches!(&callee.kind, ExprKind::Name(id)
@@ -3492,7 +3492,16 @@ impl Checker {
                                     Some(SymKind::TypeName(Type::Pointer(_))))));
                 let ty = match &type_arg {
                     Some(ty) => ty.clone(),
-                    None if cast => self.expr(&args[0]),
+                    None if cast => {
+                        let ty = self.expr(&args[0]);
+                        // `New` writes the variable inside the cast (a
+                        // `Pointer`, or one of the cast's own type: the
+                        // cast refuses any other).
+                        if let (New, ExprKind::Call { args: cast_args, .. }) = (b, &args[0].kind) {
+                            self.place(&cast_args[0], true);
+                        }
+                        ty
+                    }
                     None => self.place(&args[0], true),
                 };
                 if !matches!(ty, Type::Pointer(_) | Type::Error) {

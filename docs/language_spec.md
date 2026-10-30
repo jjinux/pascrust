@@ -133,6 +133,8 @@ Built-ins (System unit)
   longer)
 - The untyped `Pointer`: it holds any typed pointer (`p := node`), is cast
   back with `PNode(p)^.x` (a cast to the wrong type is runtime error 204),
+  gets a new record from `New(PNode(p))` (and frees it with
+  `Dispose(PNode(p))`),
   compares with typed pointers and `nil`, and gets raw memory from
   `GetMem(p, Size)`, which `p^` passes as untyped memory (`BlockRead(f,
   p^, n)`, `Move(p^, x, n)`). `GetMem` for a typed pointer allocates the

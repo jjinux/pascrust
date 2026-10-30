@@ -432,7 +432,8 @@ pub struct Ptr<T>(Option<Rc<RefCell<T>>>);
 - The untyped `Pointer` (step 3 of that plan) is the runtime's `AnyPtr`,
   an enum: `Nil`; `Bytes(Rc<RefCell<Vec<u8>>>)`, the memory from
   `GetMem(p, n)`; and `Typed(Rc<dyn Any>)`, a typed `Ptr<T>` stored as a
-  `Pointer` (`AnyPtr::from_ptr(&n)`). `PNode(p)` is `p.cast::<Node>()`,
+  `Pointer` (`AnyPtr::from_ptr(&n)`; `New(PNode(p))` is
+  `p = AnyPtr::from_ptr(&Ptr::<Node>::alloc())`). `PNode(p)` is `p.cast::<Node>()`,
   which downcasts the `Rc<dyn Any>` back and is runtime error 204 for the
   wrong type, as is a typed pointer's record used as bytes. `p^` has the
   type `Untyped`, so it goes only where an untyped `var` does, as
