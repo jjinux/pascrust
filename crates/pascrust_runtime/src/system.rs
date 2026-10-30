@@ -254,12 +254,6 @@ pub(crate) fn drive_base(drive: char) -> std::path::PathBuf {
     }
 }
 
-/// Is there a drive with this letter? C: always (the file system's root);
-/// any other only if `PASCRUST_DRIVE_x` maps it.
-pub(crate) fn drive_exists(drive: char) -> bool {
-    drive == 'C' || std::env::var_os(format!("PASCRUST_DRIVE_{drive}")).is_some()
-}
-
 /// The current directory when the program started (the first time this is
 /// called, which is before any `ChDir`: see `run`).
 pub(crate) fn start_dir() -> &'static std::path::Path {

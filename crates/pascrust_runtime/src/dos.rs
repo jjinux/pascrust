@@ -72,10 +72,12 @@ pub fn disk_size(drive: impl Into<i32>) -> i32 {
     if drive_number_exists(drive.into()) { 1 << 30 } else { -1 }
 }
 
+/// Is there drive number `drive` (0 the current one, 1 A:, ...)? C: always
+/// (the file system's root); any other only if `PASCRUST_DRIVE_x` maps it.
 fn drive_number_exists(drive: i32) -> bool {
     match drive {
-        0 => true,
-        1..=26 => crate::system::drive_exists((b'A' + drive as u8 - 1) as char),
+        0 | 3 => true,
+        1..=26 => std::env::var_os(format!("PASCRUST_DRIVE_{}", (b'A' + drive as u8 - 1) as char)).is_some(),
         _ => false,
     }
 }
