@@ -151,6 +151,20 @@ impl PChar {
         }
     }
 
+    /// The characters before the `#0`, but no more than `max` of them, and
+    /// no further: the `StrL...` routines stop there, so a string they look
+    /// at needn't end in a `#0` within the buffer.
+    fn chars_up_to(&self, max: usize) -> Vec<u8> {
+        let buffer = self.buffer().borrow();
+        let start = usize::try_from(self.offset).unwrap_or(usize::MAX);
+        let rest = buffer.get(start..).unwrap_or(&[]);
+        let chars: Vec<u8> = rest.iter().copied().take(max).take_while(|&c| c != 0).collect();
+        if chars.len() < max && chars.len() == rest.len() {
+            crate::rte(201, "Range check error: a PChar with no #0 at its end");
+        }
+        chars
+    }
+
     /// Copy `bytes` to `P[0]`, `P[1]`, ...
     fn put(&self, bytes: &[u8]) {
         for (i, &c) in bytes.iter().enumerate() {
@@ -259,6 +273,10 @@ pub fn char_array<const LO: i64, const N: usize>(text: impl Into<PString>) -> PA
 
 /// `StrLen(Str)`: the number of characters before the `#0`.
 pub fn str_len(s: &PChar) -> u16 {
+    // `StrLen(nil)` is 0, as in Free Pascal (TP read whatever was at 0:0).
+    if s.is_nil() {
+        return 0;
+    }
     s.chars().len() as u16
 }
 
@@ -293,8 +311,7 @@ pub fn str_e_copy(dest: &PChar, source: &PChar) -> PChar {
 
 /// `StrLCopy(Dest, Source, MaxLen)`: at most `MaxLen` characters.
 pub fn str_l_copy(dest: &PChar, source: &PChar, max_len: impl Into<i32>) -> PChar {
-    let mut bytes = source.chars();
-    bytes.truncate(usize::try_from(max_len.into()).unwrap_or(0));
+    let mut bytes = source.chars_up_to(usize::try_from(max_len.into()).unwrap_or(0));
     bytes.push(0);
     dest.put(&bytes);
     dest.clone()
@@ -325,8 +342,11 @@ pub fn str_l_cat(dest: &PChar, source: &PChar, max_len: impl Into<i32>) -> PChar
 /// The comparisons: the difference of the first characters that differ, or
 /// 0, looking at no more than `max_len` characters (`None` for all).
 fn compare(a: &PChar, b: &PChar, max_len: Option<i32>, fold: fn(u8) -> u8) -> i16 {
-    let (a, b) = (a.chars(), b.chars());
     let limit = max_len.map_or(usize::MAX, |n| usize::try_from(n).unwrap_or(0));
+    let (a, b) = match max_len {
+        Some(_) => (a.chars_up_to(limit), b.chars_up_to(limit)),
+        None => (a.chars(), b.chars()),
+    };
     // Compare the `#0`s too, so a prefix is less than the longer string.
     let a = a.iter().copied().chain([0]);
     let b = b.iter().copied().chain([0]);
@@ -384,8 +404,9 @@ pub fn str_r_scan(s: &PChar, c: u8) -> PChar {
 /// `StrPos(Str1, Str2)`: the first place `Str2` occurs in `Str1`, or nil.
 pub fn str_pos(s: &PChar, find: &PChar) -> PChar {
     let (chars, find) = (s.chars(), find.chars());
+    // An empty string is found at the end, as Free Pascal's `StrPos` does.
     if find.is_empty() {
-        return PChar::nil();
+        return str_end(s);
     }
     match chars.windows(find.len()).position(|w| w == find) {
         Some(i) => s.plus(i as i32),
@@ -469,6 +490,25 @@ mod tests {
         str_p_copy(&p, "hi");
         p.copy_to(&mut array);
         assert_eq!(&array[..3], b"hi\0");
+    }
+
+    #[test]
+    fn limited_routines_stop_at_max_len() {
+        // No `#0` in the buffer: the `StrL...` routines don't look past
+        // `MaxLen`.
+        let p = PChar::alloc(4);
+        str_move(&p, &PChar::literal("xyzw"), 4);
+        let buf = PChar::alloc(10);
+        str_l_copy(&buf, &p, 2);
+        assert_eq!(str_pas(&buf).to_string(), "xy");
+        assert_eq!(str_l_comp(&p, &PChar::literal("xyq"), 2), 0);
+        assert_eq!(str_l_i_comp(&p, &PChar::literal("XYZW"), 4), 0);
+        str_copy(&buf, &PChar::literal("ab"));
+        str_l_cat(&buf, &p, 4);
+        assert_eq!(str_pas(&buf).to_string(), "abxy");
+        assert_eq!(str_len(&PChar::nil()), 0);
+        let s = PChar::literal("abc");
+        assert_eq!(str_pos(&s, &PChar::literal("")).diff(&s), 3);
     }
 
     #[test]
