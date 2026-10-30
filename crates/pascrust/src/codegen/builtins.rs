@@ -391,7 +391,14 @@ impl<'a> Codegen<'a> {
                 format!("{s}.insert({src}, {i});")
             }
             Str => {
-                let value = self.write_arg(&args[0]);
+                let mut value = self.write_arg(&args[0]);
+                // `Str(p^.v, p^.name)`: the text is made first, so `p` isn't
+                // read and written at once.
+                if super::borrows_while_writing(&args[0], &args[1]) {
+                    let name = self.temp_name("text");
+                    self.pending.push(format!("let {name} = {value};"));
+                    value = name;
+                }
                 let place = self.place(&args[1]);
                 if ty(self, &args[1]).is_char_array0() {
                     let place = place.strip_prefix('*').unwrap_or(&place);
@@ -405,7 +412,13 @@ impl<'a> Codegen<'a> {
                 }
             }
             Val => {
-                let s = self.string_arg(&args[0]);
+                let mut s = self.string_arg(&args[0]);
+                // `Val(p^.name, p^.v, code)`: the text is read first.
+                if args[1..].iter().any(|target| super::borrows_while_writing(&args[0], target)) {
+                    let name = self.temp_name("text");
+                    self.pending.push(format!("let {name} = {s};"));
+                    s = name;
+                }
                 let (x, code) = (self.place_mut(&args[1]), self.place_mut(&args[2]));
                 format!("val({s}, {x}, {code});")
             }

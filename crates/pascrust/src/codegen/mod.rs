@@ -2031,7 +2031,7 @@ impl<'a> Codegen<'a> {
         // `p := p^.next` would borrow `p` (through `p.get()`) while assigning
         // to it, which the borrow checker rejects. Computing the value into
         // a temporary first ends that borrow before the assignment.
-        if contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target))) {
+        if borrows_while_writing(value, target) {
             // `p^.x := p^.x + 1` can still be `p.get_mut().x += 1`: only the
             // place reads the pointer, so there's one borrow. That needs the
             // added part to read no pointer itself.
@@ -2295,6 +2295,10 @@ pub(super) fn contains_deref(e: &Expr) -> bool {
         ExprKind::Unary { operand, .. } => contains_deref(operand),
         ExprKind::Binary { lhs, rhs, .. } => contains_deref(lhs) || contains_deref(rhs),
         ExprKind::Call { args, .. } => args.iter().any(contains_deref),
+        // `Str(p^.v:2, s)`.
+        ExprKind::Format { value, width, decimals } => {
+            contains_deref(value) || contains_deref(width) || decimals.as_deref().is_some_and(contains_deref)
+        }
         _ => false,
     }
 }
@@ -2337,6 +2341,11 @@ fn deref_roots(e: &Expr) -> Vec<String> {
                 walk(rhs, roots);
             }
             ExprKind::Call { args, .. } => args.iter().for_each(|a| walk(a, roots)),
+            ExprKind::Format { value, width, decimals } => {
+                walk(value, roots);
+                walk(width, roots);
+                decimals.iter().for_each(|d| walk(d, roots));
+            }
             _ => {}
         }
     }
@@ -2351,6 +2360,13 @@ pub(super) fn root_expr(e: &Expr) -> &Expr {
         ExprKind::Field(base, _) | ExprKind::Index(base, _) | ExprKind::Deref(base) => root_expr(base),
         _ => e,
     }
+}
+
+/// True if reading `value` borrows a heap record (or the pointer) that
+/// writing `target` borrows too: `p := p^.next`, `p^.name := p^.name + 'x'`.
+/// Then the value is worked out into a `let` first.
+pub(super) fn borrows_while_writing(value: &Expr, target: &Expr) -> bool {
+    contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target)))
 }
 
 fn root_name(e: &Expr) -> String {
