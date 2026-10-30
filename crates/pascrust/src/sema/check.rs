@@ -94,8 +94,9 @@ pub(super) struct Checker {
 /// Why a record with a flattened tagless variant part can't be bytes.
 fn unstorable_message(r: &RecordType) -> String {
     format!(
-        "`{}` has a variant part without a tag field that holds a pointer (or a file), so PascRust keeps each variant separately and can't tell which one to store as bytes",
-        r.rust_name
+        "`{}` has a variant part without a tag field that holds a pointer (or a file), so PascRust keeps each variant separately and can't tell which one to store as bytes{}",
+        r.rust_name,
+        super::rewrite_link("variant-with-pointer")
     )
 }
 
@@ -590,7 +591,10 @@ impl Checker {
                 } else if *ty == Type::PChar && value_ty.is_char_array0() {
                     self.error(
                         e.span,
-                        "a typed constant can't keep a PChar into a Char array in PascRust (it lends a PChar to an array only for one statement)",
+                        format!(
+                            "a typed constant can't keep a PChar into a Char array in PascRust (it lends a PChar to an array only for one statement){}",
+                            super::rewrite_link("pchar-into-array")
+                        ),
                     );
                 }
             }
@@ -1990,7 +1994,8 @@ impl Checker {
                 self.error(
                     *span,
                     format!(
-                        "the `with` body changes `{name}`, which chooses this record; PascRust writes the record out at every use, so it would pick a different one"
+                        "the `with` body changes `{name}`, which chooses this record; PascRust writes the record out at every use, so it would pick a different one{}",
+                        super::rewrite_link("with-selector")
                     ),
                 );
             }
@@ -2900,7 +2905,8 @@ impl Checker {
                 self.error(
                     *span,
                     format!(
-                        "the record `{pointer}^` is passed by `var` more than once in this call to `{name}`; Rust doesn't allow two mutable references to the same variable{why}"
+                        "the record `{pointer}^` is passed by `var` more than once in this call to `{name}`; Rust doesn't allow two mutable references to the same variable{why}{}",
+                        super::rewrite_link("two-var-arguments")
                     ),
                 );
             }

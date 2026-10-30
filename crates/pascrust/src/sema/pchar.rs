@@ -146,7 +146,10 @@ pub fn check(a: &Analysis, flows: &[Flow], arg_flows: &[ArgFlow]) -> Vec<Diagnos
         if !facts.resolved(flow.proc, &flow.srcs).arrays.is_empty() {
             errors.push(Diagnostic::new(
                 flow.span,
-                "this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead",
+                format!(
+                    "this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead{}",
+                    super::rewrite_link("pchar-into-array")
+                ),
             ));
         }
     }
@@ -157,7 +160,8 @@ pub fn check(a: &Analysis, flows: &[Flow], arg_flows: &[ArgFlow]) -> Vec<Diagnos
             errors.push(Diagnostic::new(
                 arg.span,
                 format!(
-                    "`{name}` keeps this PChar after it returns, which PascRust can't do for a Char array (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead"
+                    "`{name}` keeps this PChar after it returns, which PascRust can't do for a Char array (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead{}",
+                    super::rewrite_link("pchar-into-array")
                 ),
             ));
         }

@@ -7,10 +7,10 @@ variant_punning_errors.pas:19:5: error: a set in a variant part without a tag fi
     case Integer of
     ^^^^^^^^^^^^^^^^^^^
 
-variant_punning_errors.pas:25:14: error: `Node` has a variant part without a tag field that holds a pointer (or a file), so PascRust keeps each variant separately and can't tell which one to store as bytes
+variant_punning_errors.pas:25:14: error: `Node` has a variant part without a tag field that holds a pointer (or a file), so PascRust keeps each variant separately and can't tell which one to store as bytes; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#variant-with-pointer
   f: file of Node;
              ^^^^
 
-variant_punning_errors.pas:37:14: error: `p` is passed by `var` more than once in this call to `Swap`; Rust doesn't allow two mutable references to the same variable (fields of a variant part without a tag field share its bytes, which Rust borrows as a whole; copy one into a local first)
+variant_punning_errors.pas:37:14: error: `p` is passed by `var` more than once in this call to `Swap`; Rust doesn't allow two mutable references to the same variable (fields of a variant part without a tag field share its bytes, which Rust borrows as a whole; copy one into a local first); how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#two-var-arguments
   Swap(p.Lo, p.Hi);
              ^^^^

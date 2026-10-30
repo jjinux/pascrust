@@ -120,6 +120,10 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
   constructs are supported, and how closely.
 - [Architecture](docs/architecture.md): how PascRust works, and why it was
   designed that way.
+- [Rewriting code that Rust can't express](docs/rust_limits.md): the few
+  things that are fine in Pascal but break a rule of Rust (two `var`
+  arguments into one array, ...), and how to rewrite them. Those errors
+  link there.
 - [Printing](docs/printing.md): where the `Printer` unit's `Lst` output goes.
 - [Timer interrupts](docs/timer_interrupts.md): getting a steady tick in a
   game without the timer interrupt, which PascRust doesn't have.

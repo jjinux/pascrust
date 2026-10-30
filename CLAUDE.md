@@ -15,7 +15,10 @@ implementation. The opening prompt is in `README.md` before it was removed
 - `README.md`: what a user needs: what PascRust is, how to run it (`pascrust`,
   `tpc`, `fmt`), the environment variables, what's supported, the examples.
 - `docs/`: longer user documentation the README links to (printing, timer
-  interrupts), so the README stays short.
+  interrupts), so the README stays short. `docs/rust_limits.md` explains
+  each error caused by a limit of Rust, with a worked rewrite; such an
+  error links to its section (`sema::rewrite_link`, checked by
+  `tests/docs_tests.rs`). A new error of that kind gets a section too.
 
 Keep these up to date as you go: whenever a change adds or changes a
 feature, a command, an option or a limitation, update `README.md`,

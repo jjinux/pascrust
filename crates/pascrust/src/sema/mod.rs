@@ -34,6 +34,12 @@ use crate::diag::{Diagnostic, Span};
 pub use builtins::Builtin;
 pub use types::{IntKind, Type};
 
+/// Where an error caused by a limit of Rust is explained, with a rewrite
+/// of the Pascal that works: `docs/rust_limits.md`, at section `anchor`.
+pub fn rewrite_link(anchor: &str) -> String {
+    format!("; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#{anchor}")
+}
+
 pub type SymId = usize;
 pub type ProcId = usize;
 

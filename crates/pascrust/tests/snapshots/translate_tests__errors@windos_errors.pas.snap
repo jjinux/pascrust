@@ -11,6 +11,6 @@ windos_errors.pas:15:3: error: PascRust can't run `Intr`: it calls a DOS or BIOS
   Intr($21, r);
   ^^^^^^^^^^^^
 
-windos_errors.pas:12:8: error: this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead
+windos_errors.pas:12:8: error: this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#pchar-into-array
   p := FileExpand(buf, 'x');
        ^^^^^^^^^^^^^^^^^^^^

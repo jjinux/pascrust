@@ -7,22 +7,22 @@ pchar_errors.pas:46:8: error: cannot assign a String value to a PChar variable
   p := s;
        ^
 
-pchar_errors.pas:39:8: error: this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead
+pchar_errors.pas:39:8: error: this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#pchar-into-array
   p := buf;
        ^^^
 
-pchar_errors.pas:40:8: error: this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead
+pchar_errors.pas:40:8: error: this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#pchar-into-array
   p := StrScan(buf, 'a');
        ^^^^^^^^^^^^^^^^^
 
-pchar_errors.pas:41:8: error: this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead
+pchar_errors.pas:41:8: error: this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#pchar-into-array
   p := Echo(buf);
        ^^^^^^^^^
 
-pchar_errors.pas:42:8: error: `Keep` keeps this PChar after it returns, which PascRust can't do for a Char array (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead
+pchar_errors.pas:42:8: error: `Keep` keeps this PChar after it returns, which PascRust can't do for a Char array (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#pchar-into-array
   Keep(buf);
        ^^^
 
-pchar_errors.pas:43:13: error: `KeepLater` keeps this PChar after it returns, which PascRust can't do for a Char array (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead
+pchar_errors.pas:43:13: error: `KeepLater` keeps this PChar after it returns, which PascRust can't do for a Char array (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#pchar-into-array
   KeepLater(buf);
             ^^^

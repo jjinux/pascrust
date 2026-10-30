@@ -275,8 +275,9 @@ pub(super) fn check_aliasing(a: &Analysis, sites: &[CallSite]) -> Vec<Diagnostic
                 errors.push(Diagnostic::new(
                     span,
                     format!(
-                        "`{name}` is passed by `var` more than once in this call to `{}`; Rust doesn't allow two mutable references to the same variable{why}",
-                        callee.name
+                        "`{name}` is passed by `var` more than once in this call to `{}`; Rust doesn't allow two mutable references to the same variable{why}{}",
+                        callee.name,
+                        super::rewrite_link("two-var-arguments")
                     ),
                 ));
             } else if callee
@@ -289,8 +290,9 @@ pub(super) fn check_aliasing(a: &Analysis, sites: &[CallSite]) -> Vec<Diagnostic
                 errors.push(Diagnostic::new(
                     span,
                     format!(
-                        "`{name}` is passed by `var` to `{}`, which also uses `{name}` directly; Rust doesn't allow two references to the same variable when one of them is mutable",
-                        callee.name
+                        "`{name}` is passed by `var` to `{}`, which also uses `{name}` directly; Rust doesn't allow two references to the same variable when one of them is mutable{}",
+                        callee.name,
+                        super::rewrite_link("var-and-global")
                     ),
                 ));
             }
