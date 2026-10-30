@@ -2439,10 +2439,21 @@ impl Checker {
             && let Some(ExprKind::AddrOf(handler)) = args.get(1).map(|arg| &arg.kind)
             && let ExprKind::Name(handler) = &handler.kind
         {
+            // The timer's vectors, which games used for a steady tick: say
+            // how to get one without them.
+            let timer = matches!(self.eval_const(&args[0]), Some(ConstVal::Int(0x08 | 0x1C)));
+            let advice = if timer {
+                format!(
+                    "; for a steady 18.2 ticks a second, call `{}` from the program's main loop and wait out the rest of each tick with `Delay` (see \"Timer interrupts\" in PascRust's README)",
+                    handler.name
+                )
+            } else {
+                String::new()
+            };
             self.a.warnings.push(Diagnostic::warning(
                 e.span,
                 format!(
-                    "PascRust has no interrupts: `SetIntVec` sets the vector, but `{}` will never be called",
+                    "PascRust has no interrupts: `SetIntVec` sets the vector, but `{}` will never be called{advice}",
                     handler.name
                 ),
             ));

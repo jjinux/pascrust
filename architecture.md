@@ -855,7 +855,13 @@ window meanwhile (§19).
   `Code` variant compares by name). `SetIntVec` just stores; nothing is
   ever called. Installing the program's own handler (`SetIntVec(n,
   @Handler)`) gives a translation-time warning; putting back a saved
-  vector doesn't.
+  vector doesn't. For the timer's vectors the warning says how to get the
+  tick another way (the README's "Timer interrupts": the main loop calls
+  the handler and waits out each tick with `Delay`). Rejected for now:
+  calling handlers at safe points (every loop's top, `Delay`, `ReadKey`)
+  from a real 18.2 Hz clock, which needs the safe points to count as calls
+  in the lifting of globals; a real timer thread would race with the
+  program for its globals.
 - **WinDos** (TP 7, in the `dos` feature): the routines without strings
   are the `Dos` unit's own (the same `units.rs` entries); the ones with
   `PChar`s wrap theirs (`file_expand` is `str_p_copy(dest,

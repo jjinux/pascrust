@@ -382,7 +382,12 @@ mod tests {
         let generated = transpile_source(source, "p.pas").unwrap();
         assert_eq!(generated.warnings.len(), 1, "{:?}", generated.warnings);
         assert!(generated.warnings[0].starts_with("p.pas:9:3: warning: PascRust has no interrupts"));
-        assert!(generated.warnings[0].contains("`Tick` will never be called"));
+        assert!(generated.warnings[0].contains("`Tick` will never be called; for a steady 18.2 ticks a second"));
+        // Other vectors get no advice about timers.
+        let source =
+            b"program P;\nuses Dos;\nprocedure Key; interrupt;\nbegin\nend;\nbegin\n  SetIntVec($09, @Key);\nend.\n";
+        let generated = transpile_source(source, "p.pas").unwrap();
+        assert!(!generated.warnings[0].contains("steady"), "{}", generated.warnings[0]);
     }
 
     #[test]
