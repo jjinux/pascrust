@@ -2444,7 +2444,7 @@ impl Checker {
             let timer = matches!(self.eval_const(&args[0]), Some(ConstVal::Int(0x08 | 0x1C)));
             let advice = if timer {
                 format!(
-                    "; for a steady 18.2 ticks a second, call `{}` from the program's main loop and wait out the rest of each tick with `Delay` (see \"Timer interrupts\" in PascRust's README)",
+                    "; for a steady 18.2 ticks a second, call `{}` from the program's main loop and wait out the rest of each tick with `Delay` (see docs/timer_interrupts.md in PascRust)",
                     handler.name
                 )
             } else {

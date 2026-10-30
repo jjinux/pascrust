@@ -325,7 +325,7 @@ Dos unit
   procedures and `@Handler` gives their address, but there are no
   interrupts, so a handler is never called: `SetIntVec(..., @Handler)`
   gives a warning saying so, and for the timer's vectors (`$08`, `$1C`)
-  points to the README's main-loop replacement
+  points to the main-loop replacement in docs/timer_interrupts.md
 - `WinDos` (TP 7): the `Dos` unit with `PChar` strings. The routines
   without strings are `Dos`'s (`GetTime`, `GetFTime`, `GetFAttr`,
   `PackTime`, `DiskFree`, `GetIntVec`, ...). With strings: `FileExpand`,

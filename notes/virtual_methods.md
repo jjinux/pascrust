@@ -51,7 +51,7 @@ runtime error 210 under `{$R+}` and a crash otherwise.
 
 `TCircle` is `struct TCircle { base: TShape, radius: i16 }` with
 `impl TCircle { fn draw(&mut self) ... }`; inherited members are reached as
-`self.base.x` / `self.base.show()` (architecture.md §16). Inside
+`self.base.x` / `self.base.show()` (docs/architecture.md §16). Inside
 `self.base.show()`, `self` is a `&mut TShape`, so there's no way back to the
 circle, which is exactly what case 1 needs. Pointers are `Ptr<T>`, a handle
 over `Rc<RefCell<Option<T>>>` (§12), which holds exactly one `T`: a `TCircle`
@@ -201,7 +201,7 @@ trait can't do case 3 without a `?Sized` `Ptr` and downcasts.
 5. **Borrowing.** `p.get_mut().draw()` holds the record's `RefMut` for the
    whole method, so a `Draw` that reaches its own record through another
    pointer (a global list, say) stops with runtime error 204. That's the
-   hazard architecture.md §12 already accepts for `var` heap fields, but
+   hazard docs/architecture.md §12 already accepts for `var` heap fields, but
    it's likelier with objects. The existing hoisting rule (copy the pointer,
    then call) covers the usual loop, `p^.Draw; p := p^.next`.
 
@@ -234,8 +234,8 @@ the review used:
   default methods, the `inherited` fix.
 - Enum codegen, 1 day: the enum, its accessors and pointer aliases,
   placement across units, the base-part copy.
-- Tests and docs, half a day: architecture.md §12 and §16, this note,
-  language_spec.md.
+- Tests and docs, half a day: docs/architecture.md §12 and §16, this note,
+  docs/language_spec.md.
 
 Build case 1 first, including the lifted-parameter union (the risky part),
 then case 2 (small), then the enum for case 3.

@@ -3,7 +3,7 @@
 //! TP 7 lets a zero-based `array[0..N] of Char` stand for a `PChar` that
 //! points into it. PascRust can't point into an ordinary array, so it hands
 //! out a copy of the characters instead, for one statement, and writes them
-//! back after it (see architecture.md). That's only right if no pointer into
+//! back after it (see docs/architecture.md). That's only right if no pointer into
 //! the copy survives the statement: `P := A` would leave `P` pointing at a
 //! copy that no longer has anything to do with `A`.
 //!

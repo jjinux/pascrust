@@ -54,7 +54,7 @@ parameters are special-cased: `VarFiles` "1 or default = `var f : file` params
 use &; 0=pass FILE *'s by value; must not open or close the file within the
 procedure".
 *For PascRust*: C does not have a borrow checker, so p2c never faces the
-aliasing problem that `architecture.md` §15 is about. We keep the "`var` is a
+aliasing problem that `docs/architecture.md` §15 is about. We keep the "`var` is a
 reference" shape (`&mut T`) and add sema-level alias detection.
 
 **Nested procedures.** p2c gathers the outer procedure's locals that inner
@@ -76,7 +76,7 @@ captured variable "passing a pointer to that variable directly would be
 simpler" but p2c never did that.
 *For PascRust*: we do the "simpler" thing he describes, per-variable lifting,
 because in Rust the struct-pointer scheme reintroduces the `&mut LOC` vs
-`&mut LOC.field` double-borrow problem. See `architecture.md` §15.5.
+`&mut LOC.field` double-borrow problem. See `docs/architecture.md` §15.5.
 
 **Sets.** Two representations: sets whose elements fit in `0..31` become "a
 single integer variable using bit operations" (`SmallSetConst` controls
@@ -162,7 +162,7 @@ arrays, variant records (p2c uses C unions; we flatten), `computational` type.
   `var`/`const`, `writeln`, operators, `if`, `for`. Strings, records, arrays,
   procedures, file I/O are listed as *planned*. Takeaway: it is the only
   attempt we found, it stalled before any of the hard problems in
-  `architecture.md`, and its pest-based parse-tree-then-AST design is a reason
+  `docs/architecture.md`, and its pest-based parse-tree-then-AST design is a reason
   we chose a handwritten parser.
 - **pascal-rs** (https://docs.rs/crate/pascal/0.1.2): a Pascal interpreter
   written in Rust, not a transpiler. Useful only as a reference for a Rust

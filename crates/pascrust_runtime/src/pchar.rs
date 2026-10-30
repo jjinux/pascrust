@@ -46,7 +46,7 @@ impl PChar {
     }
 
     /// A zero-based `array[0..N] of Char` used as a `PChar`: a copy of its
-    /// characters, which `copy_to` writes back (see architecture.md for why
+    /// characters, which `copy_to` writes back (see docs/architecture.md for why
     /// it's a copy).
     pub fn copy_of(chars: &[u8]) -> PChar {
         PChar::new(chars.to_vec())

@@ -112,84 +112,17 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 | `PASCRUST_GRAPH=headless` | Draw `Graph` output without opening a window (for tests; `ReadKey` then reads standard input). |
 | `PASCRUST_GRAPH_SAVE=screen.bmp` | Save the graphics screen to a BMP file at `CloseGraph` or `Halt`. |
 | `PASCRUST_DRIVE_C=/some/dir` | Where the DOS drive `C:` lives for file names like `C:\DATA\X.DAT`. Without it, `C:` is the file system's root, `/`, so `C:\DATA\X.DAT` is `/DATA/X.DAT` and `GetDir` shows where you really are. Any other drive letter (`PASCRUST_DRIVE_A=/Volumes/USB` for a stick standing in for a floppy) exists only if you set it; a file name on an unset drive isn't found. Names match files on disk ignoring case, `A:X` is relative to the current directory when `ChDir` went somewhere on drive A, and `..` stops at the drive's root, as in DOS. A file name without a drive is relative to the current directory. |
-| `PASCRUST_PRINTER=...` | Where the `Printer` unit's `Lst` prints: a file name (default `printer.txt`), or `\|command` to pipe to a command such as `\|lp`. See [Printing](#printing). |
+| `PASCRUST_PRINTER=...` | Where the `Printer` unit's `Lst` prints: a file name (default `printer.txt`), or `\|command` to pipe to a command such as `\|lp`. See [Printing](docs/printing.md). |
 
-### Printing
+### More documentation
 
-Programs that `uses Printer` print with `Writeln(Lst, ...)`. There's no
-printer port any more, so where the output goes is up to you, through the
-`PASCRUST_PRINTER` environment variable:
-
-```sh
-# The default: append everything printed to printer.txt, in the directory
-# the program started in.
-pascrust run report.pas
-
-# Append to a file of your choice.
-PASCRUST_PRINTER=/tmp/report.txt pascrust run report.pas
-
-# Send it to a real printer (macOS and Linux), or to any other command.
-PASCRUST_PRINTER='|lp' pascrust run report.pas
-PASCRUST_PRINTER='|lp -d office' pascrust run report.pas
-PASCRUST_PRINTER='|less' pascrust run report.pas
-```
-
-The quotes matter, because `|` means a pipe to the shell. A command is run
-by `sh`, starts the first time the program prints, and gets the output on
-its standard input. When the program ends, its input is closed and PascRust
-waits for it to finish, so the whole job is sent. A program that never
-prints creates no file and runs no command. Output goes through exactly as
-written, form feeds (`Write(Lst, #12)`) included. A procedure that writes
-to a `var f: Text` parameter can be handed `Lst` (or `Output`) to print a
-report instead of showing it. Old programs often wrote
-printer control codes for an Epson or IBM printer, and those reach your
-printer unchanged too.
-
-### Timer interrupts
-
-Many DOS games got a steady clock from the PC's timer: they installed their
-own handler for interrupt `$1C` (or `$08`), which DOS called 18.2 times a
-second, and counted ticks in it. PascRust has no interrupts, so
-`SetIntVec($1C, @Tick)` keeps the handler but never calls it, and the
-translation warns about it.
-
-To get the same steady tick, call the handler yourself from the program's
-main loop, and wait out the rest of each tick with `Delay`, keeping track
-of when the last tick ended. This is plain Turbo Pascal, so it runs the
-same way in TP:
-
-```pascal
-uses Crt, Dos;
-const
-  TickMs = 55; { the PC timer's 18.2 ticks a second }
-var
-  lastTick, elapsed: LongInt;
-
-{ Milliseconds since midnight. }
-function NowMs: LongInt;
-var
-  h, m, s, s100: Word;
-begin
-  GetTime(h, m, s, s100);
-  NowMs := ((LongInt(h) * 60 + m) * 60 + s) * 1000 + s100 * 10;
-end;
-
-begin
-  lastTick := NowMs;
-  repeat
-    Tick; { what the interrupt handler did }
-    { ... the rest of the frame's work ... }
-    elapsed := NowMs - lastTick;
-    if (elapsed >= 0) and (elapsed < TickMs) then
-      Delay(TickMs - elapsed);
-    lastTick := lastTick + TickMs;
-  until Done;
-end.
-```
-
-Then take out the `GetIntVec`/`SetIntVec` calls and the handler's
-`interrupt` directive. `tests/run/timer_loop.pas` is this loop as a whole
-program.
+- [Language spec](docs/language_spec.md): exactly which Turbo Pascal
+  constructs are supported, and how closely.
+- [Architecture](docs/architecture.md): how PascRust works, and why it was
+  designed that way.
+- [Printing](docs/printing.md): where the `Printer` unit's `Lst` output goes.
+- [Timer interrupts](docs/timer_interrupts.md): getting a steady tick in a
+  game without the timer interrupt, which PascRust doesn't have.
 
 ### What's supported
 
@@ -200,7 +133,7 @@ objects with inheritance and virtual methods (constructors, destructors,
 `{$I-}`/`IOResult`, `PChar` strings, and the `Crt`, `Dos`, `Graph`,
 `Printer`, `Overlay`, `Strings` and `WinDos` units. Some things a modern
 machine doesn't have are faked so old programs still run: `Lst` prints to
-a file or a command (see [Printing](#printing)), overlays need no `.OVR`
+a file or a command (see [Printing](docs/printing.md)), overlays need no `.OVR`
 file, `MemAvail` reports plenty of memory, and interrupt vectors keep the
 handlers set in them (which never run).
 
@@ -208,8 +141,8 @@ Not supported yet: variant records, procedural types, `goto`, pointer
 arithmetic other than on `PChar`, keeping a `PChar` into a `Char` array
 (`P := A`; a `PChar` from `StrNew` or `GetMem` works), and interrupts
 (`SetIntVec` keeps a handler, with a warning, but never calls it). See
-`language_spec.md` for the details
-and `TODO.md` for what's next. Runtime errors print Turbo Pascal's message
+the [language spec](docs/language_spec.md) for the details and
+[`TODO.md`](TODO.md) for what's next. Runtime errors print Turbo Pascal's message
 and exit code (e.g. `Runtime error 201: Range check error ...`).
 
 ## Examples
@@ -245,8 +178,9 @@ command (and to the program it runs).
 
 ## Developing
 
-See `CLAUDE.md` for the layout and commands, `architecture.md` for the design,
-and run `cargo test` for the whole test suite.
+See [`CLAUDE.md`](CLAUDE.md) for the layout and commands, the
+[architecture](docs/architecture.md) for the design, and run `cargo test`
+for the whole test suite.
 
 ## Acknowledgements
 
@@ -263,7 +197,8 @@ while writing it. Thank you to:
   [Borland Pascal/Delphi Random](https://people.cs.nycu.edu.tw/~tsaiwn/sisc/runtime_error_200_div_by_0/www.merlyn.demon.co.uk/pas-rand.htm)
   page, and his other Pascal notes.
 - Borland, for the Turbo Pascal 7.0 manuals, which are still the best
-  description of the language (see the References in `language_spec.md`).
+  description of the language (see the References in the
+  [language spec](docs/language_spec.md)).
 - Dave Gillespie's p2c, the classic Pascal to C translator, for design
   ideas (`notes/p2c.md`).
 - [font8x8](https://github.com/dhepper/font8x8) (public domain), the 8x8

@@ -1,7 +1,7 @@
 # Open questions for the user
 
 Each question would change the plan if answered differently from the default.
-The default is what `TODO.md` and `architecture.md` assume; answering "yes,
+The default is what `TODO.md` and `docs/architecture.md` assume; answering "yes,
 go with the default" needs no further action.
 
 1. **16-bit `Integer`?** The plan maps `Integer` to `i16` with wrapping

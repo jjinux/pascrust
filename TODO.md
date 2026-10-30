@@ -1,8 +1,8 @@
 # PascRust TODO
 
 Plan written by Fable (the architect pass). Opus takes over from here. The
-core decisions live in `architecture.md`; the language tiers in
-`language_spec.md`; prior-art research in `notes/p2c.md`; questions for the
+core decisions live in `docs/architecture.md`; the language tiers in
+`docs/language_spec.md`; prior-art research in `notes/p2c.md`; questions for the
 user in `notes/open_questions.md`. Check items off as they land. Every phase
 ends with something runnable, and the examples in `examples/` are the
 acceptance test for the whole project.
@@ -19,10 +19,10 @@ acceptance test for the whole project.
 - [x] Figure out if I should aim to translate Pascal or Turbo Pascal:
   - [x] Is there an official spec and/or open source implementation for Turbo Pascal? (No formal spec; the TP 7.0 Language Guide is the spec, Free Pascal `-Mtp` is the open-source implementation. See `notes/p2c.md` §4.)
   - [x] Wasn't there some famous Pascal to C compiler? If so, carefully study how it's implemented. Take notes and save them into a file. (p2c; see `notes/p2c.md`.)
-  - [x] Write a file called language_spec.md with a plan of what language constructs we want to support. (Decision: Turbo Pascal; tiers in `language_spec.md`.)
+  - [x] Write a file called language_spec.md (now in docs/) with a plan of what language constructs we want to support. (Decision: Turbo Pascal; tiers in `docs/language_spec.md`.)
 - [x] Make the core architectural decisions:
-  - [x] Figure out what lexer and parser I should use. (Handwritten recursive descent; `architecture.md` §4.)
-  - [x] Maybe we should have a "virtual heap" that represents the Pascal heap in a somewhat safe way. (Passing around a heap object, embedding a Pascal engine in Rust, maybe a memory-mapped file; errors raise to the Rust container.) (Decided: handles (`Ptr<T>` over `Rc<RefCell>`), not a heap object; panics caught by `run()`; `architecture.md` §5, §12, §17.)
+  - [x] Figure out what lexer and parser I should use. (Handwritten recursive descent; `docs/architecture.md` §4.)
+  - [x] Maybe we should have a "virtual heap" that represents the Pascal heap in a somewhat safe way. (Passing around a heap object, embedding a Pascal engine in Rust, maybe a memory-mapped file; errors raise to the Rust container.) (Decided: handles (`Ptr<T>` over `Rc<RefCell>`), not a heap object; panics caught by `run()`; `docs/architecture.md` §5, §12, §17.)
   - [x] How should we represent arrays and strings in Pascal in Rust? (`PArray<T, LO, N>` and `PString`; §8, §10.)
   - [x] How should we represent pointers and the heap? (`Ptr<T>`; §12.)
   - [x] How should we represent records? (structs, variant records flattened; §11.)
@@ -30,7 +30,7 @@ acceptance test for the whole project.
   - [x] How do we build a FFI to C? (§22, tier 3.)
   - [x] Is it even possible to have a FFI to Pascal that's already been compiled? (Low priority; save ideas for later.) (Not directly; ideas in §22.)
   - [x] Can we skip implementing threads? Do Pascal / Turbo Pascal even have those built in? (Yes, skip; TP has none; §23.)
-  - [x] Write all of the core architectural decisions to a file named architecture.md.
+  - [x] Write all of the core architectural decisions to a file named docs/architecture.md.
 - [ ] Start building a battery of tests to verify we're compiling it correctly:
   - [x] Are there existing tests in other open source projects that we can use for inspiration? (Free Pascal `tests/`, p2c `examples/`, Pascal Validation Suite; `notes/p2c.md` §3-4.)
   - [ ] There should be tests that test what Pascal constructs translate into what Rust constructs.
@@ -47,7 +47,7 @@ acceptance test for the whole project.
 - [x] Create the Cargo workspace: `crates/pascrust` (bin + lib) and `crates/pascrust_runtime` (lib with features `crt`, `dos`, `graph`). Edition 2024.
 - [x] Write `CLAUDE.md`: project goals, the "intermediate Rust with teaching comments" style rule, where decisions live, how to run tests, the rule that every new Pascal construct needs a translate test and a run test.
 - [x] Add `.gitignore` entries for `out/` and `target/`; add `rustfmt.toml`; add a GitHub Actions workflow (fmt, clippy, test).
-- [x] Add `tests/README.md` describing the three test layers from `architecture.md` §21.
+- [x] Add `tests/README.md` describing the three test layers from `docs/architecture.md` §21.
 - [x] `pascrust --help` prints usage; `pascrust emit`, `build`, `run` subcommands stubbed with `clap`.
 
 ## Phase 1: Hello world end to end (first thing that runs)
@@ -69,12 +69,12 @@ lexer → parser → AST → sema → codegen → Cargo project → `cargo run`.
 - [x] Translate test harness v1: `tests/translate_tests.rs` snapshots the generated Rust for `tests/translate/*.pas` with `insta`.
 - [x] `hello.pas` passes both harnesses. Commit.
 
-## Phase 2: Core language (tier 1 of `language_spec.md`)
+## Phase 2: Core language (tier 1 of `docs/language_spec.md`)
 
 Each bullet: parser + sema + codegen + a translate test + a run test. Order
 chosen so each step is testable with the previous ones.
 
-- [x] Integer, real, boolean, char expressions with TP precedence and promotion rules; `div`/`mod`/`/`; `as` casts inserted by sema's type info. Decide and document `i16` wrapping (`architecture.md` §7).
+- [x] Integer, real, boolean, char expressions with TP precedence and promotion rules; `div`/`mod`/`/`; `as` casts inserted by sema's type info. Decide and document `i16` wrapping (`docs/architecture.md` §7).
 - [x] `var` declarations with `Default` initialization; assignment; `if`/`else` (dangling else); `while`; `repeat`; `for to/downto` over integers.
 - [x] `writeln`/`write` formatting: `:w`, `:w:d`, TP default real format, booleans. Run tests compare byte for byte.
 - [x] `readln`/`read` from stdin for integers, reals, chars, strings (TP's lenient parsing). `.in` files in run tests.
@@ -170,7 +170,7 @@ chosen so each step is testable with the previous ones.
 - [x] Bitmap text: the public-domain 8x8 VGA font (ASCII); `OutText`/`OutTextXY`/`SetTextJustify`/`SetTextStyle` (default font, integer scale; stroked fonts approximated with it)/`TextWidth`/`TextHeight`.
   - [ ] CP437 characters 128-255 in the font (box drawing, accented letters).
 - [x] `InitGraph`/`Detect`/`DetectGraph`/`CloseGraph`/`GraphResult`/`GraphErrorMsg`/`SetGraphMode`/`GetGraphMode`/`RestoreCrtMode`/`GetMaxX`/`GetMaxY`/`GetMaxColor`/`GetAspectRatio`.
-- [x] Tests: `PASCRUST_GRAPH=headless` draws without a window; `tests/run/graph_basics.pas` checks drawings with `GetPixel` (instead of golden images; see architecture.md §19). `PASCRUST_GRAPH_SAVE=file.bmp` saves the screen for a look by eye.
+- [x] Tests: `PASCRUST_GRAPH=headless` draws without a window; `tests/run/graph_basics.pas` checks drawings with `GetPixel` (instead of golden images; see docs/architecture.md §19). `PASCRUST_GRAPH_SAVE=file.bmp` saves the screen for a look by eye.
 - [x] `minifb` window backend: present the framebuffer, forward key events to `ReadKey`/`KeyPressed` while graphics mode is active, window serviced by the main thread (macOS needs that) while the program runs on its worker thread.
 - [x] Get working: `clock/` (menu unit, clock unit, tester), `tictac/` (five units, `Ollie`, `CompUnit` AI). Checked headless with scripted keys and saved screenshots; the window opens on macOS.
   - [x] Transpiler fixes they needed: method call arguments that use the receiver (`obj.Prompt(obj.WhoseTurn)`) are computed first (`tests/run/method_args.pas`); two anonymous record types for same-named variables are `EndPoint` and `EndPoint2`, not `EndPoint_2` (`tests/run/anon_records.pas`).
@@ -186,7 +186,7 @@ chosen so each step is testable with the previous ones.
   - Missing checks: `New`/`Dispose` with a method that isn't a constructor/destructor; a `with` field as a `for` variable; descendant objects by value (now allowed, copying the ancestor part); `pascrust emit game.pas` without a directory; `SetTextBuf` made its file `mut` (a warning).
   - Tests: run tests and a new examples test now build generated code with `-D warnings`, so warnings fail the suite.
   - Decided with the user: a value outside a set's range is never in it, `300 in s` is False for a constant and a variable alike (FPC truncates the variable).
-  - Open: `SizeOf` of a subrange variable (2 here, 1 in TP), of a small set (32 here), and of an object with virtual methods (TP adds 2); a `{$I-}` error still waiting isn't raised by later `{$I+}` I/O (documented in architecture.md); `x shl 32` is 0 where TP masks the count to 5 bits.
+  - Open: `SizeOf` of a subrange variable (2 here, 1 in TP), of a small set (32 here), and of an object with virtual methods (TP adds 2); a `{$I-}` error still waiting isn't raised by later `{$I+}` I/O (documented in docs/architecture.md); `x shl 32` is 0 where TP masks the count to 5 bits.
 - [ ] Open from the Fable reviews of the fix commits (2026-10-28). Done: a call in an index (`arr[Pick] := ...` where `Pick` reads `arr`, `items[Count]` in a method) is worked out into a `let` first, so it borrow-checks, and the target's index comes before the value, as in Free Pascal; `a[F] := a[F] + 1` runs F twice, as in TP. Still open: And: in `s := s + Bump` where `Bump` changes `s`, FPC calls `Bump` first and PascRust reads `s` first (TP's order unverified); `i in [-3..-1]` (set elements outside 0..255) depends on whether the ends are literals or named constants; `b in [True]` is `matches!(b, true)`, which clippy flags. Cosmetic: an enum value named like a runtime type gets a needless `_` (`Kind::Ptr_`); a long record's `/// Pascal:` line quotes the Rust name (`FileRecord_ = record ... end`). Two Pascal names that become the same Rust name in different scopes (a variable `enum_range` and a function `EnumRange`) clash.
 - [ ] Announce PascRust to the Pascal community: find which Pascal compiler projects are still alive (Free Pascal, Lazarus, and others), find their mailing lists or forums and what each allows for announcements, then draft a short announcement for each (what PascRust is, that it's MIT, a link to the repository). The user reviews and sends them; Claude doesn't post anything itself.
 - [x] Add an "Acknowledgements" section to the README thanking the projects we learned from and compared against. Our code is our own, but being able to run their tools and compare output helped a great deal: Free Pascal (`fpc -Mtp` produces most of our expected test output), daelsepara's turbo-pascal-assembly (the System unit disassembly behind `Random`), J R Stockton's Pascal pages, Borland's Turbo Pascal manuals, p2c (design ideas), and the Rust crates we build on (`clap`, `crossterm`, `minifb`, `insta`, ...). Also Claude Fable, for the code and design reviews.
@@ -207,11 +207,11 @@ variable and constant of the standard units, so "done" is well defined. The
 order below puts first what old programs use most. Where the real thing
 makes no sense on a modern machine, we **fake it**: accept the call and do
 something harmless and plausible, so the program runs, and list the fake in
-`language_spec.md`. Each item gets translate and run tests, checked against
+`docs/language_spec.md`. Each item gets translate and run tests, checked against
 `fpc -Mtp` where FPC matches TP.
 
 Next up (moved here from Phase 6 at the user's request)
-- [x] Carry Pascal comments into the Rust output at statement boundaries: anchored to statements, declarations, record fields, procedures and block ends (`codegen/comments.rs`, architecture.md §20).
+- [x] Carry Pascal comments into the Rust output at statement boundaries: anchored to statements, declarations, record fields, procedures and block ends (`codegen/comments.rs`, docs/architecture.md §20).
 
 System, the small routines
 - [x] `SizeOf` with TP's sizes (`Integer` 2, `LongInt` 4, `Real` 6, `Char` and `Boolean` 1, `string[n]` n+1, records unpadded, arrays), so `FillChar(a, SizeOf(a), 0)` and record-size arithmetic work.
@@ -262,7 +262,7 @@ Last: raw bytes and C strings
 ## Phase 8: Tier 3 and FFI (as interest dictates)
 
 - [ ] Variant records (flattened).
-- [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, architecture.md §16), and `TypeOf`.
+- [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, docs/architecture.md §16), and `TypeOf`.
 - [ ] Procedural types and procedure parameters.
 - [ ] Structured `goto` (forward jumps out of loops → labeled `break`).
 - [x] TP-exact binary file layout including 6-byte `Real`, so `examples/database/mark.dat` can be read (step 0 of `notes/untyped_memory.md`).
@@ -276,7 +276,7 @@ Last: raw bytes and C strings
 
 ## Testing track (runs alongside every phase)
 
-- [ ] One translate snapshot and one run test per construct in `language_spec.md` tier 1 and 2; keep a checklist table in `tests/README.md`.
+- [ ] One translate snapshot and one run test per construct in `docs/language_spec.md` tier 1 and 2; keep a checklist table in `tests/README.md`.
 - [x] If FPC is installed (open question 2): script `tests/gen_expected.sh` that compiles each `tests/run/*.pas` with `fpc -Mtp` and records its stdout as `*.out`; commit the outputs.
 - [ ] Write our own self-checking run tests (exit code 0 when every check passes) for the System, Crt, Dos and Graph routines, covering the kinds of cases Free Pascal's test suite covers. Don't copy FPC's or p2c's tests: both are GPL and this project is MIT. Running `fpc -Mtp` as an external program to produce expected output (`tests/gen_expected.sh`) is fine.
 - [ ] Negative tests: malformed programs produce the expected diagnostic text (snapshot).

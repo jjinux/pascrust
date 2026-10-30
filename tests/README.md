@@ -1,6 +1,6 @@
 # Tests
 
-Three layers (see `architecture.md` §21):
+Three layers (see `docs/architecture.md` §21):
 
 1. **Unit tests** inside the crates (`cargo test -p pascrust --lib`): lexer
    token streams, parser shapes, sema type rules, runtime formatting.

@@ -1,6 +1,6 @@
 program TimerLoop;
-{ The way to get a steady tick without a timer interrupt (see "Timer
-  interrupts" in the README): a main loop that does a tick's work, then
+{ The way to get a steady tick without a timer interrupt (see
+  docs/timer_interrupts.md): a main loop that does a tick's work, then
   waits out the rest of the tick with Delay, measuring time with GetTime.
   The ticks counted don't depend on how fast the machine is. }
 uses Crt, Dos;

@@ -38,7 +38,7 @@ to do instead.
    change through the view only appears when the routine returns). A
    program can only tell if the routine also reaches the variable another
    way (as a global, or the same variable passed twice), the same case
-   `var` parameters already have to handle (architecture.md, §15).
+   `var` parameters already have to handle (docs/architecture.md, §15).
 
 2. **`Pointer` and `GetMem`.** An untyped `Pointer` becomes `PBuf`: a
    shared byte buffer (`Rc<RefCell<Vec<u8>>>`) plus an offset, and `nil`.

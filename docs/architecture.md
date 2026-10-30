@@ -856,7 +856,7 @@ window meanwhile (§19).
   ever called. Installing the program's own handler (`SetIntVec(n,
   @Handler)`) gives a translation-time warning; putting back a saved
   vector doesn't. For the timer's vectors the warning says how to get the
-  tick another way (the README's "Timer interrupts": the main loop calls
+  tick another way (docs/timer_interrupts.md: the main loop calls
   the handler and waits out each tick with `Delay`). Rejected for now:
   calling handlers at safe points (every loop's top, `Delay`, `ReadKey`)
   from a real 18.2 Hz clock, which needs the safe points to count as calls
