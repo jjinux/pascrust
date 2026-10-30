@@ -446,27 +446,38 @@ impl<'a> Codegen<'a> {
     /// no `PChar` into the copy outlives the statement.)
     fn lent_pchar(&mut self, e: &Expr) -> String {
         let array = self.selector_base(e);
-        if let Some((_, name)) = self.lent.iter().find(|(code, _)| *code == array) {
-            return name.clone();
-        }
-        let base = match array.rsplit(['.', '*']).next() {
-            Some(last) if !last.is_empty() && last.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => last,
-            _ => "array",
-        };
-        let name = self.temp_name(&format!("{base}_chars"));
         let written = self.a.pchar_arrays.get(&e.id).copied().unwrap_or(false);
-        if self.first_time("lent_pchar") {
-            self.pending.push("// A Char array used as a PChar: Rust can't point into the array, so".to_string());
-            self.pending.push("// the statement gets a copy of its characters, copied back after it".to_string());
-            self.pending.push("// if it may change them.".to_string());
-        }
-        self.pending.push(format!("let {name} = PChar::copy_of({array}.as_slice());"));
-        if written {
+        // The array's copy for this statement, if an earlier use made one.
+        let name = match self.lent.iter().find(|(code, _)| *code == array) {
+            Some((_, name)) => name.clone(),
+            None => {
+                let base = match array.rsplit(['.', '*']).next() {
+                    Some(last) if !last.is_empty() && last.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => {
+                        last
+                    }
+                    _ => "array",
+                };
+                let name = self.temp_name(&format!("{base}_chars"));
+                if self.first_time("lent_pchar") {
+                    self.pending
+                        .push("// A Char array used as a PChar: Rust can't point into the array, so".to_string());
+                    self.pending
+                        .push("// the statement gets a copy of its characters, copied back after it".to_string());
+                    self.pending.push("// if it may change them.".to_string());
+                }
+                self.pending.push(format!("let {name} = PChar::copy_of({array}.as_slice());"));
+                self.lent.push((array, name.clone()));
+                name
+            }
+        };
+        // Copied back if any use in the statement may write through it (not
+        // just the first: `StrLen(A) + StrLen(StrCat(A, 'x'))`).
+        let copy_back = format!("{name}.copy_to(");
+        if written && !self.after.iter().any(|line| line.starts_with(&copy_back)) {
             let place = self.place(e);
             let place = place.strip_prefix('*').unwrap_or(&place).to_string();
             self.after.push(format!("{name}.copy_to({place}.as_mut_slice());"));
         }
-        self.lent.push((array, name.clone()));
         name
     }
 
