@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/untyped_heap_alias.pas
+---
+untyped_heap_alias.pas:30:15: error: the record `pp^` is passed by `var` more than once in this call to `Both`; Rust doesn't allow two mutable references to the same variable (an untyped parameter's bytes run on to the end of the whole record, which Rust borrows); how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#two-var-arguments
+  Both(pp^.y, pp^.x, 2);
+              ^^^^^

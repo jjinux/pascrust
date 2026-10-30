@@ -3195,14 +3195,22 @@ impl Checker {
             .iter()
             .zip(args)
             .filter(|(param, _)| self.a.var(**param).role == VarRole::Param(ParamMode::Var))
-            .filter_map(|(_, arg)| Some((super::heap_field(arg)?, arg.span)))
+            .filter_map(|(&param, arg)| {
+                let (pointer, fields, indexed) = super::heap_field(arg)?;
+                // An untyped parameter's bytes borrow the whole record.
+                let untyped = self.a.var(param).ty == Type::Untyped;
+                let fields = if untyped { Vec::new() } else { fields };
+                Some(((pointer, fields, indexed), arg.span, untyped))
+            })
             .collect();
-        for (i, ((pointer, fields, indexed), span)) in heap.iter().enumerate() {
+        for (i, ((pointer, fields, indexed), span, untyped)) in heap.iter().enumerate() {
             let earlier =
-                heap[..i].iter().find(|((earlier, f, _), _)| earlier == pointer && super::fields_overlap(f, fields));
-            if let Some(((_, earlier_fields, earlier_indexed), _)) = earlier {
+                heap[..i].iter().find(|((earlier, f, _), _, _)| earlier == pointer && super::fields_overlap(f, fields));
+            if let Some(((_, earlier_fields, earlier_indexed), _, earlier_untyped)) = earlier {
                 let name = self.a.procs[p].name.clone();
-                let why = if *indexed && *earlier_indexed && earlier_fields == fields {
+                let why = if *untyped || *earlier_untyped {
+                    " (an untyped parameter's bytes run on to the end of the whole record, which Rust borrows)"
+                } else if *indexed && *earlier_indexed && earlier_fields == fields {
                     " (Rust can't tell that two elements of one array are different)"
                 } else {
                     ""
