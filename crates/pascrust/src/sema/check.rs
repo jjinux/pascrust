@@ -322,8 +322,14 @@ impl Checker {
             self.scopes[0].insert(routine.name.to_string(), sym);
         }
         for &(name, rust, value) in consts {
-            // The error codes (`grError`) are the only negative ones.
-            let ty = Type::Int(if value < 0 { IntKind::ShortInt } else { IntKind::Byte });
+            // The error codes (`grError`) are the only negative ones, and
+            // `WinDos`'s file modes and flags the only ones past a byte.
+            let kind = match value {
+                ..0 => IntKind::ShortInt,
+                0..=255 => IntKind::Byte,
+                _ => IntKind::Word,
+            };
+            let ty = Type::Int(kind);
             let sym = self.add_symbol(name, rust.to_string(), SymKind::Const { value: ConstVal::Int(value), ty });
             self.scopes[0].insert(name.to_string(), sym);
         }
@@ -1784,9 +1790,10 @@ impl Checker {
                 srcs
             }
             ExprKind::Call { callee, args } => match self.a.refs.get(&callee.id).map(|&s| &self.a.symbols[s].kind) {
-                // The `Strings` functions return a pointer into their first
-                // argument, except `StrNew`, which makes a new string.
-                Some(SymKind::UnitRoutine(r)) if r.name != "strnew" => {
+                // The `Strings` and `WinDos` functions return a pointer into
+                // their first argument, except `StrNew` and `GetEnvVar`,
+                // which make a new string.
+                Some(SymKind::UnitRoutine(r)) if !matches!(r.name, "strnew" | "getenvvar") => {
                     args.first().map(|arg| self.pchar_sources(arg)).unwrap_or_default()
                 }
                 Some(SymKind::Proc(p)) => vec![Src::Ret(*p, args.iter().map(|arg| self.pchar_sources(arg)).collect())],
@@ -2529,7 +2536,7 @@ impl Checker {
                 }
                 Param::VarRecord(key) => {
                     let ty = self.place(arg, true);
-                    let wanted = super::units::graph_record(key).expect("a Graph record");
+                    let wanted = super::units::record_type(key).expect("a unit's record");
                     if ty != wanted && ty != Type::Error {
                         self.error(arg.span, format!("expected a {wanted} variable, found {ty}"));
                     }
@@ -2542,7 +2549,7 @@ impl Checker {
                 Param::Points => {
                     // A variable (TP's untyped `var`), but only read.
                     let ty = self.place(arg, false);
-                    let point = super::units::graph_record("pointtype").expect("PointType");
+                    let point = super::units::record_type("pointtype").expect("PointType");
                     if !matches!(&ty, Type::Array(a) if a.elem == point) && ty != Type::Error {
                         self.error(arg.span, format!("expected an array of PointType, found {ty}"));
                     }

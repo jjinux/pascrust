@@ -5,6 +5,7 @@ use std::cell::Cell;
 
 use chrono::{Datelike, Local, TimeZone, Timelike};
 
+use crate::pchar::{PChar, str_l_copy, str_p_copy, str_pas};
 use crate::ptr::AnyPtr;
 use crate::string::PString;
 use crate::system::dos_path;
@@ -728,6 +729,172 @@ pub fn set_f_attr(f: &mut impl crate::io::AnyFile, attr: impl Into<i32>) {
             set_dos_error(0);
         }
         Err(e) => set_dos_error(io_dos_error(&e, &path)),
+    }
+}
+
+// ----- WinDos: the Dos unit with PChar strings -----------------------------
+//
+// TP 7's `WinDos` has the `Dos` unit's routines for C-style strings (it was
+// for code shared with Windows programs). The ones that take or give a
+// string are here, each a wrapper around its `Dos` counterpart; the rest
+// are the `Dos` routines themselves.
+
+pub const FA_READ_ONLY: u8 = 0x01;
+pub const FA_HIDDEN: u8 = 0x02;
+pub const FA_SYS_FILE: u8 = 0x04;
+pub const FA_VOLUME_ID: u8 = 0x08;
+pub const FA_DIRECTORY: u8 = 0x10;
+pub const FA_ARCHIVE: u8 = 0x20;
+pub const FA_ANY_FILE: u8 = 0x3F;
+// A file variable's mode, in TP's `TFileRec` (which PascRust doesn't have).
+pub const FM_CLOSED: u16 = 0xD7B0;
+pub const FM_INPUT: u16 = 0xD7B1;
+pub const FM_OUTPUT: u16 = 0xD7B2;
+pub const FM_IN_OUT: u16 = 0xD7B3;
+// The longest file name parts, without their `#0`.
+pub const FS_PATH_NAME: u8 = 79;
+pub const FS_DIRECTORY: u8 = 67;
+pub const FS_FILE_NAME: u8 = 8;
+pub const FS_EXTENSION: u8 = 4;
+// What `FileSplit` found.
+pub const FC_EXTENSION: u8 = 0x01;
+pub const FC_FILE_NAME: u8 = 0x02;
+pub const FC_DIRECTORY: u8 = 0x04;
+pub const FC_WILDCARDS: u8 = 0x08;
+// The flags register's bits, after `Intr` or `MsDos` (which PascRust
+// refuses). Like every unit constant, a `u8` if it fits one.
+pub const F_CARRY: u8 = 0x0001;
+pub const F_PARITY: u8 = 0x0004;
+pub const F_AUXILIARY: u8 = 0x0010;
+pub const F_ZERO: u8 = 0x0040;
+pub const F_SIGN: u8 = 0x0080;
+pub const F_OVERFLOW: u16 = 0x0800;
+
+/// `WinDos`'s `TSearchRec`: `SearchRec` with the name as a `#0`-ended
+/// `array[0..12] of Char`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TSearchRec {
+    pub fill: crate::array::PArray<u8, 1, 21>,
+    pub attr: u8,
+    pub time: i32,
+    pub size: i32,
+    pub name: crate::array::PArray<u8, 0, 13>,
+}
+
+/// Run a `Dos` search routine on a `TSearchRec`, through a `SearchRec`.
+fn through_search_rec(s: &mut TSearchRec, search: impl FnOnce(&mut SearchRec)) {
+    let name: Vec<u8> = s.name.iter().copied().take_while(|&c| c != 0).collect();
+    let mut rec = SearchRec { fill: s.fill, attr: s.attr, time: s.time, size: s.size, name: PString::from(&name[..]) };
+    search(&mut rec);
+    let mut name = [0u8; 13];
+    let bytes = rec.name.as_bytes();
+    let n = bytes.len().min(12);
+    name[..n].copy_from_slice(&bytes[..n]);
+    *s = TSearchRec {
+        fill: rec.fill,
+        attr: rec.attr,
+        time: rec.time,
+        size: rec.size,
+        name: crate::array::PArray::new(name),
+    };
+}
+
+/// `WinDos`'s `FindFirst(Path, Attr, F)`.
+pub fn win_find_first(path: &PChar, attr: impl Into<i32>, s: &mut TSearchRec) {
+    let (path, attr) = (str_pas(path), attr.into());
+    through_search_rec(s, |rec| find_first(path, attr, rec));
+}
+
+/// `WinDos`'s `FindNext(F)`.
+pub fn win_find_next(s: &mut TSearchRec) {
+    through_search_rec(s, find_next);
+}
+
+/// `FileExpand(Dest, Name)`: `FExpand` into `Dest`; returns `Dest`.
+pub fn file_expand(dest: &PChar, name: &PChar) -> PChar {
+    str_p_copy(dest, f_expand(str_pas(name)))
+}
+
+/// `FileSearch(Dest, Name, List)`: `FSearch` into `Dest` (empty if the file
+/// isn't found); returns `Dest`.
+pub fn file_search(dest: &PChar, name: &PChar, list: &PChar) -> PChar {
+    str_p_copy(dest, f_search(str_pas(name), str_pas(list)))
+}
+
+/// `FileSplit(Path, Dir, Name, Ext)`: `FSplit`, into any of `Dir`, `Name`
+/// and `Ext` that aren't nil, returning which parts there were
+/// (`fcDirectory`, `fcFileName`, `fcExtension`) and `fcWildcards` if the
+/// name or extension has a `*` or `?`.
+pub fn file_split(path: &PChar, dir: &PChar, name: &PChar, ext: &PChar) -> u16 {
+    let (mut d, mut n, mut e) = (PString::new(), PString::new(), PString::new());
+    f_split(str_pas(path), &mut d, &mut n, &mut e);
+    let mut flags = 0;
+    for (part, dest, flag) in [(&d, dir, FC_DIRECTORY), (&n, name, FC_FILE_NAME), (&e, ext, FC_EXTENSION)] {
+        if !part.as_bytes().is_empty() {
+            flags |= u16::from(flag);
+        }
+        if !dest.is_nil() {
+            str_p_copy(dest, *part);
+        }
+    }
+    if n.as_bytes().iter().chain(e.as_bytes()).any(|&c| c == b'*' || c == b'?') {
+        flags |= u16::from(FC_WILDCARDS);
+    }
+    flags
+}
+
+/// `GetCurDir(Dir, Drive)`: drive `Drive`'s current directory (0 is the
+/// current drive, 1 is A:); returns `Dir`.
+pub fn get_cur_dir(dir: &PChar, drive: impl Into<i32>) -> PChar {
+    set_dos_error(0);
+    str_p_copy(dir, crate::system::get_dir(drive))
+}
+
+/// Run a directory change, setting `DosError` (`WinDos` reports errors there
+/// rather than as runtime errors): 3 (path not found) for a directory that
+/// isn't there, 5 (access denied) for anything else, as DOS did. (`std::fs::create_dir` and friends are
+/// generic over the path type, so the callers wrap them in closures to get a
+/// plain `fn` taking a `&Path`.)
+fn dir_call(dir: &PChar, call: fn(&std::path::Path) -> std::io::Result<()>) {
+    let path = dos_path(&str_pas(dir).to_string());
+    match call(&path) {
+        Ok(()) => set_dos_error(0),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => set_dos_error(3),
+        Err(_) => set_dos_error(5),
+    }
+}
+
+/// `SetCurDir(Dir)`: `ChDir`.
+pub fn set_cur_dir(dir: &PChar) {
+    dir_call(dir, |path| std::env::set_current_dir(path));
+}
+
+/// `CreateDir(Dir)`: `MkDir`.
+pub fn create_dir(dir: &PChar) {
+    dir_call(dir, |path| std::fs::create_dir(path));
+}
+
+/// `RemoveDir(Dir)`: `RmDir`.
+pub fn remove_dir(dir: &PChar) {
+    dir_call(dir, |path| std::fs::remove_dir(path));
+}
+
+/// `GetArgCount`: `ParamCount`.
+pub fn get_arg_count() -> i16 {
+    crate::system::param_count()
+}
+
+/// `GetArgStr(Dest, Index, MaxLen)`: `ParamStr(Index)`, at most `MaxLen`
+/// characters of it, into `Dest`; returns `Dest`.
+pub fn get_arg_str(dest: &PChar, index: impl Into<i32>, max_len: impl Into<i32>) -> PChar {
+    str_l_copy(dest, &PChar::literal(crate::system::param_str(index)), max_len)
+}
+
+/// `GetEnvVar(VarName)`: the variable's value, or nil if it isn't set.
+pub fn get_env_var(name: &PChar) -> PChar {
+    match std::env::var(str_pas(name).to_string()) {
+        Ok(value) => PChar::literal(value.as_str()),
+        Err(_) => PChar::nil(),
     }
 }
 

@@ -151,7 +151,7 @@ Built-ins (System unit)
   `PChar` parameter is an error at compile time (a routine that only
   reads or writes the characters, or keeps them in a local, is fine).
   Not yet: `Read`, `Str`, `Val`, `Assign` and `Rename` on `Char` arrays
-  and `PChar`s, the `WinDos` unit
+  and `PChar`s
 - Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
   routine sees the caller's variable as TP's bytes, through a typecast
   (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a
@@ -325,6 +325,18 @@ Dos unit
   procedures and `@Handler` gives their address, but there are no
   interrupts, so a handler is never called: `SetIntVec(..., @Handler)`
   gives a warning saying so
+- `WinDos` (TP 7): the `Dos` unit with `PChar` strings. The routines
+  without strings are `Dos`'s (`GetTime`, `GetFTime`, `GetFAttr`,
+  `PackTime`, `DiskFree`, `GetIntVec`, ...). With strings: `FileExpand`,
+  `FileSearch`, `FileSplit` (with its `fcXXXX` flags; a nil part isn't
+  stored), `GetCurDir`, `SetCurDir`, `CreateDir`, `RemoveDir` (these four
+  set `DosError`, 3 for a missing directory and 5 otherwise, rather than
+  stopping with a runtime error), `GetArgCount`, `GetArgStr`, `GetEnvVar`
+  (nil if the variable isn't set), and `FindFirst`/`FindNext` with
+  `TSearchRec` (its `Name` an `array[0..12] of Char`). `TDateTime` and
+  `TRegisters` are `Dos`'s `DateTime` and `Registers`; the `faXXXX`,
+  `fmXXXX`, `fsXXXX`, `fcXXXX` and flag constants and `DosError` are
+  there. Not there: `TFileRec`/`TTextRec`
 - Refused with a clear error, since they need real DOS: `Intr`, `MsDos`,
   `Keep` (`Registers` is declared, with its `Word` registers, so a program
   using it gets that error)
@@ -412,8 +424,8 @@ Later (real TP features, not in the examples, worth doing in order)
 7. (Untyped files are done, in tier 2.) `TextRec`/`FileRec`
 8. (Done, now in tier 2: TP-exact binary layout for `file of Rec`.)
 9. `const` parameters, open array parameters, `Include`/`Exclude` (TP 7
-   additions). (`PChar` and `Assigned` are done, in tier 2.) A `PChar` kept
-   into a `Char` array (`P := A`), and `WinDos`
+   additions). (`PChar`, `Assigned` and `WinDos` are done, in tier 2.) A
+   `PChar` kept into a `Char` array (`P := A`)
 10. Vector (stroked) BGI fonts, `RegisterBGIfont`, custom drivers
 11. `Overlay` unit: parse and ignore
 12. `absolute` variables when both are scalars of the same size

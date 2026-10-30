@@ -125,7 +125,9 @@ fn unit_record(rust_name: &str, fields: &[(&str, Type)]) -> Type {
 }
 
 /// `Graph`'s record types.
-pub fn graph_record(name: &str) -> Option<Type> {
+/// A record type a unit declares (`Graph`'s and `WinDos`'s), by its
+/// lowercase name.
+pub fn record_type(name: &str) -> Option<Type> {
     let (int, word) = (Type::Int(IntKind::Integer), Type::Int(IntKind::Word));
     let ints = |names: &[&'static str]| names.iter().map(|&n| (n, int.clone())).collect::<Vec<_>>();
     let words = |names: &[&'static str]| names.iter().map(|&n| (n, word.clone())).collect::<Vec<_>>();
@@ -151,6 +153,28 @@ pub fn graph_record(name: &str) -> Option<Type> {
             let mut fields = ints(&["x1", "y1", "x2", "y2"]);
             fields.push(("Clip", Type::Bool));
             unit_record("ViewPortType", &fields)
+        }
+        // `WinDos`'s `SearchRec`, with the name as a C-style string.
+        "tsearchrec" => {
+            let array = |lo, hi, elem| {
+                Type::Array(std::rc::Rc::new(super::types::ArrayType {
+                    index: Type::Int(IntKind::Integer),
+                    lo,
+                    hi,
+                    elem,
+                    alias: None,
+                }))
+            };
+            unit_record(
+                "TSearchRec",
+                &[
+                    ("Fill", array(1, 21, Type::Int(IntKind::Byte))),
+                    ("Attr", Type::Int(IntKind::Byte)),
+                    ("Time", Type::Int(IntKind::LongInt)),
+                    ("Size", Type::Int(IntKind::LongInt)),
+                    ("Name", array(0, 12, Type::Char)),
+                ],
+            )
         }
         _ => return None,
     })
@@ -339,6 +363,77 @@ pub static DOS_CONSTS: &[UnitConst] = &[
 ];
 
 static DOS_GROUPS: &[&[UnitConst]] = &[DOS_CONSTS];
+
+/// `WinDos` (TP 7): the `Dos` unit with C-style strings (`PChar`), for code
+/// shared with Windows programs. The routines without strings are `Dos`'s
+/// own; the others wrap theirs. `TDateTime` and `TRegisters` are `Dos`'s
+/// `DateTime` and `Registers`. (The `PChar` functions return their first
+/// argument, except `GetEnvVar`: see `Checker::pchar_sources`.)
+pub static WINDOS: &[UnitRoutine] = &[
+    routine!("gettime" => "get_time"(VarWord, VarWord, VarWord, VarWord)),
+    routine!("getdate" => "get_date"(VarWord, VarWord, VarWord, VarWord)),
+    routine!("settime" => "set_time"(Int, Int, Int, Int)),
+    routine!("setdate" => "set_date"(Int, Int, Int)),
+    routine!("getftime" => "get_f_time"(VarFile, VarLongInt)),
+    routine!("setftime" => "set_f_time"(VarFile, Int)),
+    routine!("getfattr" => "get_f_attr"(VarFile, VarWord)),
+    routine!("setfattr" => "set_f_attr"(VarFile, Int)),
+    routine!("packtime" => "pack_time"(VarDateTime, VarLongInt)),
+    routine!("unpacktime" => "unpack_time"(Int, VarDateTime)),
+    routine!("dosversion" => "dos_version"() -> Word),
+    routine!("disksize" => "disk_size"(Int) -> LongInt),
+    routine!("diskfree" => "disk_free"(Int) -> LongInt),
+    routine!("getcbreak" => "get_cbreak"(VarBool)),
+    routine!("setcbreak" => "set_cbreak"(Bool)),
+    routine!("getverify" => "get_verify"(VarBool)),
+    routine!("setverify" => "set_verify"(Bool)),
+    routine!("getintvec" => "get_int_vec"(Int, VarPointer)),
+    routine!("setintvec" => "set_int_vec"(Int, Pointer)),
+    routine!("findfirst" => "win_find_first"(PChar, Int, VarRecord("tsearchrec"))),
+    routine!("findnext" => "win_find_next"(VarRecord("tsearchrec"))),
+    routine!("fileexpand" => "file_expand"(PCharDest, PChar) -> PChar),
+    routine!("filesearch" => "file_search"(PCharDest, PChar, PChar) -> PChar),
+    routine!("filesplit" => "file_split"(PChar, PCharDest, PCharDest, PCharDest) -> Word),
+    routine!("getcurdir" => "get_cur_dir"(PCharDest, Int) -> PChar),
+    routine!("setcurdir" => "set_cur_dir"(PChar)),
+    routine!("createdir" => "create_dir"(PChar)),
+    routine!("removedir" => "remove_dir"(PChar)),
+    routine!("getargcount" => "get_arg_count"() -> Integer),
+    routine!("getargstr" => "get_arg_str"(PCharDest, Int, Int) -> PChar),
+    routine!("getenvvar" => "get_env_var"(PChar) -> PChar),
+    routine!("intr" => refused "it calls a DOS or BIOS interrupt, which needs real DOS"),
+    routine!("msdos" => refused "it calls DOS itself (interrupt 21h), which needs real DOS"),
+];
+
+pub static WINDOS_CONSTS: &[UnitConst] = &[
+    ("fareadonly", "FA_READ_ONLY", 0x01),
+    ("fahidden", "FA_HIDDEN", 0x02),
+    ("fasysfile", "FA_SYS_FILE", 0x04),
+    ("favolumeid", "FA_VOLUME_ID", 0x08),
+    ("fadirectory", "FA_DIRECTORY", 0x10),
+    ("faarchive", "FA_ARCHIVE", 0x20),
+    ("faanyfile", "FA_ANY_FILE", 0x3F),
+    ("fmclosed", "FM_CLOSED", 0xD7B0),
+    ("fminput", "FM_INPUT", 0xD7B1),
+    ("fmoutput", "FM_OUTPUT", 0xD7B2),
+    ("fminout", "FM_IN_OUT", 0xD7B3),
+    ("fspathname", "FS_PATH_NAME", 79),
+    ("fsdirectory", "FS_DIRECTORY", 67),
+    ("fsfilename", "FS_FILE_NAME", 8),
+    ("fsextension", "FS_EXTENSION", 4),
+    ("fcextension", "FC_EXTENSION", 0x01),
+    ("fcfilename", "FC_FILE_NAME", 0x02),
+    ("fcdirectory", "FC_DIRECTORY", 0x04),
+    ("fcwildcards", "FC_WILDCARDS", 0x08),
+    ("fcarry", "F_CARRY", 0x0001),
+    ("fparity", "F_PARITY", 0x0004),
+    ("fauxiliary", "F_AUXILIARY", 0x0010),
+    ("fzero", "F_ZERO", 0x0040),
+    ("fsign", "F_SIGN", 0x0080),
+    ("foverflow", "F_OVERFLOW", 0x0800),
+];
+
+static WINDOS_GROUPS: &[&[UnitConst]] = &[WINDOS_CONSTS];
 
 pub static CRT_CONSTS: &[UnitConst] = &[
     ("blink", "BLINK", 128),
@@ -567,7 +662,7 @@ pub fn unit_vars(name: &str) -> &'static [UnitVar] {
             UnitVar { name: "checksnow", ty: Ret::Bool, get: "check_snow", set: "set_check_snow" },
             UnitVar { name: "directvideo", ty: Ret::Bool, get: "direct_video", set: "set_direct_video" },
         ],
-        "dos" => &[UnitVar { name: "doserror", ty: Ret::Integer, get: "dos_error", set: "set_dos_error" }],
+        "dos" | "windos" => &[UnitVar { name: "doserror", ty: Ret::Integer, get: "dos_error", set: "set_dos_error" }],
         "overlay" => &[
             UnitVar { name: "ovrresult", ty: Ret::Integer, get: "ovr_result", set: "set_ovr_result" },
             UnitVar { name: "ovrfilemode", ty: Ret::Byte, get: "ovr_file_mode", set: "set_ovr_file_mode" },
@@ -595,6 +690,11 @@ pub fn unit_bools(name: &str) -> &'static [(&'static str, &'static str, bool)] {
 /// types sized for DOS's path limits.
 pub fn unit_types(name: &str) -> Vec<(&'static str, Type)> {
     match name {
+        "windos" => vec![
+            ("tsearchrec", record_type("tsearchrec").expect("TSearchRec")),
+            ("tdatetime", date_time_type()),
+            ("tregisters", registers_type()),
+        ],
         "dos" => vec![
             ("pathstr", Type::Str { cap: 79 }),
             ("dirstr", Type::Str { cap: 67 }),
@@ -615,7 +715,7 @@ pub fn unit_types(name: &str) -> Vec<(&'static str, Type)> {
                 "viewporttype",
                 "palettetype",
             ] {
-                types.push((name, graph_record(name).expect("a Graph record")));
+                types.push((name, record_type(name).expect("a Graph record")));
             }
             types
         }
@@ -638,6 +738,7 @@ pub fn unit(name: &str) -> Option<(&'static [UnitRoutine], &'static [&'static [U
         "printer" => Some((&[], &[])),
         "overlay" => Some((OVERLAY, &[])),
         "strings" => Some((STRINGS, &[])),
+        "windos" => Some((WINDOS, WINDOS_GROUPS)),
         _ => None,
     }
 }

@@ -1,0 +1,22 @@
+ok: FileSplit flags
+ok: FileSplit parts
+ok: FileSplit wildcards, nil parts
+ok: FileExpand
+ok: FileSearch, not found
+ok: CreateDir
+ok: CreateDir of an existing directory: DosError 5
+ok: FindFirst with TSearchRec
+ok: FindNext: no more files
+ok: FindFirst: none
+ok: GetCurDir is GetDir
+ok: SetCurDir (GetCurDir in capitals, as DOS)
+ok: RemoveDir
+ok: RemoveDir of a missing directory: DosError 3
+ok: SetCurDir of a missing directory: DosError 3
+ok: GetArgCount
+ok: GetArgStr with MaxLen
+ok: GetEnvVar, not set
+ok: GetEnvVar
+ok: PackTime and UnpackTime with TDateTime
+ok: constants
+21 of 21 checks passed

@@ -856,6 +856,12 @@ window meanwhile (§19).
   ever called. Installing the program's own handler (`SetIntVec(n,
   @Handler)`) gives a translation-time warning; putting back a saved
   vector doesn't.
+- **WinDos** (TP 7, in the `dos` feature): the routines without strings
+  are the `Dos` unit's own (the same `units.rs` entries); the ones with
+  `PChar`s wrap theirs (`file_expand` is `str_p_copy(dest,
+  f_expand(str_pas(name)))`), and `TSearchRec` goes through a `SearchRec`
+  to reuse `FindFirst`'s search. Its directory routines report errors in
+  `DosError`, not as runtime errors, as TP's did.
 - **Graph** (`feature = "graph"`): a software-rendered BGI emulation. A
   640x480 framebuffer of colour *numbers* (`Vec<u8>`) plus a 16-entry EGA
   palette, Bresenham lines (styles, thickness, XOR mode), arcs and ellipses

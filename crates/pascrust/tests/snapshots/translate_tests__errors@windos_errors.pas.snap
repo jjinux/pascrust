@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/windos_errors.pas
+---
+windos_errors.pas:14:31: error: expected a TSearchRec variable, found Integer
+  FindFirst('*.*', faAnyFile, n);
+                              ^
+
+windos_errors.pas:15:3: error: PascRust can't run `Intr`: it calls a DOS or BIOS interrupt, which needs real DOS
+  Intr($21, r);
+  ^^^^^^^^^^^^
+
+windos_errors.pas:12:8: error: this keeps a PChar into a Char array, which PascRust can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead
+  p := FileExpand(buf, 'x');
+       ^^^^^^^^^^^^^^^^^^^^

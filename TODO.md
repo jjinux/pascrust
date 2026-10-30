@@ -255,7 +255,8 @@ Last: raw bytes and C strings
 - [ ] Question for the user (from a Fable review): is the directory the program starts in a drive's root? `GetDir` calls it `C:\`, and `FindFirst('A:*.*')` there lists no `.`/`..`, but `FindFirst('*.*')` there does (the `find_files` test expects that). DOS would list neither in a root.
 - [x] Untyped files (`file` without `of`) with `BlockRead`/`BlockWrite`, and untyped `var` parameters, as byte views of records and arrays (with `SizeOf`).
 - [x] `PChar` and the `Strings` unit, as a byte buffer plus an offset; a `Char` array used as a `PChar` is lent a copy for the statement, and keeping a `PChar` into one is a compile error (the user chose this over shared arrays, 2026-10-29).
-- [ ] `WinDos` (the `Dos` routines with `PChar` arguments; mostly aliases), and `Read`/`Str`/`Val`/`Assign`/`Rename` on `Char` arrays and `PChar`s (TP 7's extended syntax).
+- [x] `WinDos`: the `Dos` routines, and wrappers with `PChar` strings.
+- [ ] `Read`/`Str`/`Val`/`Assign`/`Rename` on `Char` arrays and `PChar`s (TP 7's extended syntax).
 - [ ] Skip: `Graph3` and `Turbo3` (Turbo Pascal 3.0 compatibility).
 
 ## Phase 8: Tier 3 and FFI (as interest dictates)

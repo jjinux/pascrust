@@ -42,7 +42,7 @@ impl Generated {
 
 /// The units Turbo Pascal provides itself; everything else in a `uses`
 /// clause must be a `.pas` file next to the program.
-const STANDARD_UNITS: &[&str] = &["system", "crt", "dos", "graph", "printer", "overlay", "strings"];
+const STANDARD_UNITS: &[&str] = &["system", "crt", "dos", "graph", "printer", "overlay", "strings", "windos"];
 
 /// Transpile the Pascal program at `path`, together with every unit it uses.
 /// Errors come back already rendered for printing, with file names, line
@@ -127,6 +127,8 @@ fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[Str
         .iter()
         .chain(units.iter().flat_map(|u| u.uses()))
         .map(|u| u.key())
+        // `WinDos` is in the runtime's `Dos` code.
+        .map(|u| if u == "windos" { "dos".to_string() } else { u })
         .filter(|u| matches!(u.as_str(), "crt" | "dos" | "graph"))
         .collect();
     features.sort();

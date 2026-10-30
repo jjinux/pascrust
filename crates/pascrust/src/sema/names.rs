@@ -194,7 +194,7 @@ mod tests {
     /// `SetTextAttr` must be renamed rather than take its place.
     #[test]
     fn runtime_setters_are_reserved() {
-        for unit in ["crt", "dos", "graph", "overlay"] {
+        for unit in ["crt", "dos", "graph", "overlay", "windos"] {
             for var in crate::sema::units::unit_vars(unit) {
                 assert!(RESERVED.contains(&var.set), "{} is not reserved", var.set);
             }
