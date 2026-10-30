@@ -251,7 +251,7 @@ Graph, the rest
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to d1097cb (batches A-D). Not yet reviewed: `d1097cb..HEAD` (nested variant parts, procedural types). Keep this range up to date.
-- [ ] Findings of review batch D (697e1d1..d1097cb), to fix:
+- [x] Findings of review batch D (697e1d1..d1097cb), fixed:
   - [x] A routine that changes a lent Char array through a `var` argument or as a method isn't run first (check_lends looks at captures only; use the call site's var_args too).
   - [x] A record or enum field in a tagless variant part doesn't compile (its type needs a FileRecord: register it); then a nested setter that reads its own record needs the value in a `let` first.
   - [x] Insert/Delete/FillChar on a `string[n]` field of a tagless part, and `Delete(p^, ...)`: `place()`'s leading `*` before a method; and `S4(data) := t + 'z'` needs parentheses in `write_string(&(...), n)`.
