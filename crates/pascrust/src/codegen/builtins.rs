@@ -397,7 +397,12 @@ impl<'a> Codegen<'a> {
                     let place = place.strip_prefix('*').unwrap_or(&place);
                     return format!("set_chars({place}.as_mut_slice(), pas_str({value}));");
                 }
-                format!("{place} = pas_str({value});")
+                // Into a `string[n]`, the text is cut to fit, as in an
+                // assignment.
+                match ty(self, &args[1]) {
+                    Type::Str { cap } if cap < 255 => format!("{place} = pas_str({value}).truncated({cap});"),
+                    _ => format!("{place} = pas_str({value});"),
+                }
             }
             Val => {
                 let s = self.string_arg(&args[0]);
