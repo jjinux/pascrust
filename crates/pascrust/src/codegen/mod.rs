@@ -684,10 +684,6 @@ impl<'a> Codegen<'a> {
     /// variants share the bytes after the fixed fields, so a file holds the
     /// fields of the variant the tag selects, padded to the largest one.
     fn file_record_variants(&mut self, r: &RecordType, part: &VariantPart) -> String {
-        // A part kept as bytes is stored as those bytes.
-        if part.bytes {
-            return ", variants".to_string();
-        }
         let Some(tag) = part.tag else { return String::new() };
         let area = r.variant_area().unwrap_or(0);
         let tag_name = &r.fields[tag].rust_name;
@@ -748,8 +744,13 @@ impl<'a> Codegen<'a> {
         match ty {
             Type::Enum(e) => self.line(format!("file_record!(enum {});", e.rust_name)),
             Type::Record(r) => {
-                let fields: Vec<String> = r.fixed_fields().iter().map(file_record_field).collect();
+                let mut fields: Vec<String> = r.fixed_fields().iter().map(file_record_field).collect();
                 let variant = match &r.variant {
+                    // A part kept as bytes is stored as those bytes.
+                    Some(part) if part.bytes => {
+                        fields.push("variants".to_string());
+                        String::new()
+                    }
                     Some(part) => self.file_record_variants(r, part),
                     None => String::new(),
                 };
@@ -1985,10 +1986,19 @@ impl<'a> Codegen<'a> {
             && let Type::Record(r) = self.a.type_of(base.id).clone()
             && let Some((f, _)) = r.byte_field(&field.name)
         {
+            // A value that reads the same record (`p.I2.Hi := p.I2.Hi + 1`)
+            // is worked out first: the receiver may hold a guard on it.
+            let value_code = self.coerce(value, &f.ty).0;
+            let value_code = if expr::mentions(value, &expr::root_key(target)) && self.through_byte_field(base) {
+                self.pending.push(format!("let value = {value_code};"));
+                "value".to_string()
+            } else {
+                value_code
+            };
             let saved = std::mem::replace(&mut self.mutable_place, true);
             let receiver = self.selector_base(base);
             self.mutable_place = saved;
-            return format!("{receiver}.set_{}({});", f.rust_name, self.coerce(value, &f.ty).0);
+            return format!("{receiver}.set_{}({value_code});", f.rust_name);
         }
         // `P[i] := C` and `P^ := C` set a character through a `PChar`.
         if let ExprKind::Index(base, _) | ExprKind::Deref(base) = &target.kind

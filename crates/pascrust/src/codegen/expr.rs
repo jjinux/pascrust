@@ -728,6 +728,16 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// Does the place `e` go through a field kept in a variant part's bytes
+    /// (`p.I2` in `p.I2.Hi`), whose `_mut()` guard borrows the record?
+    pub(super) fn through_byte_field(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Field(base, _) => self.is_byte_field(e) || self.through_byte_field(base),
+            ExprKind::Index(base, _) | ExprKind::Deref(base) => self.through_byte_field(base),
+            _ => false,
+        }
+    }
+
     /// Is `e` a field kept in a variant part's bytes (`p.Lo`)?
     pub(super) fn is_byte_field(&self, e: &Expr) -> bool {
         matches!(&e.kind, ExprKind::Field(base, field)
@@ -1507,7 +1517,7 @@ fn wrap_with_mut(call: String, records: Vec<(String, String)>) -> String {
 
 /// The lowercase name of the variable a place starts from (`a` for
 /// `a[i].x`), or empty.
-fn root_key(e: &Expr) -> String {
+pub(super) fn root_key(e: &Expr) -> String {
     match &e.kind {
         ExprKind::Name(id) => id.key(),
         ExprKind::Field(base, _) | ExprKind::Index(base, _) | ExprKind::Deref(base) => root_key(base),
@@ -1516,7 +1526,7 @@ fn root_key(e: &Expr) -> String {
 }
 
 /// Does the expression mention the name `key` anywhere?
-fn mentions(e: &Expr, key: &str) -> bool {
+pub(super) fn mentions(e: &Expr, key: &str) -> bool {
     match &e.kind {
         ExprKind::Name(id) => id.key() == key,
         ExprKind::Field(base, _) | ExprKind::Deref(base) => mentions(base, key),

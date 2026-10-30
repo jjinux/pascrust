@@ -252,8 +252,8 @@ Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to d1097cb (batches A-D). Not yet reviewed: `d1097cb..HEAD` (nested variant parts, procedural types). Keep this range up to date.
 - [ ] Findings of review batch D (697e1d1..d1097cb), to fix:
-  - [ ] A routine that changes a lent Char array through a `var` argument or as a method isn't run first (check_lends looks at captures only; use the call site's var_args too).
-  - [ ] A record or enum field in a tagless variant part doesn't compile (its type needs a FileRecord: register it); then a nested setter that reads its own record needs the value in a `let` first.
+  - [x] A routine that changes a lent Char array through a `var` argument or as a method isn't run first (check_lends looks at captures only; use the call site's var_args too).
+  - [x] A record or enum field in a tagless variant part doesn't compile (its type needs a FileRecord: register it); then a nested setter that reads its own record needs the value in a `let` first.
   - [ ] Insert/Delete/FillChar on a `string[n]` field of a tagless part, and `Delete(p^, ...)`: `place()`'s leading `*` before a method; and `S4(data) := t + 'z'` needs parentheses in `write_string(&(...), n)`.
   - [ ] An index inside a byte-field place is evaluated as a mutable place (`p.B[p.B[0]] := 9` borrows `p` twice).
   - [ ] Sets of a subrange take 32 bytes in SizeOf, byte views and files; TP sizes them by range (`(Max div 8) - (Min div 8) + 1`).
@@ -277,7 +277,7 @@ Last: raw bytes and C strings
 - [ ] Argument order in `Inc(a[Pick], Bump)`: PascRust runs `Pick` before `Bump`, Free Pascal `Bump` first (from the Fable review of 99e4f09). TP doesn't document it; obscure.
 - [ ] Hex constants as TP reads them: a 32-bit `$AABBCCDD` is a `LongInt` bit pattern (`$FFFFFFFF` is -1); PascRust says it's out of range.
 - [ ] An anonymous record type is named `Record` in Rust (`fn pair(&self) -> Record`); naming it after its field (`Pair`) would read better.
-- [ ] Field names needn't avoid the runtime's function names: a field `W` becomes `w_` because `w` is the runtime's width helper, but a struct field can't clash with a function.
+- [x] Field names needn't avoid the runtime's function names (done: `names::field_name` escapes only Rust keywords): a field `W` becomes `w_` because `w` is the runtime's width helper, but a struct field can't clash with a function.
 - [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, docs/architecture.md §16), and `TypeOf`.
 - [ ] Procedural types and procedure parameters.
 - [ ] Structured `goto` (forward jumps out of loops → labeled `break`).

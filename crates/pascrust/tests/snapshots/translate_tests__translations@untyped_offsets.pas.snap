@@ -31,7 +31,7 @@ struct Fig {
     x: i16,
     kind: i16,
     r: i16,
-    w_: i16,
+    w: i16,
     h: i16,
 }
 
@@ -39,7 +39,7 @@ struct Fig {
 // implements that (the `FileRecord` trait) field by field.
 // A variant record keeps one variant in a file: the one `kind` selects,
 // padded with zeros to the 4 bytes the variants share in TP.
-file_record!(Fig { x, kind; case kind: 4 { 0 => [r], 1 => [w_, h], _ => [] } });
+file_record!(Fig { x, kind; case kind: 4 { 0 => [r], 1 => [w, h], _ => [] } });
 
 /// Pascal: `procedure Dump(var Data; Size: Word);`
 fn dump(data: &mut dyn ByteView, size: u16) {
@@ -77,7 +77,7 @@ fn pascal_main() {
     dump(&mut bytes_from(&mut words, (i as i64 - 1) * 2), 2);
     f.x = 1;
     f.kind = 1;
-    f.w_ = 7;
+    f.w = 7;
     f.h = 9;
     dump(&mut bytes_from(&mut f, 6), 2);
     move_bytes(bytes_after(&words.to_bytes(), (i as i64 - 1) * 2), &mut out, 2);

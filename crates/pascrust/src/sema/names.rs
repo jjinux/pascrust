@@ -61,62 +61,33 @@ pub fn camel_case(name: &str) -> String {
     escape(joined)
 }
 
-/// Rust keywords, plus names our generated code and runtime prelude use.
-/// A Pascal identifier that collides gets a trailing underscore.
-const RESERVED: &[&str] = &[
-    "as",
-    "async",
-    "await",
-    "break",
-    "const",
-    "continue",
-    "crate",
-    "dyn",
-    "else",
-    "enum",
-    "extern",
-    "false",
-    "fn",
-    "for",
-    "gen",
-    "if",
-    "impl",
-    "in",
-    "let",
-    "loop",
-    "match",
-    "mod",
-    "move",
-    "mut",
-    "pub",
-    "ref",
-    "return",
-    "self",
-    "Self",
-    "static",
-    "struct",
-    "super",
-    "trait",
-    "true",
-    "type",
-    "unsafe",
-    "use",
-    "where",
-    "while",
-    "abstract",
-    "become",
-    "box",
-    "do",
-    "final",
-    "macro",
-    "override",
-    "priv",
-    "typeof",
-    "unsized",
-    "virtual",
-    "yield",
-    "try",
+/// A record field's Rust name: snake case, with a trailing underscore only
+/// for a Rust keyword. (A field can't clash with a function or type, so
+/// the runtime's names don't matter: a field `W` stays `w`.)
+pub fn field_name(name: &str) -> String {
+    let name = words(name).join("_");
+    if name.is_empty() {
+        "_".to_string()
+    } else if KEYWORDS.contains(&name.as_str()) || name.starts_with(|c: char| c.is_ascii_digit()) {
+        name + "_"
+    } else {
+        name
+    }
+}
+
+/// Rust keywords. A Pascal identifier that is one gets a trailing
+/// underscore.
+const KEYWORDS: &[&str] = &[
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false", "fn",
+    "for", "gen", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self",
+    "Self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use", "where", "while", "abstract",
+    "become", "box", "do", "final", "macro", "override", "priv", "typeof", "unsized", "virtual", "yield", "try",
     "union",
+];
+
+/// Names our generated code and runtime prelude use, which a Pascal name
+/// mustn't shadow either (a trailing underscore too).
+const RESERVED: &[&str] = &[
     "main",
     "pascal_main",
     "result",
@@ -183,7 +154,10 @@ const RESERVED: &[&str] = &[
 fn escape(name: String) -> String {
     if name.is_empty() {
         "_".to_string()
-    } else if RESERVED.contains(&name.as_str()) || name.starts_with(|c: char| c.is_ascii_digit()) {
+    } else if KEYWORDS.contains(&name.as_str())
+        || RESERVED.contains(&name.as_str())
+        || name.starts_with(|c: char| c.is_ascii_digit())
+    {
         name + "_"
     } else {
         name

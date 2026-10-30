@@ -55,13 +55,13 @@ struct Fig {
     y: i16,
     kind: Shape,
     r: i16,
-    w_: i16,
+    w: i16,
     h: i16,
 }
 
 // A variant record keeps one variant in a file: the one `kind` selects,
 // padded with zeros to the 4 bytes the variants share in TP.
-file_record!(Fig { x, y, kind; case kind: 4 { Shape::Circle => [r], Shape::Rect => [w_, h], Shape::Dot => [] } });
+file_record!(Fig { x, y, kind; case kind: 4 { Shape::Circle => [r], Shape::Rect => [w, h], Shape::Dot => [] } });
 
 /// Pascal: `Account = record ... end`
 ///
@@ -90,7 +90,7 @@ fn area(fig: Fig) -> i16 {
             result = 3 * fig.r * fig.r;
         }
         Shape::Rect => {
-            result = fig.w_ * fig.h;
+            result = fig.w * fig.h;
         }
         _ => {
             result = 0;
@@ -110,11 +110,11 @@ fn pascal_main() {
     f.x = 1;
     f.y = 2;
     f.kind = Shape::Rect;
-    f.w_ = 3;
+    f.w = 3;
     f.h = 4;
     pwriteln!(area(f), " ", 9);
     // Pascal `with`: Rust has no equivalent, so each field is written out in full.
-    pwriteln!(f.x + f.y + f.w_);
+    pwriteln!(f.x + f.y + f.w);
     grow(&mut f.h);
     pwriteln!(area(f));
     pwriteln!(area(unit_circle), " ", unit_circle.kind as i16);
@@ -133,7 +133,7 @@ fn pascal_main() {
     fl.close();
     fl.reset();
     fl.read(&mut g);
-    pwriteln!(g.kind as i16, " ", g.w_, " ", g.h);
+    pwriteln!(g.kind as i16, " ", g.w, " ", g.h);
     fl.read(&mut g);
     pwriteln!(g.kind as i16, " ", g.r, " ", area(g));
     fl.read(&mut g);

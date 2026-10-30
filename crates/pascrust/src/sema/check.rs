@@ -723,7 +723,7 @@ impl Checker {
             let ty = self.resolve_type(&group.ty);
             for n in &group.names {
                 // A descendant keeps its parent's part in a field `base`.
-                let mut rust_name = snake_case(&n.name);
+                let mut rust_name = names::field_name(&n.name);
                 if rust_name == "base" {
                     rust_name.push('_');
                 }
@@ -1143,7 +1143,7 @@ impl Checker {
         if resolved.iter().any(|f| f.name.eq_ignore_ascii_case(&name.name)) {
             self.error(name.span, format!("duplicate field `{}`", name.name));
         }
-        resolved.push(Field { name: name.name.clone(), rust_name: snake_case(&name.name), ty });
+        resolved.push(Field { name: name.name.clone(), rust_name: names::field_name(&name.name), ty });
     }
 
     /// A record's variant part: its tag becomes a field, and so do the
