@@ -136,15 +136,33 @@ pub(super) fn lift(a: &mut Analysis) {
 /// Pascal they can't clash (an inner declaration hides the outer one), but a
 /// procedure may still need to pass a hidden outer variable through to
 /// something it calls. Inside that procedure, the captured variable gets
-/// another name (`global_count`); everywhere else it keeps its own.
+/// another name (`global_count`); everywhere else it keeps its own. Two
+/// captures can share a name too (the global `count`, passed on, and the
+/// parent's local `count`): as in Pascal's scopes, the innermost keeps it.
 fn rename_clashing_captures(a: &mut Analysis) {
+    // How deeply a procedure is nested: the main program is 0.
+    let depth = |a: &Analysis, mut p: ProcId| {
+        let mut n = 0;
+        while let Some(parent) = a.procs[p].parent {
+            n += 1;
+            p = parent;
+        }
+        n
+    };
     for p in 0..a.procs.len() {
         let own: HashSet<String> =
             a.procs[p].params.iter().chain(&a.procs[p].locals).map(|&s| a.sym(s).rust_name.clone()).collect();
-        for cap in a.procs[p].captures.clone() {
+        let captures = a.procs[p].captures.clone();
+        for cap in &captures {
             let name = a.sym(cap.sym).rust_name.clone();
-            if own.contains(&name) {
-                let owner = a.var(cap.sym).owner;
+            let owner = a.var(cap.sym).owner;
+            // Hidden by another capture of the same name declared further in.
+            let hidden = captures.iter().any(|other| {
+                other.sym != cap.sym
+                    && a.sym(other.sym).rust_name == name
+                    && depth(a, a.var(other.sym).owner) > depth(a, owner)
+            });
+            if own.contains(&name) || hidden {
                 let renamed = if owner == MAIN {
                     format!("global_{name}")
                 } else {
