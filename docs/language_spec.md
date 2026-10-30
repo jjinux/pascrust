@@ -176,7 +176,7 @@ Built-ins (System unit)
 - Variant records with a tag field (`case Kind: Shape of Circle: (R:
   Integer); Rect: (W, H: Integer)`): every variant's fields can be set and
   read, through `with` and as `var` arguments; labels are checked like
-  `case` labels; a typed constant gives one variant's fields and the tag.
+  `case` labels; a typed constant gives the tag and the fields of the variant it selects.
   `SizeOf` and `file of` use TP's layout, where the variants share the
   bytes after the fixed fields: a file stores the variant the tag selects.
   Reading another variant's field gives its own last value, not the bytes

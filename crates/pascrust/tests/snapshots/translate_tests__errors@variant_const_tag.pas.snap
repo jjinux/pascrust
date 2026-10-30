@@ -1,0 +1,12 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/variant_const_tag.pas
+---
+variant_const_tag.pas:18:20: error: this value of `Kind` selects another variant than the fields given
+  R: TRec = (Kind: 0; B: 'x');
+                   ^
+
+variant_const_tag.pas:19:17: error: this value of `S` selects another variant than the fields given
+  F: TFig = (S: Square; Radius: 3);
+                ^^^^^^

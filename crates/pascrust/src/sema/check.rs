@@ -663,6 +663,24 @@ impl Checker {
                     } else if !chosen.is_empty() && !tag_given {
                         let tag = &r.fields[part.tag.unwrap()].name;
                         self.error(*span, format!("a constant of a variant record gives its tag (`{tag}`) too"));
+                    } else if let [variant] = chosen[..]
+                        && let Some(tag) = part.tag
+                        && let Some((name, ConstValue::Expr(e))) =
+                            fields.iter().find(|(name, _)| index(name) == Some(tag))
+                    {
+                        // ...and the fields are those of the variant its tag selects.
+                        let ord = match self.eval_const(e) {
+                            Some(ConstVal::Int(n)) => Some(n),
+                            Some(ConstVal::Bool(b)) => Some(b as i64),
+                            Some(ConstVal::Str(bytes)) if bytes.len() == 1 => Some(bytes[0] as i64),
+                            _ => None,
+                        };
+                        if ord.is_some_and(|ord| !part.variants[variant].labels.contains(&ord)) {
+                            self.error(
+                                e.span,
+                                format!("this value of `{}` selects another variant than the fields given", name.name),
+                            );
+                        }
                     }
                 }
             }
