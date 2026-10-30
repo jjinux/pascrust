@@ -714,7 +714,10 @@ union of their globals (the trick `dispatch` uses for virtual methods),
 and `check_aliasing` sees a global passed by `var` through a value whose
 routines use it. Classes and their routines are kept out of
 `find_param_aliases`, which could otherwise drop a global from one
-signature. Sema decides where a routine's name is a value rather than a
+signature. A program routine kept in a unit's procedural type puts the
+program's globals in the unit's signature, so the unit's module imports
+the program's types that it names (`use crate::Stats;`: the program is the
+crate root, whose private items its modules see). Sema decides where a routine's name is a value rather than a
 call (`proc_value`: the right side of `:=` to a procedural place, an
 argument for a procedural parameter, a typed constant), as TP's rule
 says; elsewhere a parameterless function value is called.
