@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 use crate::ast::*;
 use crate::diag::{SourceMap, Span};
-use crate::sema::types::{ObjectType, RecordType, VariantPart};
+use crate::sema::types::{ObjectType, RecordType, VariantPart, tp_size};
 use crate::sema::{Access, Analysis, Builtin, CaptureMode, MAIN, ProcId, SymId, SymKind, Type, VarRole};
 
 /// Generate the Rust source for a program and its units: one file per
@@ -453,6 +453,15 @@ impl<'a> Codegen<'a> {
             }
             self.line(format!("/// Pascal: `{text}`"));
             if let Type::Record(r) = ty
+                && r.variant.as_ref().is_some_and(|part| part.bytes)
+            {
+                self.line("///");
+                self.line("/// A variant part without a tag field: TP programs use one to read the same");
+                self.line("/// bytes as different types (set one variant's field, read another's). So");
+                self.line("/// the record keeps those bytes, in TP's layout, and each of the variants'");
+                self.line("/// fields reads or writes its slice of them.");
+            }
+            if let Type::Record(r) = ty
                 && let Some(part) = &r.variant
                 && let Some(tag) = part.tag
             {
@@ -494,10 +503,17 @@ impl<'a> Codegen<'a> {
                     let derives = if ty.is_copy() { "Clone, Copy, Debug, Default" } else { "Clone, Debug, Default" };
                     self.line(format!("#[derive({derives})]"));
                     self.line(format!("{}struct {} {{", self.vis, r.rust_name));
-                    for field in &r.fields {
+                    for field in r.struct_fields() {
                         self.field_line(field, &groups);
                     }
-                    self.line("}");
+                    if let Some(part) = r.variant.as_ref().filter(|part| part.bytes) {
+                        let size = r.variant_area().unwrap_or(0);
+                        self.line(format!("    {}variants: VariantPart<{size}>,", self.vis));
+                        self.line("}");
+                        self.variant_accessors(r, part);
+                    } else {
+                        self.line("}");
+                    }
                 }
                 Type::Object(o) => {
                     let derives = if ty.is_copy() { "Clone, Copy, Debug, Default" } else { "Clone, Debug, Default" };
@@ -593,10 +609,51 @@ impl<'a> Codegen<'a> {
         found
     }
 
+    /// The methods that stand for the fields kept in a variant part's bytes:
+    /// `lo()` to read, `set_lo(v)` to assign, `lo_mut()` to change in place.
+    fn variant_accessors(&mut self, r: &RecordType, part: &VariantPart) {
+        self.blank();
+        self.line(format!("impl {} {{", r.rust_name));
+        let vis = self.vis;
+        for variant in &part.variants {
+            for (field, offset) in r.fields[variant.fields.clone()].iter().zip(&variant.offsets) {
+                let (name, ty) = (&field.rust_name, field.ty.rust());
+                self.line(format!(
+                    "    // `{}` is bytes {offset} to {}",
+                    field.name,
+                    offset + tp_size(&field.ty).unwrap_or(0)
+                ));
+                // A `string[n]` (or an array of them) needs its capacity:
+                // the `PString` doesn't know it.
+                match string_capacity(&field.ty) {
+                    Some(cap) => {
+                        self.line(format!(
+                            "    {vis}fn {name}(&self) -> {ty} {{ self.variants.get_string({offset}, {cap}) }}"
+                        ));
+                        self.line(format!("    {vis}fn set_{name}(&mut self, {name}: {ty}) {{ self.variants.set_string({offset}, {cap}, {name}) }}"));
+                        self.line(format!("    {vis}fn {name}_mut(&mut self) -> StringField<'_, {ty}> {{ self.variants.string_field({offset}, {cap}) }}"));
+                    }
+                    None => {
+                        self.line(format!("    {vis}fn {name}(&self) -> {ty} {{ self.variants.get({offset}) }}"));
+                        self.line(format!(
+                            "    {vis}fn set_{name}(&mut self, {name}: {ty}) {{ self.variants.set({offset}, {name}) }}"
+                        ));
+                        self.line(format!("    {vis}fn {name}_mut(&mut self) -> VariantField<'_, {ty}> {{ self.variants.field({offset}) }}"));
+                    }
+                }
+            }
+        }
+        self.line("}");
+    }
+
     /// The `case` clause of a variant record's `file_record!`: in TP the
     /// variants share the bytes after the fixed fields, so a file holds the
     /// fields of the variant the tag selects, padded to the largest one.
     fn file_record_variants(&mut self, r: &RecordType, part: &VariantPart) -> String {
+        // A part kept as bytes is stored as those bytes.
+        if part.bytes {
+            return ", variants".to_string();
+        }
         let Some(tag) = part.tag else { return String::new() };
         let area = r.variant_area().unwrap_or(0);
         let tag_name = &r.fields[tag].rust_name;
@@ -1811,6 +1868,17 @@ impl<'a> Codegen<'a> {
         if let Some(bytes) = self.view_cast_guard(target) {
             return format!("{bytes}.write(&{});", self.coerce(value, &target_ty).0);
         }
+        // `p.Lo := 5` for a field kept in a variant part's bytes:
+        // `p.set_lo(5)`.
+        if let ExprKind::Field(base, field) = &target.kind
+            && let Type::Record(r) = self.a.type_of(base.id).clone()
+            && let Some((f, _)) = r.byte_field(&field.name)
+        {
+            let saved = std::mem::replace(&mut self.mutable_place, true);
+            let receiver = self.selector_base(base);
+            self.mutable_place = saved;
+            return format!("{receiver}.set_{}({});", f.rust_name, self.coerce(value, &f.ty).0);
+        }
         // `P[i] := C` and `P^ := C` set a character through a `PChar`.
         if let ExprKind::Index(base, _) | ExprKind::Deref(base) = &target.kind
             && *self.a.type_of(base.id) == Type::PChar
@@ -1948,11 +2016,29 @@ impl<'a> Codegen<'a> {
             }
             (ConstValue::Record(fields, _), Type::Record(r)) => {
                 let mut parts = Vec::new();
+                // Fields kept in a variant part's bytes are set through
+                // their setters, in a block: `{ let mut value = ...;
+                // value.set_l(5); value }`.
+                let mut setters = Vec::new();
                 for (name, value) in fields {
                     let field = r.field(&name.name).expect("sema checked the field names");
-                    parts.push(format!("{}: {}", field.rust_name, self.const_init(value, &field.ty)));
+                    let init = self.const_init(value, &field.ty);
+                    if r.byte_field(&name.name).is_some() {
+                        setters.push(format!("value.set_{}({init});", field.rust_name));
+                    } else {
+                        parts.push(format!("{}: {init}", field.rust_name));
+                    }
                 }
-                if parts.len() < r.fields.len() {
+                if !setters.is_empty() {
+                    parts.push("..Default::default()".to_string());
+                    return format!(
+                        "{{ let mut value = {} {{ {} }}; {} value }}",
+                        r.rust_name,
+                        parts.join(", "),
+                        setters.join(" ")
+                    );
+                }
+                if parts.len() < r.struct_fields().len() {
                     // Struct update syntax: take the remaining fields from
                     // the default value.
                     parts.push("..Default::default()".to_string());
@@ -2031,19 +2117,22 @@ impl Covered {
 /// capacity, so it takes n+1 bytes in the file, and a set smaller than 32
 /// bytes says its size, as in TP (and as `SizeOf` says).
 fn file_record_field(field: &crate::sema::types::Field) -> String {
-    fn capacity(ty: &Type) -> Option<u8> {
-        match ty {
-            Type::Str { cap } => Some(*cap),
-            Type::Array(a) => capacity(&a.elem),
-            _ => None,
-        }
-    }
-    if let Some(cap) = capacity(&field.ty) {
+    if let Some(cap) = string_capacity(&field.ty) {
         return format!("{}: string {cap}", field.rust_name);
     }
     match crate::sema::types::tp_size(&field.ty) {
         Some(bytes) if matches!(field.ty, Type::Set(_)) && bytes < 32 => format!("{}: set {bytes}", field.rust_name),
         _ => field.rust_name.clone(),
+    }
+}
+
+/// The capacity of a `string[n]`, or of the strings in an array of them,
+/// which their bytes depend on.
+fn string_capacity(ty: &Type) -> Option<u8> {
+    match ty {
+        Type::Str { cap } => Some(*cap),
+        Type::Array(a) => string_capacity(&a.elem),
+        _ => None,
     }
 }
 

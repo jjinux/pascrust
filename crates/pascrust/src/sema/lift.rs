@@ -247,7 +247,9 @@ pub(super) fn check_aliasing(a: &Analysis, sites: &[CallSite]) -> Vec<Diagnostic
             if let Some(earlier) = site.var_args[..i].iter().find(|earlier| earlier.overlaps(arg)) {
                 // `a[1]` and `a[2]` may well be different elements, but Rust
                 // can't tell, so say why they count as the same.
-                let why = if earlier.indexed && arg.indexed && earlier.fields == arg.fields {
+                let why = if earlier.variant_bytes && arg.variant_bytes {
+                    " (fields of a variant part without a tag field share its bytes, which Rust borrows as a whole; copy one into a local first)"
+                } else if earlier.indexed && arg.indexed && earlier.fields == arg.fields {
                     " (Rust can't tell that two elements of one array are different)"
                 } else {
                     ""

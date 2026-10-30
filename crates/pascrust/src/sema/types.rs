@@ -192,6 +192,11 @@ pub struct VariantPart {
     pub tag: Option<usize>,
     pub tag_type: Type,
     pub variants: Vec<Variant>,
+    /// A part without a tag kept as TP's bytes (`VariantPart<N>`), each
+    /// field read and written at its offset: how type punning works. A
+    /// tagged part, or one with a field that can't be bytes (a pointer), is
+    /// flattened instead.
+    pub bytes: bool,
 }
 
 /// One variant: the tag values that select it, and its fields (a range of
@@ -200,6 +205,8 @@ pub struct VariantPart {
 pub struct Variant {
     pub labels: Vec<i64>,
     pub fields: std::ops::Range<usize>,
+    /// Where each field starts in the variants' shared bytes.
+    pub offsets: Vec<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -306,6 +313,36 @@ impl RecordType {
         &self.fields[..end]
     }
 
+    /// Where field `index` starts in the variant part's bytes, if it's in a
+    /// part kept as bytes.
+    pub fn byte_offset(&self, index: usize) -> Option<i64> {
+        let part = self.variant.as_ref().filter(|part| part.bytes)?;
+        let variant = part.variants.iter().find(|v| v.fields.contains(&index))?;
+        Some(variant.offsets[index - variant.fields.start])
+    }
+
+    /// The same, by the field's name.
+    pub fn byte_field(&self, name: &str) -> Option<(&Field, i64)> {
+        let index = self.fields.iter().position(|f| f.name.eq_ignore_ascii_case(name))?;
+        Some((&self.fields[index], self.byte_offset(index)?))
+    }
+
+    /// The fields that are struct fields in Rust: all but those kept as
+    /// bytes.
+    pub fn struct_fields(&self) -> &[Field] {
+        match &self.variant {
+            Some(part) if part.bytes => self.fixed_fields(),
+            _ => &self.fields,
+        }
+    }
+
+    /// A tagless variant part with a field that can't be bytes, flattened:
+    /// it can't be stored as bytes (in a file, or seen as untyped memory),
+    /// since nothing says which variant is in use.
+    pub fn unstorable_variants(&self) -> bool {
+        self.variant.as_ref().is_some_and(|part| part.tag.is_none() && !part.bytes)
+    }
+
     /// The bytes the variants share: the largest variant's size, since in
     /// TP they all start at the same place.
     pub fn variant_area(&self) -> Option<i64> {
@@ -375,6 +412,27 @@ impl Type {
             Type::PChar => "PChar".to_string(),
             Type::Set(elem) => format!("PSet<{}>", elem.concrete().rust()),
             Type::Nil | Type::Void | Type::Error => "()".to_string(),
+        }
+    }
+
+    /// A record (or an array or record holding one) with a tagless variant
+    /// part that couldn't be kept as bytes: it can't be stored as bytes.
+    pub fn unstorable_record(&self) -> Option<&RecordType> {
+        match self {
+            Type::Record(r) if r.unstorable_variants() => Some(r),
+            Type::Record(r) => r.fields.iter().find_map(|f| f.ty.unstorable_record()),
+            Type::Array(a) => a.elem.unstorable_record(),
+            _ => None,
+        }
+    }
+
+    /// A set, or an array or record holding one.
+    pub fn contains_set(&self) -> bool {
+        match self {
+            Type::Set(_) => true,
+            Type::Array(a) => a.elem.contains_set(),
+            Type::Record(r) => r.fields.iter().any(|f| f.ty.contains_set()),
+            _ => false,
         }
     }
 

@@ -20,6 +20,7 @@ pub use crate::system::{
     ch_dir, exit_code, file_mode, get_dir, max_avail, mem_avail, mk_dir, param_count, param_str, pas_str, rand_seed,
     random, random_real, random_word, randomize, rm_dir, set_exit_code, set_file_mode, set_rand_seed, val,
 };
+pub use crate::variants::{StringField, VariantField, VariantPart};
 // The `Crt`, `Dos` and `Graph` units, when the program uses them.
 // `#[cfg(feature)]` compiles a line only when that Cargo feature is on.
 #[cfg(any(feature = "crt", feature = "graph"))]

@@ -651,15 +651,21 @@ impl<'a> Codegen<'a> {
                 let saved = std::mem::replace(&mut self.mutable_place, true);
                 let mut code = self.selector(e);
                 self.mutable_place = saved;
-                // A whole record through a pointer, `p^ := ...`: assign
-                // through the `RefMut` guard.
-                if let ExprKind::Deref(_) = e.kind {
+                // A whole record through a pointer, `p^ := ...`, or a field
+                // kept in a variant part's bytes: assign through the guard.
+                if matches!(e.kind, ExprKind::Deref(_)) || self.is_byte_field(e) {
                     code = format!("*{code}");
                 }
                 code
             }
             _ => unreachable!("sema rejects other assignment targets"),
         }
+    }
+
+    /// Is `e` a field kept in a variant part's bytes (`p.Lo`)?
+    pub(super) fn is_byte_field(&self, e: &Expr) -> bool {
+        matches!(&e.kind, ExprKind::Field(base, field)
+            if matches!(self.a.type_of(base.id), Type::Record(r) if r.byte_field(&field.name).is_some()))
     }
 
     /// `record.field` or `array[i][j]`. Pascal's `a[i, j]` becomes Rust's
@@ -684,6 +690,16 @@ impl<'a> Codegen<'a> {
                     }
                     _ => format!("{base_code}.{method}()"),
                 }
+            }
+            // A field kept in a variant part's bytes: its accessor, `p.lo()`
+            // to read it, `p.lo_mut()` (a guard that writes it back) to
+            // change it.
+            ExprKind::Field(base, field)
+                if let Type::Record(r) = self.a.type_of(base.id).clone()
+                    && let Some((f, _)) = r.byte_field(&field.name) =>
+            {
+                let suffix = if self.mutable_place { "_mut" } else { "" };
+                format!("{}.{}{suffix}()", self.selector_base(base), f.rust_name)
             }
             ExprKind::Field(base, field) => {
                 let path = match self.a.type_of(base.id).clone() {

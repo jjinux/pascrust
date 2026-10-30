@@ -91,6 +91,14 @@ pub(super) struct Checker {
     pchar_array_roots: HashMap<NodeId, SymId>,
 }
 
+/// Why a record with a flattened tagless variant part can't be bytes.
+fn unstorable_message(r: &RecordType) -> String {
+    format!(
+        "`{}` has a variant part without a tag field that holds a pointer (or a file), so PascRust keeps each variant separately and can't tell which one to store as bytes",
+        r.rust_name
+    )
+}
+
 /// An untyped parameter, or `p^` of a `Pointer`, has no type of its own.
 const UNTYPED_USE: &str = "an untyped value (an untyped parameter, or `p^` of a `Pointer`) can only be passed on or typecast (`TBytes(Data)`)";
 
@@ -930,8 +938,11 @@ impl Checker {
                 }
                 ty
             }
-            TypeExpr::File(Some(elem), _) => {
-                let elem = self.resolve_type(elem);
+            TypeExpr::File(Some(elem_expr), _) => {
+                let elem = self.resolve_type(elem_expr);
+                if let Some(r) = elem.unstorable_record() {
+                    self.error(elem_expr.span(), unstorable_message(r));
+                }
                 self.a.file_types.push(elem.clone());
                 Type::File(Rc::new(elem))
             }
@@ -1024,12 +1035,10 @@ impl Checker {
         if !tag_type.is_ordinal() && tag_type != Type::Error {
             self.error(v.tag_type.span, format!("a variant part's tag needs an ordinal type, not {tag_type}"));
         }
-        let Some(tag_name) = &v.tag else {
-            self.error(v.span, "a variant part without a tag field (`case Integer of`) is not supported yet");
-            return None;
-        };
-        let tag = resolved.len();
-        self.add_field(tag_name, tag_type.clone(), resolved);
+        let tag = v.tag.as_ref().map(|tag_name| {
+            self.add_field(tag_name, tag_type.clone(), resolved);
+            resolved.len() - 1
+        });
         let mut variants = Vec::new();
         let mut seen: Vec<i64> = Vec::new();
         for arm in &v.variants {
@@ -1059,9 +1068,35 @@ impl Checker {
             }
             let start = resolved.len();
             self.record_fields(&arm.fields, resolved);
-            variants.push(Variant { labels, fields: start..resolved.len() });
+            // Each field's place in the bytes the variants share.
+            let mut offsets = Vec::new();
+            let mut at = 0;
+            for field in &resolved[start..] {
+                offsets.push(at);
+                at += super::types::tp_size(&field.ty).unwrap_or(0);
+            }
+            variants.push(Variant { labels, fields: start..resolved.len(), offsets });
         }
-        Some(VariantPart { tag: Some(tag), tag_type, variants })
+        // Without a tag, the program picks a variant some other way, often
+        // by reading the same bytes as another type: keep TP's bytes, if
+        // every field can be bytes. (A pointer can't: it has no bytes here.)
+        let first = variants.first().map_or(resolved.len(), |v| v.fields.start);
+        let byte_able = |ty: &Type| {
+            super::types::tp_size(ty).is_some()
+                && !matches!(ty, Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Text | Type::File(_))
+                && !ty.contains_set()
+        };
+        let bytes = tag.is_none() && resolved[first..].iter().all(|f| byte_able(&f.ty));
+        if tag.is_none()
+            && !bytes
+            && let Some(set) = resolved[first..].iter().find(|f| f.ty.contains_set())
+        {
+            self.error(
+                v.span,
+                format!("a set in a variant part without a tag field (`{}`) is not supported yet", set.name),
+            );
+        }
+        Some(VariantPart { tag, tag_type, variants, bytes })
     }
 
     /// A unique Rust type name (`CamelCase`) for a Pascal name.
@@ -2310,6 +2345,10 @@ impl Checker {
             self.error(arg.span, format!("a {ty} can't be passed as untyped bytes"));
             return;
         }
+        if let Some(r) = ty.unstorable_record() {
+            self.error(arg.span, unstorable_message(r));
+            return;
+        }
         self.add_view_type(&ty);
         // The bytes run on to the end of the whole variable.
         let mut root = arg;
@@ -2384,6 +2423,18 @@ impl Checker {
             };
         }
         ty
+    }
+
+    /// Does the place `e` go through a field kept in a variant part's bytes?
+    fn through_variant_bytes(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Field(base, field) => {
+                matches!(self.a.types.get(&base.id), Some(Type::Record(r)) if r.byte_field(&field.name).is_some())
+                    || self.through_variant_bytes(base)
+            }
+            ExprKind::Index(base, _) | ExprKind::Deref(base) => self.through_variant_bytes(base),
+            _ => false,
+        }
     }
 
     /// Could `e`, the base of `e[i] := ...`, be a `PChar`: a `PChar` variable,
@@ -2716,6 +2767,8 @@ impl Checker {
             fields: Self::place_fields(receiver).0,
             indexed: !Self::place_fields(receiver).1,
             through_pointer: Self::through_pointer(receiver),
+            // Objects have no variant parts.
+            variant_bytes: false,
             span: receiver.span,
         });
         self.user_call_with(e, pid, args, receiver_arg)
@@ -2799,13 +2852,17 @@ impl Checker {
                     );
                 }
                 if let Some(root) = self.place_root(arg) {
+                    // A field kept in a variant part's bytes is reached
+                    // through a guard that borrows the whole record.
+                    let bytes = self.through_variant_bytes(arg);
                     var_args.push(VarArg {
                         param,
                         root,
                         whole: matches!(arg.kind, ExprKind::Name(_)),
-                        fields: Self::place_fields(arg).0,
-                        indexed: !Self::place_fields(arg).1,
+                        fields: if bytes { Vec::new() } else { Self::place_fields(arg).0 },
+                        indexed: bytes || !Self::place_fields(arg).1,
                         through_pointer: Self::through_pointer(arg),
+                        variant_bytes: bytes,
                         span: arg.span,
                     });
                 }

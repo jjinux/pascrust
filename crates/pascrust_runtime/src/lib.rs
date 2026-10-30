@@ -29,5 +29,6 @@ pub mod run;
 pub mod set;
 pub mod string;
 pub mod system;
+pub mod variants;
 
 pub use run::{RuntimeError, halt, rte, run};

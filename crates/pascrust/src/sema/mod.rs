@@ -481,6 +481,9 @@ pub struct VarArg {
     /// `fields` leads to the pointer, and the record behind it is borrowed
     /// at run time instead (see `heap_field`).
     pub through_pointer: bool,
+    /// True if the argument is a field kept in a variant part's bytes
+    /// (`p.Lo`), reached through a guard that borrows the whole record.
+    pub variant_bytes: bool,
     pub span: Span,
 }
 

@@ -1,0 +1,16 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/variant_punning_errors.pas
+---
+variant_punning_errors.pas:19:5: error: a set in a variant part without a tag field (`S`) is not supported yet
+    case Integer of
+    ^^^^^^^^^^^^^^^^^^^
+
+variant_punning_errors.pas:25:14: error: `Node` has a variant part without a tag field that holds a pointer (or a file), so PascRust keeps each variant separately and can't tell which one to store as bytes
+  f: file of Node;
+             ^^^^
+
+variant_punning_errors.pas:37:14: error: `p` is passed by `var` more than once in this call to `Swap`; Rust doesn't allow two mutable references to the same variable (fields of a variant part without a tag field share its bytes, which Rust borrows as a whole; copy one into a local first)
+  Swap(p.Lo, p.Hi);
+             ^^^^

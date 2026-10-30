@@ -351,8 +351,23 @@ part decides the representation:
   from TP: reading a variant other than the one in use gives that field's
   own last value, not the other variant's bytes (a program punning through
   a tagged record contradicts its declaration; documented, not detected).
-- **A tagless part (`case Integer of`)**, the type-punning idiom, will keep
-  TP's bytes behind accessors (step 2 of the note); refused until then.
+- **A tagless part (`case Integer of`) keeps TP's bytes**: the type-punning
+  idiom (`p.L := x`, then `p.Lo` is its low word) is only right that way.
+  The struct holds `variants: VariantPart<N>` (the runtime's `variants.rs`:
+  N bytes, the largest variant) and each variant field becomes three
+  methods in an `impl`: `p.lo()` reads its slice through the `FileRecord`
+  encoding, `p.set_lo(v)` writes it (assignment), and `p.lo_mut()` gives a
+  `VariantField` guard that derefs to the value and writes it back when
+  dropped at the end of the statement (`Inc(p.Hi)` is `*p.hi_mut() += 1`,
+  `p.B[4] := 0` is `p.b_mut()[4] = 0`, a `var` argument `&mut
+  *p.lo_mut()`), the same trick as the `Bytes` of an untyped parameter. A
+  `string[n]` field uses `get_string`/`set_string`/`string_field` with its
+  capacity. Sema keeps each field's offset (`Variant::offsets`), and a `var`
+  argument of such a field counts as the whole record for the overlap check,
+  since the guard borrows the whole part. A tagless part with a field that
+  can't be bytes (a pointer, a file) is flattened instead, and such a record
+  can't be stored in a file or seen as bytes (an error); a set in a tagless
+  part is refused for now (its encoding needs its size).
 
 Rejected: flattening everything (punning silently wrong), bytes for every
 variant part (pointers can't be bytes, and the tagged case would read

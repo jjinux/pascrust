@@ -262,7 +262,7 @@ Last: raw bytes and C strings
 
 ## Phase 8: Tier 3 and FFI (as interest dictates)
 
-- [ ] Variant records and procedural types, as in `notes/variant_records_and_procedural_types.md`. Done: step 1 (tagged variant parts, flattened, with TP's layout in files). Next: step 2 (tagless parts as bytes), 3 (nested parts), 4-6 (procedural types).
+- [ ] Variant records and procedural types, as in `notes/variant_records_and_procedural_types.md`. Done: step 1 (tagged variant parts, flattened, with TP's layout in files), step 2 (tagless parts as TP's bytes, behind accessors). Next: step 3 (nested parts), 4-6 (procedural types).
 - [ ] Field names needn't avoid the runtime's function names: a field `W` becomes `w_` because `w` is the runtime's width helper, but a struct field can't clash with a function.
 - [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, docs/architecture.md §16), and `TypeOf`.
 - [ ] Procedural types and procedure parameters.

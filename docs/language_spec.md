@@ -169,6 +169,13 @@ Built-ins (System unit)
   bytes after the fixed fields: a file stores the variant the tag selects.
   Reading another variant's field gives its own last value, not the bytes
   of the variant in use (TP overlaid them)
+- Variant records without a tag field (`case Integer of 0: (L: LongInt);
+  1: (Lo, Hi: Word)`): the variants share TP's bytes, so writing one and
+  reading another works as in TP (type punning), in place (`Inc(p.Hi)`,
+  `p.B[4] := 0`), as `var` arguments (but not two of one record in one
+  call), in files, `Move`, untyped parameters and typed constants. A
+  tagless part holding a pointer or a file keeps its variants separately
+  and can't be stored as bytes
 - Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
   routine sees the caller's variable as TP's bytes, through a typecast
   (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a
@@ -429,8 +436,8 @@ Graph unit (BGI, as used in the examples)
 Later (real TP features, not in the examples, worth doing in order)
 
 1. (Done, now in tier 2: sets.)
-2. (Tagged variant records are done, in tier 2.) Variant parts without a
-   tag field (type punning), and variant parts nested in a variant
+2. (Variant records are done, in tier 2.) Variant parts nested in a
+   variant; a set in a variant part without a tag field
 3. (Done, now in tier 2: `virtual` methods, constructors and destructors,
    polymorphic pointers to objects.)
 4. Procedural types and procedure parameters (`type Func = function(x: real):
