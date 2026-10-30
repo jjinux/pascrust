@@ -139,7 +139,8 @@ Built-ins (System unit)
   TP 7): string literals and zero-based `array[0..N] of Char` where a
   `PChar` is wanted; `P^`, `P[i]` (read and written); `P + I`, `I + P`,
   `P - I`, `P - Q` (a `Word`), `Inc(P)`/`Dec(P, N)`; `=`/`<>`/`<`/`>` and
-  `nil`; `Write(P)`; `GetMem`/`FreeMem`, `Assigned`, and casts to and from
+  `nil`; `(P + I)^` and `(P + I)[J]`, read and assigned; `Write(P)`;
+  `GetMem`/`FreeMem`, `Assigned`, and casts to and from
   `Pointer`. All 21 routines of `Strings`: `StrLen`, `StrEnd`, `StrMove`,
   `StrCopy`, `StrECopy`, `StrLCopy`, `StrPCopy`, `StrCat`, `StrLCat`,
   `StrComp`, `StrIComp`, `StrLComp`, `StrLIComp`, `StrScan`, `StrRScan`,

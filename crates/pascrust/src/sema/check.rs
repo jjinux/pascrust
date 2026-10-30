@@ -2470,6 +2470,9 @@ impl Checker {
                 ExprKind::Name(id) => matches!(kind(id), Some(SymKind::UnitRoutine(_) | SymKind::Proc(_))),
                 _ => false,
             },
+            // `(P + 1)[0] := C`: only `PChar` arithmetic gives something
+            // indexable here (sema then checks the type).
+            ExprKind::Binary { .. } => true,
             _ => false,
         }
     }

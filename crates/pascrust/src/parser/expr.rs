@@ -103,7 +103,12 @@ impl Parser {
                 self.expect(&TokenKind::RParen)?;
                 // Parentheses only group; they don't need their own node.
                 // Widen the span to include them for better error messages.
-                return Ok(Expr { span: start.to(self.prev_span()), ..inner });
+                let inner = Expr { span: start.to(self.prev_span()), ..inner };
+                // `(P + 1)^` and `(P + 1)[2]` (TP 7's `PChar` arithmetic).
+                if matches!(self.peek(), TokenKind::Caret | TokenKind::LBracket) {
+                    return self.selectors(inner, start);
+                }
+                return Ok(inner);
             }
             // Turbo Pascal allows a sign in front of any factor, so
             // `a * -b` is legal. ISO Pascal only allows it at the start of a
@@ -159,7 +164,7 @@ impl Parser {
     /// `Copy(s, 1, 3)`.
     pub(super) fn designator(&mut self) -> PResult<Expr> {
         let span = self.span();
-        let mut expr = if self.eat_keyword(Keyword::Inherited) {
+        let expr = if self.eat_keyword(Keyword::Inherited) {
             // `inherited Draw` calls the parent object's `Draw`. It's kept as
             // the field `inherited.Draw`; `inherited` is a keyword, so no
             // variable can have that name, and sema recognizes it.
@@ -171,6 +176,12 @@ impl Parser {
             let name = self.expect_ident()?;
             self.mk_expr(ExprKind::Name(name), span)
         };
+        self.selectors(expr, span)
+    }
+
+    /// The selectors after a variable or a parenthesized expression: `.f`,
+    /// `[i]`, `^`, and a call's `(args)`.
+    pub(super) fn selectors(&mut self, mut expr: Expr, span: crate::diag::Span) -> PResult<Expr> {
         loop {
             let kind = match self.peek() {
                 TokenKind::Dot => {

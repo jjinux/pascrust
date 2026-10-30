@@ -88,6 +88,15 @@ impl Parser {
                     StmtKind::Call(target)
                 }
             }
+            // `(P + 1)^ := 'X'`: a parenthesized expression with a selector.
+            TokenKind::LParen => {
+                let target = self.expression()?;
+                if !matches!(target.kind, ExprKind::Deref(_) | ExprKind::Index(..)) {
+                    return Err(Diagnostic::new(target.span, "expected a statement"));
+                }
+                self.expect(&TokenKind::Assign)?;
+                StmtKind::Assign { target, value: self.expression()? }
+            }
             // Anything else (`;`, `end`, `until`, `else`) means this
             // statement is empty.
             _ => StmtKind::Empty,
