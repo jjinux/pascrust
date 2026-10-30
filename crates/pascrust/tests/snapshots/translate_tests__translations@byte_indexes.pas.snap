@@ -28,7 +28,7 @@ struct Pun {
 }
 
 impl Pun {
-    // `L` is bytes 0 to 4
+    // `L` is bytes 0 to 3
     fn l(&self) -> i32 {
         self.variants.get(0)
     }
@@ -38,7 +38,7 @@ impl Pun {
     fn l_mut(&mut self) -> VariantField<'_, i32> {
         self.variants.field(0)
     }
-    // `B` is bytes 0 to 4
+    // `B` is bytes 0 to 3
     fn b(&self) -> PArray<u8, 0, 4> {
         self.variants.get(0)
     }

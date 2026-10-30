@@ -650,8 +650,14 @@ impl<'a> Codegen<'a> {
         for (index, field) in r.fields.iter().enumerate().skip(r.fixed_fields().len()) {
             let Some(offset) = r.byte_offset(index) else { continue };
             let (name, ty) = (&field.rust_name, field.ty.rust());
-            let end = offset + tp_size(&field.ty).unwrap_or(0);
-            self.line(format!("    // `{}` is bytes {offset} to {end}", field.name));
+            // The last byte is `size - 1` after the first: a LongInt at 0
+            // is bytes 0 to 3.
+            let last = offset + tp_size(&field.ty).unwrap_or(1) - 1;
+            if last == offset {
+                self.line(format!("    // `{}` is byte {offset}", field.name));
+            } else {
+                self.line(format!("    // `{}` is bytes {offset} to {last}", field.name));
+            }
             // A `string[n]` (or an array of them) needs its capacity: the
             // `PString` doesn't know it.
             match string_capacity(&field.ty) {

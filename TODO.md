@@ -261,7 +261,7 @@ Last: raw bytes and C strings
   - [x] A cast on the left of `<` doesn't compile (`i shr 1 < 50`, `Word(i) < w`).
   - [x] A `string[n]` field of a tagless part writes cap+1 bytes and clamps the length; TP touches Length+1 bytes (the `S[0] := #3` overlay idiom).
   - [x] Untyped var arguments skip the aliasing check (a rustc error instead of PascRust's message).
-  - [ ] Smaller: `Str(1234:5, s)` into a `string[3]` isn't cut; `New(PNode(q))` through a Pointer; a typed constant whose tag selects another variant than its fields; the accessor comment's "bytes 0 to 4".
+  - [x] Smaller: `Str(1234:5, s)` into a `string[3]` isn't cut; `New(PNode(q))` through a Pointer; a typed constant whose tag selects another variant than its fields; the accessor comment's "bytes 0 to 4".
 - [x] Untyped memory, as planned in `notes/untyped_memory.md` (agreed with Fable's review; the user said go ahead). Done: step 0 (TP-exact typed files), step 1 (untyped `var` parameters, byte views, `Move`/`FillChar` between types), step 2 (untyped files, `BlockRead`/`BlockWrite`), step 3 (the untyped `Pointer`, `GetMem`/`FreeMem`), step 4 (`GetImage`/`PutImage` in TP's layout), step 5 (`PChar` and `Strings`, with `Char` arrays lent a copy for one statement).
 - [x] Question for the user (from a Fable review): is the directory the program starts in a drive's root? Answered by 7d058ff: no, C: is the file system's root, so the start directory is just the current directory, and `FindFirst` lists `.`/`..` there.
 - [x] Untyped files (`file` without `of`) with `BlockRead`/`BlockWrite`, and untyped `var` parameters, as byte views of records and arrays (with `SizeOf`).

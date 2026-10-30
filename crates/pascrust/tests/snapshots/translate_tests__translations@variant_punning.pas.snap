@@ -33,7 +33,7 @@ struct Pun {
 }
 
 impl Pun {
-    // `L` is bytes 0 to 4
+    // `L` is bytes 0 to 3
     fn l(&self) -> i32 {
         self.variants.get(0)
     }
@@ -43,7 +43,7 @@ impl Pun {
     fn l_mut(&mut self) -> VariantField<'_, i32> {
         self.variants.field(0)
     }
-    // `Lo` is bytes 0 to 2
+    // `Lo` is bytes 0 to 1
     fn lo(&self) -> u16 {
         self.variants.get(0)
     }
@@ -53,7 +53,7 @@ impl Pun {
     fn lo_mut(&mut self) -> VariantField<'_, u16> {
         self.variants.field(0)
     }
-    // `Hi` is bytes 2 to 4
+    // `Hi` is bytes 2 to 3
     fn hi(&self) -> u16 {
         self.variants.get(2)
     }
@@ -63,7 +63,7 @@ impl Pun {
     fn hi_mut(&mut self) -> VariantField<'_, u16> {
         self.variants.field(2)
     }
-    // `B` is bytes 0 to 4
+    // `B` is bytes 0 to 3
     fn b(&self) -> PArray<u8, 1, 4> {
         self.variants.get(0)
     }
@@ -73,7 +73,7 @@ impl Pun {
     fn b_mut(&mut self) -> VariantField<'_, PArray<u8, 1, 4>> {
         self.variants.field(0)
     }
-    // `S` is bytes 0 to 4
+    // `S` is bytes 0 to 3
     fn s(&self) -> PString {
         self.variants.get_string(0, 3)
     }

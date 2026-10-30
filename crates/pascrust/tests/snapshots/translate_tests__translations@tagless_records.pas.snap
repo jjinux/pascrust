@@ -27,7 +27,7 @@ struct Inner {
 }
 
 impl Inner {
-    // `W` is bytes 0 to 2
+    // `W` is bytes 0 to 1
     fn w(&self) -> u16 {
         self.variants.get(0)
     }
@@ -37,7 +37,7 @@ impl Inner {
     fn w_mut(&mut self) -> VariantField<'_, u16> {
         self.variants.field(0)
     }
-    // `Lo` is bytes 0 to 1
+    // `Lo` is byte 0
     fn lo(&self) -> u8 {
         self.variants.get(0)
     }
@@ -47,7 +47,7 @@ impl Inner {
     fn lo_mut(&mut self) -> VariantField<'_, u8> {
         self.variants.field(0)
     }
-    // `Hi` is bytes 1 to 2
+    // `Hi` is byte 1
     fn hi(&self) -> u8 {
         self.variants.get(1)
     }
@@ -99,7 +99,7 @@ struct Pun {
 }
 
 impl Pun {
-    // `L` is bytes 0 to 4
+    // `L` is bytes 0 to 3
     fn l(&self) -> i32 {
         self.variants.get(0)
     }
@@ -109,7 +109,7 @@ impl Pun {
     fn l_mut(&mut self) -> VariantField<'_, i32> {
         self.variants.field(0)
     }
-    // `I1` is bytes 0 to 2
+    // `I1` is bytes 0 to 1
     fn i1(&self) -> Inner {
         self.variants.get(0)
     }
@@ -119,7 +119,7 @@ impl Pun {
     fn i1_mut(&mut self) -> VariantField<'_, Inner> {
         self.variants.field(0)
     }
-    // `I2` is bytes 2 to 4
+    // `I2` is bytes 2 to 3
     fn i2(&self) -> Inner {
         self.variants.get(2)
     }
@@ -129,7 +129,7 @@ impl Pun {
     fn i2_mut(&mut self) -> VariantField<'_, Inner> {
         self.variants.field(2)
     }
-    // `C` is bytes 0 to 1
+    // `C` is byte 0
     fn c(&self) -> Color {
         self.variants.get(0)
     }

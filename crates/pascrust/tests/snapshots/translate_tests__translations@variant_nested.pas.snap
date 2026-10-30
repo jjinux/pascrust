@@ -62,7 +62,7 @@ struct Pun {
 }
 
 impl Pun {
-    // `L` is bytes 0 to 4
+    // `L` is bytes 0 to 3
     fn l(&self) -> i32 {
         self.variants.get(0)
     }
@@ -72,7 +72,7 @@ impl Pun {
     fn l_mut(&mut self) -> VariantField<'_, i32> {
         self.variants.field(0)
     }
-    // `Lo` is bytes 0 to 2
+    // `Lo` is bytes 0 to 1
     fn lo(&self) -> u16 {
         self.variants.get(0)
     }
@@ -82,7 +82,7 @@ impl Pun {
     fn lo_mut(&mut self) -> VariantField<'_, u16> {
         self.variants.field(0)
     }
-    // `Hi` is bytes 2 to 4
+    // `Hi` is bytes 2 to 3
     fn hi(&self) -> u16 {
         self.variants.get(2)
     }
@@ -92,7 +92,7 @@ impl Pun {
     fn hi_mut(&mut self) -> VariantField<'_, u16> {
         self.variants.field(2)
     }
-    // `B3` is bytes 2 to 3
+    // `B3` is byte 2
     fn b3(&self) -> u8 {
         self.variants.get(2)
     }
@@ -102,7 +102,7 @@ impl Pun {
     fn b3_mut(&mut self) -> VariantField<'_, u8> {
         self.variants.field(2)
     }
-    // `B4` is bytes 3 to 4
+    // `B4` is byte 3
     fn b4(&self) -> u8 {
         self.variants.get(3)
     }
@@ -112,7 +112,7 @@ impl Pun {
     fn b4_mut(&mut self) -> VariantField<'_, u8> {
         self.variants.field(3)
     }
-    // `Pair` is bytes 0 to 4
+    // `Pair` is bytes 0 to 3
     fn pair(&self) -> Record {
         self.variants.get(0)
     }
