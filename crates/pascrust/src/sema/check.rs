@@ -647,46 +647,64 @@ impl Checker {
                         None => self.error(name.span, format!("`{}` has no field `{}`", r.rust_name, name.name)),
                     }
                 }
-                // TP: a constant of a variant record gives the fields of one
-                // variant only, and its tag's value.
                 if let Some(part) = &r.variant {
-                    let index = |name: &Ident| r.fields.iter().position(|f| f.name.eq_ignore_ascii_case(&name.name));
-                    let mut chosen: Vec<usize> = fields
-                        .iter()
-                        .filter_map(|(name, _)| index(name))
-                        .filter_map(|i| part.variants.iter().position(|v| v.fields.contains(&i)))
-                        .collect();
-                    chosen.dedup();
-                    let tag_given = part.tag.is_none_or(|tag| fields.iter().any(|(name, _)| index(name) == Some(tag)));
-                    if chosen.len() > 1 {
-                        self.error(*span, "a constant of a variant record gives the fields of one variant only");
-                    } else if !chosen.is_empty() && !tag_given {
-                        let tag = &r.fields[part.tag.unwrap()].name;
-                        self.error(*span, format!("a constant of a variant record gives its tag (`{tag}`) too"));
-                    } else if let [variant] = chosen[..]
-                        && let Some(tag) = part.tag
-                        && let Some((name, ConstValue::Expr(e))) =
-                            fields.iter().find(|(name, _)| index(name) == Some(tag))
-                    {
-                        // ...and the fields are those of the variant its tag selects.
-                        let ord = match self.eval_const(e) {
-                            Some(ConstVal::Int(n)) => Some(n),
-                            Some(ConstVal::Bool(b)) => Some(b as i64),
-                            Some(ConstVal::Str(bytes)) if bytes.len() == 1 => Some(bytes[0] as i64),
-                            _ => None,
-                        };
-                        if ord.is_some_and(|ord| !part.variants[variant].labels.contains(&ord)) {
-                            self.error(
-                                e.span,
-                                format!("this value of `{}` selects another variant than the fields given", name.name),
-                            );
-                        }
-                    }
+                    self.variant_constant(&r.fields, part, fields, *span);
                 }
             }
             (ConstValue::List(_, span) | ConstValue::Record(_, span), _) => {
                 self.error(*span, format!("this initializer doesn't fit type {ty}"));
             }
+        }
+    }
+
+    /// TP: a constant of a variant record gives the fields of one variant
+    /// only, and its tag's value, which selects that variant; the same
+    /// again for a variant part nested in it.
+    fn variant_constant(&mut self, all: &[Field], part: &VariantPart, given: &[(Ident, ConstValue)], span: Span) {
+        // Is field `i` in variant `v`, or in a part nested in it?
+        fn holds(v: &Variant, i: usize) -> bool {
+            v.fields.contains(&i)
+                || v.nested.as_ref().is_some_and(|n| n.tag == Some(i) || n.variants.iter().any(|v| holds(v, i)))
+        }
+        let index = |name: &Ident| all.iter().position(|f| f.name.eq_ignore_ascii_case(&name.name));
+        let mut chosen: Vec<usize> = given
+            .iter()
+            .filter_map(|(name, _)| index(name))
+            .filter_map(|i| part.variants.iter().position(|v| holds(v, i)))
+            .collect();
+        chosen.sort();
+        chosen.dedup();
+        let tag = part.tag.and_then(|tag| given.iter().find(|(name, _)| index(name) == Some(tag)));
+        if chosen.len() > 1 {
+            self.error(span, "a constant of a variant record gives the fields of one variant only");
+            return;
+        }
+        let [variant] = chosen[..] else { return };
+        match (part.tag, tag) {
+            (Some(tag), None) => {
+                let tag = &all[tag].name;
+                self.error(span, format!("a constant of a variant record gives its tag (`{tag}`) too"));
+                return;
+            }
+            // ...and the fields are those of the variant its tag selects.
+            (_, Some((name, ConstValue::Expr(e)))) => {
+                let ord = match self.eval_const(e) {
+                    Some(ConstVal::Int(n)) => Some(n),
+                    Some(ConstVal::Bool(b)) => Some(b as i64),
+                    Some(ConstVal::Str(bytes)) if bytes.len() == 1 => Some(bytes[0] as i64),
+                    _ => None,
+                };
+                if ord.is_some_and(|ord| !part.variants[variant].labels.contains(&ord)) {
+                    let message =
+                        format!("this value of `{}` selects another variant than the fields given", name.name);
+                    self.error(e.span, message);
+                    return;
+                }
+            }
+            _ => {}
+        }
+        if let Some(nested) = &part.variants[variant].nested {
+            self.variant_constant(all, nested, given, span);
         }
     }
 
