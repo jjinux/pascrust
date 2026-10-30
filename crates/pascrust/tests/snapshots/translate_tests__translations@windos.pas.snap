@@ -94,7 +94,7 @@ fn pascal_main() {
         pstr("FileSplit wildcards, nil parts"),
     );
     let buf_chars = PChar::copy_of(buf.as_slice());
-    let _ = file_expand(&buf_chars, &PChar::literal("foo.txt"));
+    file_expand(&buf_chars, &PChar::literal("foo.txt"));
     buf_chars.copy_to(buf.as_mut_slice());
     let buf_chars = PChar::copy_of(buf.as_slice());
     check(

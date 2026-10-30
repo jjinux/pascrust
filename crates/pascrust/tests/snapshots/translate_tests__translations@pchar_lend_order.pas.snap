@@ -25,7 +25,7 @@ fn pascal_main() {
     // the statement gets a copy of its characters, copied back after it
     // if it may change them.
     let buf_chars = PChar::copy_of(buf.as_slice());
-    let _ = str_copy(&buf_chars, &PChar::literal("ab"));
+    str_copy(&buf_chars, &PChar::literal("ab"));
     buf_chars.copy_to(buf.as_mut_slice());
     let buf_chars = PChar::copy_of(buf.as_slice());
     i = (str_len(&buf_chars) + str_len(&str_cat(&buf_chars, &PChar::literal("q")))) as i16;
@@ -33,7 +33,7 @@ fn pascal_main() {
     let buf_chars = PChar::copy_of(buf.as_slice());
     pwriteln!(i, " ", str_pas(&buf_chars));
     let buf_chars = PChar::copy_of(buf.as_slice());
-    let _ = str_copy(&buf_chars, &PChar::literal("xxx"));
+    str_copy(&buf_chars, &PChar::literal("xxx"));
     buf_chars.copy_to(buf.as_mut_slice());
     let buf_chars = PChar::copy_of(buf.as_slice());
     if {

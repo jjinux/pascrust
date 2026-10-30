@@ -452,7 +452,14 @@ pub struct Ptr<T>(Option<Rc<RefCell<T>>>);
   it in a global, a field, a `var` parameter, or pass it to a routine that
   keeps it) and which return one (the `Strings` functions return a pointer
   into their first argument, except `StrNew`). An array that reaches a
-  kept place, `P := A` included, is an error.
+  kept place, `P := A` included, is an error. Sema also records, per
+  statement, the order of its lends and its calls of the program's
+  routines (`pchar::LendingStmt`); after lifting, a call whose routine may
+  reach the lent array (its captures include the array's variable) is run
+  first into a `let` if it comes before the lend (`calls_before_lend`),
+  and is an error if it comes after (the write-back would undo its change).
+  Reads of a lent array elsewhere in its statement (`Write(A)`, `A[i]`) go
+  through the copy (`lent_roots`).
 
   Possible future enhancements, if real programs need them (the user chose
   the copy for now, 2026-10-29):

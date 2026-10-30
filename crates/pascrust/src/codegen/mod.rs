@@ -15,7 +15,7 @@ mod builtins;
 mod comments;
 mod expr;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::ast::*;
@@ -51,6 +51,8 @@ pub fn generate(
         pending: Vec::new(),
         after: Vec::new(),
         lent: Vec::new(),
+        lent_roots: Vec::new(),
+        running_first: HashSet::new(),
         loops: Vec::new(),
         io_unchecked,
         self_expr: None,
@@ -106,6 +108,11 @@ struct Codegen<'a> {
     /// The arrays lent a `PChar` for the next line, by their code, and the
     /// copy's name, so each array has one copy per statement.
     lent: Vec<(String, String)>,
+    /// The variables whose `Char` arrays the current statement lends to
+    /// `PChar`s: its other reads of them go through the copy too.
+    lent_roots: Vec<SymId>,
+    /// Calls being run ahead of a lend, into a `let` (`expr` recurses).
+    running_first: HashSet<NodeId>,
     /// The loops we're inside, innermost last: the labels `Break` and
     /// `Continue` must use for a `repeat` that has a `Continue` in it (see
     /// `repeat_loop`), or `None` for a loop where plain `break` and
@@ -1315,7 +1322,12 @@ impl<'a> Codegen<'a> {
         if s.kind != StmtKind::Empty {
             self.leading_comments(s.span.start);
         }
+        // A `repeat`'s `until` comes after its body's statements, so each
+        // statement's lent arrays are put back when its children are done.
+        let roots = self.a.lent_roots.get(&s.span.start).cloned().unwrap_or_default();
+        let saved = std::mem::replace(&mut self.lent_roots, roots);
         self.stmt_code(s);
+        self.lent_roots = saved;
         // A `begin ... end` statement has no lines of its own in Rust.
         if let StmtKind::Compound(body) = &s.kind
             && let Some(comment) = self.block_end_comments(s.span)
@@ -1339,8 +1351,16 @@ impl<'a> Codegen<'a> {
                     _ => (e, &[]),
                 };
                 let code = self.call(callee, args);
-                // A function called as a statement: discard its result.
-                let is_function = matches!(self.a.type_of(e.id), t if *t != Type::Void);
+                // A function called as a statement: discard its result. A
+                // routine of the program or of a unit can just be called
+                // (nothing in the runtime is `#[must_use]`); a built-in may
+                // be a method of the standard library that is, hence
+                // `let _ =`.
+                let plain_call = matches!(
+                    self.a.refs.get(&callee.id).map(|&sym| &self.a.sym(sym).kind),
+                    Some(SymKind::Proc(_) | SymKind::UnitRoutine(_))
+                );
+                let is_function = matches!(self.a.type_of(e.id), t if *t != Type::Void) && !plain_call;
                 // A Pascal call that becomes nothing but a comment.
                 if code.starts_with("//") {
                     self.line(code);

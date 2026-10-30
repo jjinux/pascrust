@@ -43,7 +43,7 @@ fn count_char(mut s: PChar, c: u8) -> i16 {
 
 /// Pascal: `procedure Shout(s: PChar);`
 fn shout(s: PChar) {
-    let _ = str_upper(&s);
+    str_upper(&s);
 }
 
 /// The main program: the `begin ... end.` block of `PChars`.
@@ -62,15 +62,15 @@ fn pascal_main() {
     // the statement gets a copy of its characters, copied back after it
     // if it may change them.
     let buf_chars = PChar::copy_of(buf.as_slice());
-    let _ = str_p_copy(&buf_chars, "hello, world");
+    str_p_copy(&buf_chars, "hello, world");
     buf_chars.copy_to(buf.as_mut_slice());
     let buf_chars = PChar::copy_of(buf.as_slice());
-    pwriteln!(buf[0], buf[5], " ", str_len(&buf_chars));
+    pwriteln!(buf_chars.get(0), buf_chars.get(5), " ", str_len(&buf_chars));
     let buf_chars = PChar::copy_of(buf.as_slice());
     show(buf_chars.clone());
     buf_chars.copy_to(buf.as_mut_slice());
     let buf_chars = PChar::copy_of(buf.as_slice());
-    let _ = str_cat(&buf_chars, &PChar::literal("!"));
+    str_cat(&buf_chars, &PChar::literal("!"));
     buf_chars.copy_to(buf.as_mut_slice());
     let buf_chars = PChar::copy_of(buf.as_slice());
     show(buf_chars.clone());
@@ -90,10 +90,10 @@ fn pascal_main() {
     let buf_chars = PChar::copy_of(buf.as_slice());
     pwriteln!(str_pas(&buf_chars));
     let name_chars = PChar::copy_of(name.as_slice());
-    let _ = str_copy(&name_chars, &PChar::literal("Ada"));
+    str_copy(&name_chars, &PChar::literal("Ada"));
     name_chars.copy_to(name.as_mut_slice());
     let name_chars = PChar::copy_of(name.as_slice());
-    let _ = str_l_cat(&name_chars, &PChar::literal(" Lovelace and more"), 10);
+    str_l_cat(&name_chars, &PChar::literal(" Lovelace and more"), 10);
     name_chars.copy_to(name.as_mut_slice());
     let name_chars = PChar::copy_of(name.as_slice());
     pwriteln!("[", str_pas(&name_chars), "]");
@@ -113,7 +113,7 @@ fn pascal_main() {
     pwriteln!(q, " ", q.diff(&h), " ", q > h, " ", q == h.plus(5));
     str_dispose(&h);
     p = PChar::alloc(10);
-    let _ = str_copy(&p, &PChar::literal("abc"));
+    str_copy(&p, &PChar::literal("abc"));
     i = 0;
     while p.get(i) != b'\x00' {
         p.set(i, p.get(i).to_ascii_uppercase());
@@ -130,7 +130,7 @@ fn pascal_main() {
     p = PChar::nil();
     pwriteln!(p.is_nil(), " ", str_pas(&str_new(&PChar::literal(""))) == "");
     let buf_chars = PChar::copy_of(buf.as_slice());
-    let _ = str_lower(&str_copy(&buf_chars, &PChar::literal("MiXeD")));
+    str_lower(&str_copy(&buf_chars, &PChar::literal("MiXeD")));
     buf_chars.copy_to(buf.as_mut_slice());
     pwriteln!(buf[0], buf[1], buf[2]);
     let buf_chars = PChar::copy_of(buf.as_slice());
@@ -139,7 +139,7 @@ fn pascal_main() {
     let buf_chars = PChar::copy_of(buf.as_slice());
     pwriteln!(str_pas(&buf_chars), " ", n);
     let buf_chars = PChar::copy_of(buf.as_slice());
-    let _ = str_copy(&buf_chars, &PChar::literal(""));
+    str_copy(&buf_chars, &PChar::literal(""));
     buf_chars.copy_to(buf.as_mut_slice());
     while {
         let buf_chars = PChar::copy_of(buf.as_slice());
@@ -164,7 +164,7 @@ fn pascal_main() {
         pwriteln!("not ", str_pas(&buf_chars));
     }
     let buf_chars = PChar::copy_of(buf.as_slice());
-    let _ = str_copy(&buf_chars, &PChar::literal("ab"));
+    str_copy(&buf_chars, &PChar::literal("ab"));
     buf_chars.copy_to(buf.as_mut_slice());
     let buf_chars = PChar::copy_of(buf.as_slice());
     // `i` is also used outside this loop (Pascal leaves it holding the

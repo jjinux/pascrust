@@ -224,3 +224,34 @@ type
       False: (Value: LongInt);
   end;
 ```
+
+<a id="call-after-lend"></a>
+
+## A routine that changes a `Char` array after the array is used as a `PChar`
+
+```text
+error: `Fill` may change `buf`, which this statement uses as a PChar;
+PascRust lends a PChar a copy of the array for the statement, so the
+change would be undone after it; call `Fill` in a statement of its own
+```
+
+Where a zero-based `Char` array is used as a `PChar`, the statement works
+on a copy of its characters, written back after it (see the section
+above). A routine of the program that the statement calls *before* that
+use is run first, so it sees and changes the real array; one called
+*after* it would change the array behind the copy's back, and the
+write-back would undo it.
+
+Refused (`Fill` changes the global `buf`):
+
+```pascal
+WriteLn(StrLen(StrUpper(buf)), ' ', Fill);
+```
+
+Rewrite: give the call a statement of its own (here, keeping TP's order:
+`StrUpper` first, then `Fill`).
+
+```pascal
+n := StrLen(StrUpper(buf));
+WriteLn(n, ' ', Fill);
+```

@@ -395,6 +395,11 @@ impl<'a> Codegen<'a> {
             // character (that's what `Char` is). Widen it so it prints as a
             // number.
             Type::Int(IntKind::Byte) => convert(self.expr(value), &ty, &Type::Int(IntKind::Integer)).0,
+            // A `Char` array the statement lends to a `PChar`: its copy,
+            // which has what the statement wrote through the `PChar`.
+            // (Borrowed for a width: the copy is still written back after.)
+            _ if self.is_lent(value) && width.is_some() => format!("&{}", self.lent_pchar(value)),
+            _ if self.is_lent(value) => self.lent_pchar(value),
             _ => self.expr(value).0,
         };
         match (width, decimals) {

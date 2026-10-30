@@ -150,7 +150,11 @@ Built-ins (System unit)
   into an array can't outlive the statement: `P := A`, `P := StrScan(A,
   '.')`, returning one, or passing the array to a routine that keeps its
   `PChar` parameter is an error at compile time (a routine that only
-  reads or writes the characters, or keeps them in a local, is fine).
+  reads or writes the characters, or keeps them in a local, is fine). The
+  statement's other reads of the array (`Write(A)`, `A[i]`) see what it
+  wrote through the `PChar`; a routine of the program it calls before the
+  lend that may change the array runs first, as its own statement; one
+  called after the lend is an error at compile time
   The standard routines take C-style strings too (TP 7, chapter 16):
   `Write` prints a zero-based `Char` array up to its `#0` (any other
   `Char` array whole), `Read` fills one with the rest of the line (cut to

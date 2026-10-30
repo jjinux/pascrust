@@ -272,6 +272,15 @@ pub struct Analysis {
     pub pchar_arrays: HashMap<NodeId, bool>,
     /// Warnings: things that translate, but won't act as in Turbo Pascal.
     pub warnings: Vec<Diagnostic>,
+    /// Statements that lend `Char` arrays to `PChar`s, with the order of
+    /// their lends and calls (see `pchar::check_lends`).
+    pub lending_stmts: Vec<pchar::LendingStmt>,
+    /// The arrays (by their variable) each such statement lends, by the
+    /// statement's start, so codegen reads them through the copy there.
+    pub lent_roots: HashMap<usize, Vec<SymId>>,
+    /// Calls of the program's routines that may change an array their
+    /// statement lends later: codegen runs them first, into a `let`.
+    pub calls_before_lend: HashSet<NodeId>,
     /// `@Handler` expressions, with the procedure's name.
     pub proc_addresses: HashMap<NodeId, String>,
     /// `Move` and `FillChar` calls (by callee) that work on the variables'
@@ -370,6 +379,7 @@ pub fn analyze(program: &Program, units: &[Unit]) -> Result<Analysis, Vec<Diagno
     lift::find_param_aliases(&mut analysis, &call_sites);
     lift::lift(&mut analysis);
     errors.extend(lift::check_aliasing(&analysis, &call_sites));
+    errors.extend(pchar::check_lends(&mut analysis));
     if errors.is_empty() { Ok(analysis) } else { Err(errors) }
 }
 

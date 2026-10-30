@@ -41,6 +41,34 @@ impl<'a> Codegen<'a> {
         if let Some(name) = self.hoisted.get(&e.id) {
             return (name.clone(), prec::ATOM);
         }
+        // A call that may change an array the statement lends to a `PChar`
+        // later: it runs first, into a `let`, before the array is copied.
+        if self.a.calls_before_lend.contains(&e.id) && self.running_first.insert(e.id) {
+            let code = self.expr(e).0;
+            let callee = match &e.kind {
+                ExprKind::Call { callee, .. } => self.a.refs.get(&callee.id),
+                _ => self.a.refs.get(&e.id),
+            };
+            let base = callee.map_or("result".to_string(), |&sym| self.a.sym(sym).rust_name.clone());
+            let name = self.temp_name(&format!("{base}_result"));
+            if self.first_time("call_before_lend") {
+                self.pending.push(format!("// `{base}` may change an array this statement uses as a PChar, so it"));
+                self.pending.push("// runs before the array's characters are copied.".to_string());
+            }
+            self.pending.push(format!("let {name} = {code};"));
+            self.hoisted.insert(e.id, name.clone());
+            return (name, prec::ATOM);
+        }
+        // `A[i]` of a `Char` array this statement lends to a `PChar`: the
+        // copy, which sees what the statement writes through the `PChar`.
+        if let ExprKind::Index(base, indexes) = &e.kind
+            && indexes.len() == 1
+            && self.is_lent(base)
+        {
+            let copy = self.lent_pchar(base);
+            let index = self.expr(&indexes[0]).0;
+            return (format!("{copy}.get({index})"), prec::POSTFIX);
+        }
         // `p^.n + F`: the read through `p` would keep the record borrowed
         // while `F` runs, and `F` may change it (through another pointer).
         // So `p^.n` is read into a `let` first.
@@ -438,13 +466,20 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// Is `e` a zero-based `Char` array the current statement lends to a
+    /// `PChar` (so it should be read through the copy)?
+    pub(super) fn is_lent(&self, e: &Expr) -> bool {
+        self.a.type_of(e.id).is_char_array0()
+            && self.a.refs.get(&super::root_expr(e).id).is_some_and(|sym| self.lent_roots.contains(sym))
+    }
+
     /// A zero-based `Char` array used as a `PChar`. PascRust can't point
     /// into an array, so it lends the statement a copy of the characters,
     /// made before it, and (if the statement may write through the `PChar`)
     /// copies them back after it. Each array gets one copy per statement, so
     /// `StrEnd(A) - A` compares pointers into the same copy. (Sema made sure
     /// no `PChar` into the copy outlives the statement.)
-    fn lent_pchar(&mut self, e: &Expr) -> String {
+    pub(super) fn lent_pchar(&mut self, e: &Expr) -> String {
         let array = self.selector_base(e);
         let written = self.a.pchar_arrays.get(&e.id).copied().unwrap_or(false);
         // The array's copy for this statement, if an earlier use made one.

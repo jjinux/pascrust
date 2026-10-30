@@ -168,3 +168,46 @@ pub fn check(a: &Analysis, flows: &[Flow], arg_flows: &[ArgFlow]) -> Vec<Diagnos
     }
     errors
 }
+
+/// A statement that lends `Char` arrays to `PChar`s: the copy is made
+/// before the statement and written back after it, so a routine the
+/// statement calls that changes the same array would be overlooked (before
+/// the lend) or undone (after it). `at` is the order things happen in.
+#[derive(Debug, Clone, Default)]
+pub struct LendingStmt {
+    pub start: usize,
+    pub lends: Vec<(SymId, u32)>,
+    pub calls: Vec<(ProcId, NodeId, Span, u32)>,
+}
+
+/// After lifting, when each routine's globals are known: a call that may
+/// change a lent array before the lend is run first, into a `let` (as if
+/// it were its own statement); one after the lend is an error.
+pub fn check_lends(a: &mut Analysis) -> Vec<Diagnostic> {
+    let mut errors = Vec::new();
+    for stmt in std::mem::take(&mut a.lending_stmts) {
+        let roots: Vec<SymId> = stmt.lends.iter().map(|&(root, _)| root).collect();
+        a.lent_roots.entry(stmt.start).or_default().extend(roots.iter().copied());
+        for &(callee, id, span, at) in &stmt.calls {
+            for &root in &roots {
+                if !a.procs[callee].captures.iter().any(|c| c.sym == root) {
+                    continue;
+                }
+                let first_lend = stmt.lends.iter().filter(|(r, _)| *r == root).map(|&(_, at)| at).min().unwrap_or(0);
+                if at < first_lend {
+                    a.calls_before_lend.insert(id);
+                } else {
+                    let (routine, array) = (&a.procs[callee].name, &a.sym(root).name);
+                    errors.push(Diagnostic::new(
+                        span,
+                        format!(
+                            "`{routine}` may change `{array}`, which this statement uses as a PChar; PascRust lends a PChar a copy of the array for the statement, so the change would be undone after it; call `{routine}` in a statement of its own{}",
+                            super::rewrite_link("call-after-lend")
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    errors
+}

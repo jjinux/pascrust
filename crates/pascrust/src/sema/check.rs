@@ -89,6 +89,10 @@ pub(super) struct Checker {
     pchar_arg_flows: Vec<super::pchar::ArgFlow>,
     /// The variable each array lent a `PChar` belongs to.
     pchar_array_roots: HashMap<NodeId, SymId>,
+    /// The statements being checked, innermost last, with what they lend
+    /// and call, in order (`event` counts).
+    lend_frames: Vec<super::pchar::LendingStmt>,
+    event: u32,
 }
 
 /// Why a record with a flattened tagless variant part can't be bytes.
@@ -131,6 +135,8 @@ impl Checker {
             pchar_flows: Vec::new(),
             pchar_arg_flows: Vec::new(),
             pchar_array_roots: HashMap::new(),
+            lend_frames: Vec::new(),
+            event: 0,
         };
         checker.a.procs.push(ProcInfo {
             name: "main program".to_string(),
@@ -1326,6 +1332,15 @@ impl Checker {
     }
 
     fn stmt(&mut self, s: &Stmt) {
+        self.lend_frames.push(super::pchar::LendingStmt { start: s.span.start, ..Default::default() });
+        self.stmt_kind(s);
+        let frame = self.lend_frames.pop().unwrap();
+        if !frame.lends.is_empty() {
+            self.a.lending_stmts.push(frame);
+        }
+    }
+
+    fn stmt_kind(&mut self, s: &Stmt) {
         match &s.kind {
             StmtKind::Empty => {}
             // `RandSeed := 42`: a runtime variable's setter.
@@ -1853,6 +1868,10 @@ impl Checker {
             self.a.pchar_arrays.entry(e.id).or_insert(false);
             if let Some(root) = self.place_root(e) {
                 self.pchar_array_roots.insert(e.id, root);
+                self.event += 1;
+                if let Some(frame) = self.lend_frames.last_mut() {
+                    frame.lends.push((root, self.event));
+                }
             }
             if written {
                 self.mark_written(&[super::pchar::Src::Array(e.id)]);
@@ -2913,6 +2932,13 @@ impl Checker {
         }
         if !var_args.is_empty() {
             self.call_sites.push(CallSite { caller: cur, callee: p, var_args });
+        }
+        // In order with the statement's lends of `Char` arrays (see
+        // `pchar::check_lends`): the call runs after its arguments.
+        self.event += 1;
+        let event = self.event;
+        if let Some(frame) = self.lend_frames.last_mut() {
+            frame.calls.push((p, e.id, e.span, event));
         }
         self.a.procs[p].ret.clone().unwrap_or(Type::Void)
     }
