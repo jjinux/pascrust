@@ -1899,7 +1899,7 @@ impl<'a> Codegen<'a> {
         None
     }
 
-    fn assignment(&mut self, target: &Expr, value: &Expr) -> String {
+    pub(super) fn assignment(&mut self, target: &Expr, value: &Expr) -> String {
         self.hoist_target_indexes(target);
         let target_ty = self.a.type_of(target.id).clone();
         // `TRec(Data) := r`: an untyped parameter's bytes, set from a `TRec`.

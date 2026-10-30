@@ -139,7 +139,7 @@ fn pascal_main() {
     // Pascal `with`: Rust has no equivalent, so each field is written out in full.
     pwriteln!(p.s(), " ", p.s().length());
     n = 1000000;
-    *q.l_mut() = n;
+    q.set_l(n);
     pwriteln!(q.lo(), " ", q.hi());
     pwriteln!(sum(&mut p, 5));
     q = p;

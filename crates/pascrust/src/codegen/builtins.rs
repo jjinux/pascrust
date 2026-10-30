@@ -255,11 +255,10 @@ impl<'a> Codegen<'a> {
                 let (source, dest) = (self.view_bytes(&args[0]), self.view_arg(&args[1]));
                 format!("move_bytes({source}, {dest}, {});", self.expr(&args[2]).0)
             }
-            Move => {
-                // A whole variable to one of the same type.
-                let ty = self.a.type_of(args[1].id).clone();
-                format!("{} = {};", self.place(&args[1]), self.coerce(&args[0], &ty).0)
-            }
+            // A whole variable to one of the same type: an assignment, with
+            // what an assignment needs (`Move(p^.a, p^.b, 4)` reads `p^.a`
+            // into a `let` first, so `p` isn't borrowed twice).
+            Move => self.assignment(&args[1], &args[0]),
             Lo => {
                 let t = ty(self, &args[0]).concrete();
                 format!("{} as u8", paren(self.coerce(&args[0], &t), prec::AS))
@@ -536,7 +535,11 @@ impl Codegen<'_> {
                 let (start, count) = (self.expr(&indexes[0]).0, self.expr(count).0);
                 return format!("{place}.fill({start}, {count}, {});", self.fill_value(value, &Type::Char));
             }
-            if let Type::Array(a) = &base_ty {
+            // (Only an array of byte-sized elements, as sema allows; an
+            // element of an array of strings is a string, below.)
+            if let Type::Array(a) = &base_ty
+                && crate::sema::types::tp_size(&a.elem) == Some(1)
+            {
                 let place = self.place_receiver(base);
                 let (start, count) = (self.expr(&indexes[0]).0, self.expr(count).0);
                 return format!("{place}.fill_from({start}, {count}, {});", self.fill_value(value, &a.elem));
