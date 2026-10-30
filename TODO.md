@@ -174,7 +174,7 @@ chosen so each step is testable with the previous ones.
 - [x] `minifb` window backend: present the framebuffer, forward key events to `ReadKey`/`KeyPressed` while graphics mode is active, window serviced by the main thread (macOS needs that) while the program runs on its worker thread.
 - [x] Get working: `clock/` (menu unit, clock unit, tester), `tictac/` (five units, `Ollie`, `CompUnit` AI). Checked headless with scripted keys and saved screenshots; the window opens on macOS.
   - [x] Transpiler fixes they needed: method call arguments that use the receiver (`obj.Prompt(obj.WhoseTurn)`) are computed first (`tests/run/method_args.pas`); two anonymous record types for same-named variables are `EndPoint` and `EndPoint2`, not `EndPoint_2` (`tests/run/anon_records.pas`).
-  - [x] DOS drives: an unmapped drive is the directory the program started in, not the current one (`tictac` does `ChDir('a:\TicTac')` before every game), and names match files on disk case-insensitively.
+  - [x] DOS drives: C: is the file system's root and other drives exist only when `PASCRUST_DRIVE_x` maps them (7d058ff; before, an unmapped drive was the directory the program started in) (`tictac` does `ChDir('a:\TicTac')` before every game), and names match files on disk case-insensitively.
   - [ ] Play a whole game against the computer in the window, by hand.
 - [x] Milestone: every program in `examples/` transpiles, builds without warnings, and runs. Mark the original "Get them working" TODO done.
 
@@ -252,7 +252,7 @@ Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews are on hold (the user, 2026-10-29); every commit still needs one when they resume. Not yet reviewed: `afba062..HEAD` (from 53cd1f8 on: per-procedure capture names, and/or keep their lets, call indexes in written places, pointer reads next to calls, argument order, Val's `-$1`, C: as the file system's root, untyped memory steps 0 to 5). Keep this range up to date.
 - [x] Untyped memory, as planned in `notes/untyped_memory.md` (agreed with Fable's review; the user said go ahead). Done: step 0 (TP-exact typed files), step 1 (untyped `var` parameters, byte views, `Move`/`FillChar` between types), step 2 (untyped files, `BlockRead`/`BlockWrite`), step 3 (the untyped `Pointer`, `GetMem`/`FreeMem`), step 4 (`GetImage`/`PutImage` in TP's layout), step 5 (`PChar` and `Strings`, with `Char` arrays lent a copy for one statement).
-- [ ] Question for the user (from a Fable review): is the directory the program starts in a drive's root? `GetDir` calls it `C:\`, and `FindFirst('A:*.*')` there lists no `.`/`..`, but `FindFirst('*.*')` there does (the `find_files` test expects that). DOS would list neither in a root.
+- [x] Question for the user (from a Fable review): is the directory the program starts in a drive's root? Answered by 7d058ff: no, C: is the file system's root, so the start directory is just the current directory, and `FindFirst` lists `.`/`..` there.
 - [x] Untyped files (`file` without `of`) with `BlockRead`/`BlockWrite`, and untyped `var` parameters, as byte views of records and arrays (with `SizeOf`).
 - [x] `PChar` and the `Strings` unit, as a byte buffer plus an offset; a `Char` array used as a `PChar` is lent a copy for the statement, and keeping a `PChar` into one is a compile error (the user chose this over shared arrays, 2026-10-29).
 - [x] `WinDos`: the `Dos` routines, and wrappers with `PChar` strings.
@@ -263,6 +263,7 @@ Last: raw bytes and C strings
 ## Phase 8: Tier 3 and FFI (as interest dictates)
 
 - [ ] Variant records and procedural types, as in `notes/variant_records_and_procedural_types.md`. Done: step 1 (tagged variant parts, flattened, with TP's layout in files), step 2 (tagless parts as TP's bytes, behind accessors). Next: step 3 (nested parts), 4-6 (procedural types).
+- [ ] Argument order in `Inc(a[Pick], Bump)`: PascRust runs `Pick` before `Bump`, Free Pascal `Bump` first (from the Fable review of 99e4f09). TP doesn't document it; obscure.
 - [ ] Field names needn't avoid the runtime's function names: a field `W` becomes `w_` because `w` is the runtime's width helper, but a struct field can't clash with a function.
 - [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, docs/architecture.md §16), and `TypeOf`.
 - [ ] Procedural types and procedure parameters.

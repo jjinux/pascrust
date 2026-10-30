@@ -339,7 +339,9 @@ Dos unit
   program is done with a search, so it keeps up to 10,000 (of which up
   to 100 that have run out), forgetting those used longest ago
 - Faked: `DosVersion` (DOS 6.22), `DiskFree`/`DiskSize` (512 MB free of a
-  1 GB disk on every drive: real disks are too big for a `LongInt`),
+  1 GB disk on every drive there is: real disks are too big for a
+  `LongInt`; -1 for a drive `PASCRUST_DRIVE_x` doesn't map, as TP's
+  invalid drive),
   `SetDate`/`SetTime` (don't change the computer's clock),
   `GetCBreak`/`SetCBreak` and `GetVerify`/`SetVerify` (remembered),
   `SwapVectors` (does nothing)

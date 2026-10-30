@@ -79,6 +79,13 @@ fn pascal_main() {
     );
     check(&mut checks, &mut failures, disk_free(0) / (disk_size(0) / 100) == 50, pstr("DiskFree is half of DiskSize"));
     check(&mut checks, &mut failures, disk_size(30) == -1, pstr("DiskSize of an invalid drive"));
+    check(
+        &mut checks,
+        &mut failures,
+        disk_size(17) == -1 && disk_free(17) == -1,
+        pstr("DiskSize and DiskFree of an unmapped drive (Q:)"),
+    );
+    check(&mut checks, &mut failures, disk_size(1) > 0, pstr("DiskSize of a mapped drive (A:)"));
     set_cbreak(true);
     get_cbreak(&mut b);
     check(&mut checks, &mut failures, b, pstr("SetCBreak and GetCBreak"));

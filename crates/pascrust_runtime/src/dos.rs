@@ -66,16 +66,25 @@ pub fn dos_version() -> u16 {
 
 /// `DiskSize(drive)` (faked): today's disks are far bigger than the 2 GB a
 /// `LongInt` holds, so every drive is a 1 GB disk. Drive 0 is the current
-/// one, 1 is A:, ...; a drive letter past Z: is -1, as TP's invalid drive.
+/// one (C:), 1 is A:, ...; a drive that isn't there (one `PASCRUST_DRIVE_x`
+/// doesn't map) is -1, as TP's invalid drive.
 pub fn disk_size(drive: impl Into<i32>) -> i32 {
-    if (0..=26).contains(&drive.into()) { 1 << 30 } else { -1 }
+    if drive_number_exists(drive.into()) { 1 << 30 } else { -1 }
+}
+
+fn drive_number_exists(drive: i32) -> bool {
+    match drive {
+        0 => true,
+        1..=26 => crate::system::drive_exists((b'A' + drive as u8 - 1) as char),
+        _ => false,
+    }
 }
 
 /// `DiskFree(drive)` (faked): 512 MB free on every drive. See `disk_size`.
 /// (`DiskFree(0) div 1024` works; `DiskFree(0) * 100` overflows a `LongInt`,
 /// as it did on a real disk of a few hundred megabytes.)
 pub fn disk_free(drive: impl Into<i32>) -> i32 {
-    if (0..=26).contains(&drive.into()) { 1 << 29 } else { -1 }
+    if drive_number_exists(drive.into()) { 1 << 29 } else { -1 }
 }
 
 /// `SetDate(year, month, day)` and `SetTime(...)` (faked): they would change

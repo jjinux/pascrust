@@ -43,6 +43,8 @@ begin
   Check((DiskSize(0) > 0) and (DiskFree(0) > 0) and (DiskFree(0) <= DiskSize(0)), 'DiskFree and DiskSize');
   Check(DiskFree(0) div (DiskSize(0) div 100) = 50, 'DiskFree is half of DiskSize');
   Check(DiskSize(30) = -1, 'DiskSize of an invalid drive');
+  Check((DiskSize(17) = -1) and (DiskFree(17) = -1), 'DiskSize and DiskFree of an unmapped drive (Q:)');
+  Check(DiskSize(1) > 0, 'DiskSize of a mapped drive (A:)');
   SetCBreak(True);
   GetCBreak(b);
   Check(b, 'SetCBreak and GetCBreak');

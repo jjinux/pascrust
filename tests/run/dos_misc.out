@@ -8,8 +8,10 @@ ok: DosVersion is 6.22
 ok: DiskFree and DiskSize
 ok: DiskFree is half of DiskSize
 ok: DiskSize of an invalid drive
+ok: DiskSize and DiskFree of an unmapped drive (Q:)
+ok: DiskSize of a mapped drive (A:)
 ok: SetCBreak and GetCBreak
 ok: SetVerify and GetVerify
 ok: a Registers record can be declared and used
 ok: DosError is a variable
-14 of 14 checks passed
+16 of 16 checks passed
