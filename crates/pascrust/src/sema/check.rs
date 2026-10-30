@@ -2566,7 +2566,8 @@ impl Checker {
                         | (Type::Pointer(_), Type::AnyPointer)
                         | (Type::AnyPointer, Type::PChar)
                         | (Type::PChar, Type::AnyPointer)
-                ) {
+                ) || (matches!(target, Type::Pointer(_)) && from == target)
+                {
                     return target;
                 }
                 if !(from.is_ordinal() && target.is_ordinal()) && from != Type::Error {
@@ -3215,8 +3216,18 @@ impl Checker {
                     },
                     _ => None,
                 };
+                // `Dispose(PNode(p))`: a `Pointer` cast to the record's type,
+                // to free the record it points to.
+                let cast = b == Dispose
+                    && args.len() == 1
+                    && matches!(&args[0].kind, ExprKind::Call { callee, args: cast_args }
+                        if cast_args.len() == 1
+                            && matches!(&callee.kind, ExprKind::Name(id)
+                                if matches!(self.lookup(&id.key()).map(|s| &self.a.symbols[s].kind),
+                                    Some(SymKind::TypeName(Type::Pointer(_))))));
                 let ty = match &type_arg {
                     Some(ty) => ty.clone(),
+                    None if cast => self.expr(&args[0]),
                     None => self.place(&args[0], true),
                 };
                 if !matches!(ty, Type::Pointer(_) | Type::Error) {

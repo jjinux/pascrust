@@ -310,6 +310,10 @@ impl<'a> Codegen<'a> {
                 Type::AnyPointer | Type::PChar => format!("{}.free();", self.place_receiver(&args[0])),
                 _ => format!("{}.dispose();", self.place_receiver(&args[0])),
             },
+            // `Dispose(PNode(p))`: the record the cast reaches.
+            Dispose if matches!(args[0].kind, ExprKind::Call { .. }) => {
+                format!("{}.dispose();", paren(self.expr(&args[0]), prec::POSTFIX))
+            }
             Dispose => {
                 let dispose = format!("{}.dispose();", self.place_receiver(&args[0]));
                 match self.a.object_calls.get(&call_id) {
