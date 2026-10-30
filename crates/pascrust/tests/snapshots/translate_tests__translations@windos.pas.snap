@@ -128,6 +128,16 @@ fn pascal_main() {
             && i16::from(sr.attr) & i16::from(FA_DIRECTORY) != 0,
         pstr("FindFirst with TSearchRec"),
     );
+    create_dir(&PChar::literal("wd_a_rather_long_directory_name"));
+    win_find_first(&PChar::literal("wd_a_rather_long_dir*"), FA_DIRECTORY, &mut sr);
+    let name_chars = PChar::copy_of(sr.name.as_slice());
+    check(
+        &mut checks,
+        &mut failures,
+        str_comp(&name_chars, &PChar::literal("wd_a_rather_long_directory_name")) == 0,
+        pstr("TSearchRec keeps a long name whole"),
+    );
+    remove_dir(&PChar::literal("wd_a_rather_long_directory_name"));
     win_find_next(&mut sr);
     check(&mut checks, &mut failures, dos_error() == 18, pstr("FindNext: no more files"));
     win_find_first(&PChar::literal("*.no_such_ext"), FA_ANY_FILE, &mut sr);

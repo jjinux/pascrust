@@ -782,14 +782,15 @@ pub const F_SIGN: u8 = 0x0080;
 pub const F_OVERFLOW: u16 = 0x0800;
 
 /// `WinDos`'s `TSearchRec`: `SearchRec` with the name as a `#0`-ended
-/// `array[0..12] of Char`.
+/// `array[0..255] of Char` (TP's was `[0..12]`, for 8.3 names; this one
+/// holds a whole modern name).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TSearchRec {
     pub fill: crate::array::PArray<u8, 1, 21>,
     pub attr: u8,
     pub time: i32,
     pub size: i32,
-    pub name: crate::array::PArray<u8, 0, 13>,
+    pub name: crate::array::PArray<u8, 0, 256>,
 }
 
 /// Run a `Dos` search routine on a `TSearchRec`, through a `SearchRec`.
@@ -797,9 +798,9 @@ fn through_search_rec(s: &mut TSearchRec, search: impl FnOnce(&mut SearchRec)) {
     let name: Vec<u8> = s.name.iter().copied().take_while(|&c| c != 0).collect();
     let mut rec = SearchRec { fill: s.fill, attr: s.attr, time: s.time, size: s.size, name: PString::from(&name[..]) };
     search(&mut rec);
-    let mut name = [0u8; 13];
+    let mut name = [0u8; 256];
     let bytes = rec.name.as_bytes();
-    let n = bytes.len().min(12);
+    let n = bytes.len().min(255);
     name[..n].copy_from_slice(&bytes[..n]);
     *s = TSearchRec {
         fill: rec.fill,

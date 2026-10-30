@@ -365,7 +365,9 @@ Dos unit
   set `DosError`, 3 for a missing directory and 5 otherwise, rather than
   stopping with a runtime error), `GetArgCount`, `GetArgStr`, `GetEnvVar`
   (nil if the variable isn't set), and `FindFirst`/`FindNext` with
-  `TSearchRec` (its `Name` an `array[0..12] of Char`). `TDateTime` and
+  `TSearchRec` (its `Name` an `array[0..255] of Char`, not TP's
+  `[0..12]`, so a long modern file name isn't cut; only
+  `SizeOf(TSearchRec)` shows it). `TDateTime` and
   `TRegisters` are `Dos`'s `DateTime` and `Registers`; the `faXXXX`,
   `fmXXXX`, `fsXXXX`, `fcXXXX` and flag constants and `DosError` are
   there. Not there: `TFileRec`/`TTextRec`

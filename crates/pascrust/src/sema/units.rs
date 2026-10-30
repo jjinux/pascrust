@@ -155,7 +155,10 @@ pub fn record_type(name: &str) -> Option<Type> {
             fields.push(("Clip", Type::Bool));
             unit_record("ViewPortType", &fields)
         }
-        // `WinDos`'s `SearchRec`, with the name as a C-style string.
+        // `WinDos`'s `SearchRec`, with the name as a C-style string. TP's
+        // was `array[0..12] of Char`, for DOS's 8.3 names; this one has
+        // room for a whole modern name (the user's call: a program reads
+        // it up to its `#0`, so only `SizeOf(TSearchRec)` differs).
         "tsearchrec" => {
             let array = |lo, hi, elem| {
                 Type::Array(std::rc::Rc::new(super::types::ArrayType {
@@ -173,7 +176,7 @@ pub fn record_type(name: &str) -> Option<Type> {
                     ("Attr", Type::Int(IntKind::Byte)),
                     ("Time", Type::Int(IntKind::LongInt)),
                     ("Size", Type::Int(IntKind::LongInt)),
-                    ("Name", array(0, 12, Type::Char)),
+                    ("Name", array(0, 255, Type::Char)),
                 ],
             )
         }

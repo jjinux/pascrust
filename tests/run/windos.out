@@ -6,6 +6,7 @@ ok: FileSearch, not found
 ok: CreateDir
 ok: CreateDir of an existing directory: DosError 5
 ok: FindFirst with TSearchRec
+ok: TSearchRec keeps a long name whole
 ok: FindNext: no more files
 ok: FindFirst: none
 ok: GetCurDir is GetDir
@@ -19,4 +20,4 @@ ok: GetEnvVar, not set
 ok: GetEnvVar
 ok: PackTime and UnpackTime with TDateTime
 ok: constants
-21 of 21 checks passed
+22 of 22 checks passed

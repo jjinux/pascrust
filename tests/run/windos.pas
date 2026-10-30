@@ -44,6 +44,10 @@ begin
    Check(DosError = 5, 'CreateDir of an existing directory: DosError 5');
    FindFirst('wd_test_dir', faDirectory, sr);
    Check((DosError = 0) and (StrComp(sr.name, 'wd_test_dir') = 0) and (sr.Attr and faDirectory <> 0), 'FindFirst with TSearchRec');
+   CreateDir('wd_a_rather_long_directory_name');
+   FindFirst('wd_a_rather_long_dir*', faDirectory, sr);
+   Check(StrComp(sr.name, 'wd_a_rather_long_directory_name') = 0, 'TSearchRec keeps a long name whole');
+   RemoveDir('wd_a_rather_long_directory_name');
    FindNext(sr);
    Check(DosError = 18, 'FindNext: no more files');
    FindFirst('*.no_such_ext', faAnyFile, sr);
