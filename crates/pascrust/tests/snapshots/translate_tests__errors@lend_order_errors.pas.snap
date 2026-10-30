@@ -3,6 +3,10 @@ source: crates/pascrust/tests/translate_tests.rs
 expression: error
 input_file: tests/errors/lend_order_errors.pas
 ---
-lend_order_errors.pas:16:39: error: `Fill` may change `buf`, which this statement uses as a PChar; PascRust lends a PChar a copy of the array for the statement, so the change would be undone after it; call `Fill` in a statement of its own; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#call-after-lend
-  WriteLn(StrLen(StrUpper(buf)), ' ', Fill);
-                                      ^^^^
+lend_order_errors.pas:30:40: error: `Fill` may change `Buf`, which this statement uses as a PChar; PascRust lends a PChar a copy of the array for the statement, so the change would be undone after it; call `Fill` in a statement of its own; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#call-after-lend
+   WriteLn(StrLen(StrUpper(Buf)), ' ', Fill);
+                                       ^^^^
+
+lend_order_errors.pas:31:39: error: `Grow` may change `r`, which this statement uses as a PChar; PascRust lends a PChar a copy of the array for the statement, so the change would be undone after it; call `Grow` in a statement of its own; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#call-after-lend
+   WriteLn(StrLen(StrCat(r.A, '!')) + Grow(r));
+                                      ^^^^^^^

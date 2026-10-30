@@ -177,7 +177,10 @@ pub fn check(a: &Analysis, flows: &[Flow], arg_flows: &[ArgFlow]) -> Vec<Diagnos
 pub struct LendingStmt {
     pub start: usize,
     pub lends: Vec<(SymId, u32)>,
-    pub calls: Vec<(ProcId, NodeId, Span, u32)>,
+    /// The program's routines called: the routine, the call's expression,
+    /// its place, when, and the variables its `var` arguments (the object
+    /// of a method among them) reach.
+    pub calls: Vec<(ProcId, NodeId, Span, u32, Vec<SymId>)>,
 }
 
 /// After lifting, when each routine's globals are known: a call that may
@@ -188,9 +191,13 @@ pub fn check_lends(a: &mut Analysis) -> Vec<Diagnostic> {
     for stmt in std::mem::take(&mut a.lending_stmts) {
         let roots: Vec<SymId> = stmt.lends.iter().map(|&(root, _)| root).collect();
         a.lent_roots.entry(stmt.start).or_default().extend(roots.iter().copied());
-        for &(callee, id, span, at) in &stmt.calls {
+        for (callee, id, span, at, var_roots) in &stmt.calls {
+            let (callee, id, span, at) = (*callee, *id, *span, *at);
             for &root in &roots {
-                if !a.procs[callee].captures.iter().any(|c| c.sym == root) {
+                // Through a global it uses, or a `var` argument (a method's
+                // object too).
+                let reaches = a.procs[callee].captures.iter().any(|c| c.sym == root) || var_roots.contains(&root);
+                if !reaches {
                     continue;
                 }
                 let first_lend = stmt.lends.iter().filter(|(r, _)| *r == root).map(|&(_, at)| at).min().unwrap_or(0);

@@ -4,14 +4,29 @@ program LendOrderErrors;
 {$X+}
 uses Strings;
 var
-  buf: array[0..15] of Char;
+   Buf: array[0..15] of Char;
+
+type
+   Rec = record
+      A: array[0..15] of Char;
+   end;
+
+var
+   r: Rec;
+
+function Grow(var rr: Rec): Integer;
+   begin
+      StrCat(rr.A, 'y');
+      Grow := StrLen(rr.A);
+   end;
 
 function Fill: Integer;
-begin
-  StrCopy(buf, 'filled');
-  Fill := 1;
-end;
+   begin
+      StrCopy(Buf, 'filled');
+      Fill := 1;
+   end;
 
 begin
-  WriteLn(StrLen(StrUpper(buf)), ' ', Fill);
+   WriteLn(StrLen(StrUpper(Buf)), ' ', Fill);
+   WriteLn(StrLen(StrCat(r.A, '!')) + Grow(r));
 end.

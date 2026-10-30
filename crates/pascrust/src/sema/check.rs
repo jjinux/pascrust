@@ -3176,6 +3176,7 @@ impl Checker {
                 );
             }
         }
+        let var_roots: Vec<SymId> = var_args.iter().map(|arg| arg.root).collect();
         if !var_args.is_empty() {
             self.call_sites.push(CallSite { caller: cur, callee: p, var_args });
         }
@@ -3184,7 +3185,7 @@ impl Checker {
         self.event += 1;
         let event = self.event;
         if let Some(frame) = self.lend_frames.last_mut() {
-            frame.calls.push((p, e.id, e.span, event));
+            frame.calls.push((p, e.id, e.span, event, var_roots));
         }
         self.a.procs[p].ret.clone().unwrap_or(Type::Void)
     }
