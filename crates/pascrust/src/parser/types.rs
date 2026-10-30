@@ -27,9 +27,9 @@ impl Parser {
             }
             TokenKind::Keyword(Keyword::Record) => {
                 self.bump();
-                let fields = self.field_list()?;
+                let (fields, variant) = self.field_list()?;
                 let end = self.expect_keyword(Keyword::End)?;
-                Ok(TypeExpr::Record(fields, start.to(end)))
+                Ok(TypeExpr::Record(fields, variant, start.to(end)))
             }
             TokenKind::Keyword(Keyword::String) => {
                 self.bump();
@@ -122,8 +122,9 @@ impl Parser {
         }
     }
 
-    /// The fields of a record, up to (not including) the closing `end`.
-    fn field_list(&mut self) -> PResult<Vec<FieldDecl>> {
+    /// The fields of a record, up to (not including) the closing `end` (or
+    /// a variant's `)`), and the variant part at the end, if any.
+    fn field_list(&mut self) -> PResult<(Vec<FieldDecl>, Option<Box<VariantDecl>>)> {
         let mut fields = Vec::new();
         while matches!(self.peek(), TokenKind::Ident(_)) {
             let names = self.ident_list()?;
@@ -135,9 +136,35 @@ impl Parser {
                 break;
             }
         }
-        if self.at_keyword(Keyword::Case) {
-            return Err(Diagnostic::new(self.span(), "variant records are not supported yet"));
+        let variant = if self.at_keyword(Keyword::Case) { Some(Box::new(self.variant_part()?)) } else { None };
+        Ok((fields, variant))
+    }
+
+    /// `case [Tag:] Type of Label, ...: (Fields); ...`, the variant part of
+    /// a record.
+    fn variant_part(&mut self) -> PResult<VariantDecl> {
+        let start = self.expect_keyword(Keyword::Case)?;
+        let first = self.expect_ident()?;
+        let (tag, tag_type) =
+            if self.eat(&TokenKind::Colon) { (Some(first), self.expect_ident()?) } else { (None, first) };
+        self.expect_keyword(Keyword::Of)?;
+        let mut variants = Vec::new();
+        // Variants run to the record's `end` (or, nested, the `)` of the
+        // variant this part is in); the `;` after the last one is optional.
+        while !self.at_keyword(Keyword::End) && !self.at(&TokenKind::RParen) {
+            let mut labels = vec![self.expression()?];
+            while self.eat(&TokenKind::Comma) {
+                labels.push(self.expression()?);
+            }
+            self.expect(&TokenKind::Colon)?;
+            self.expect(&TokenKind::LParen)?;
+            let (fields, variant) = self.field_list()?;
+            self.expect(&TokenKind::RParen)?;
+            variants.push(VariantArm { labels, fields, variant });
+            if !self.eat(&TokenKind::Semi) {
+                break;
+            }
         }
-        Ok(fields)
+        Ok(VariantDecl { tag, tag_type, variants, span: start.to(self.prev_span()) })
     }
 }

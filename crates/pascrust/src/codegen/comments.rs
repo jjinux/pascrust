@@ -316,7 +316,7 @@ impl Anchors<'_> {
     fn type_expr(&mut self, ty: &TypeExpr, name: &str) {
         let span = ty.span();
         let fields = match ty {
-            TypeExpr::Record(fields, _) | TypeExpr::Object { fields, .. } => fields,
+            TypeExpr::Record(fields, _, _) | TypeExpr::Object { fields, .. } => fields,
             TypeExpr::Array { elem, .. } => return self.type_expr(elem, ""),
             _ => return,
         };

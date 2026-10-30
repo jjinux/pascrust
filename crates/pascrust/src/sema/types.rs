@@ -177,7 +177,29 @@ impl ArrayType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordType {
     pub rust_name: String,
+    /// Every field, the variants' too: a variant record is flattened, so a
+    /// field is found the same way wherever it was declared.
     pub fields: Vec<Field>,
+    /// The variant part (`case Kind: Shape of ...`), if there is one.
+    pub variant: Option<VariantPart>,
+}
+
+/// A record's variant part. Its tag (if any) and its variants' fields are
+/// in the record's `fields`, after the fixed ones.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariantPart {
+    /// The tag field, as an index into `fields`; `None` without a tag.
+    pub tag: Option<usize>,
+    pub tag_type: Type,
+    pub variants: Vec<Variant>,
+}
+
+/// One variant: the tag values that select it, and its fields (a range of
+/// the record's `fields`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variant {
+    pub labels: Vec<i64>,
+    pub fields: std::ops::Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -276,6 +298,20 @@ impl ObjectType {
 impl RecordType {
     pub fn field(&self, name: &str) -> Option<&Field> {
         self.fields.iter().find(|f| f.name.eq_ignore_ascii_case(name))
+    }
+
+    /// The fields before the variant part (the tag among them).
+    pub fn fixed_fields(&self) -> &[Field] {
+        let end = self.variant.as_ref().and_then(|v| v.variants.first()).map_or(self.fields.len(), |v| v.fields.start);
+        &self.fields[..end]
+    }
+
+    /// The bytes the variants share: the largest variant's size, since in
+    /// TP they all start at the same place.
+    pub fn variant_area(&self) -> Option<i64> {
+        let Some(part) = &self.variant else { return Some(0) };
+        let sizes = part.variants.iter().map(|v| self.fields[v.fields.clone()].iter().map(|f| tp_size(&f.ty)).sum());
+        sizes.collect::<Option<Vec<i64>>>().map(|sizes| sizes.into_iter().max().unwrap_or(0))
     }
 }
 
@@ -479,7 +515,7 @@ pub fn tp_size(ty: &Type) -> Option<i64> {
         }
         Type::Str { cap } => i64::from(*cap) + 1,
         Type::Array(a) => a.count() * tp_size(&a.elem)?,
-        Type::Record(r) => r.fields.iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()?,
+        Type::Record(r) => r.fixed_fields().iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()? + r.variant_area()?,
         Type::Object(o) => {
             let own = o.fields.iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()?;
             own + o.parent.as_ref().map_or(Some(0), |p| tp_size(&Type::Object(p.clone())))?

@@ -552,6 +552,33 @@ macro_rules! file_record {
             }
         }
     };
+    // A variant record (`case kind: 6 { Shape::Circle => [r], ... }`): the
+    // fixed fields (the tag among them), then the fields of the variant the
+    // tag selects, padded with zeros to the `6` bytes the variants share.
+    // Reading fills that variant and leaves the others at their defaults.
+    ($ty:ident { $($field:ident $(: $kind:ident $size:literal)?),* ;
+        case $tag:ident : $area:literal { $($pattern:pat => [$($vfield:ident $(: $vkind:ident $vsize:literal)?),*]),* $(,)? } }) => {
+        impl $crate::io::FileRecord for $ty {
+            fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
+                $( $crate::file_record!(@encode self.$field, out $(, $kind $size)?); )*
+                let start = out.len();
+                match self.$tag {
+                    $( $pattern => { $( $crate::file_record!(@encode self.$vfield, out $(, $vkind $vsize)?); )* } )*
+                }
+                out.resize(start + $area, 0);
+            }
+            fn decode(input: &mut &[u8]) -> Self {
+                let mut value = $ty { $( $field: $crate::file_record!(@decode input $(, $kind $size)?), )* ..Default::default() };
+                let before = input.len();
+                match value.$tag {
+                    $( $pattern => { $( value.$vfield = $crate::file_record!(@decode input $(, $vkind $vsize)?); )* } )*
+                }
+                let used = before - input.len();
+                *input = &input[($area - used).min(input.len())..];
+                value
+            }
+        }
+    };
     ($ty:ident { $($field:ident $(: $kind:ident $size:literal)?),* $(,)? }) => {
         impl $crate::io::FileRecord for $ty {
             fn encode(&self, out: &mut ::std::vec::Vec<u8>) {

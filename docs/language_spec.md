@@ -161,6 +161,14 @@ Built-ins (System unit)
   also as a typed constant; and one can be used as a string: assigned to a
   string, compared, joined with `+`, passed as a string parameter (a
   zero-based one up to its `#0`, any other whole)
+- Variant records with a tag field (`case Kind: Shape of Circle: (R:
+  Integer); Rect: (W, H: Integer)`): every variant's fields can be set and
+  read, through `with` and as `var` arguments; labels are checked like
+  `case` labels; a typed constant gives one variant's fields and the tag.
+  `SizeOf` and `file of` use TP's layout, where the variants share the
+  bytes after the fixed fields: a file stores the variant the tag selects.
+  Reading another variant's field gives its own last value, not the bytes
+  of the variant in use (TP overlaid them)
 - Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
   routine sees the caller's variable as TP's bytes, through a typecast
   (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a
@@ -421,7 +429,8 @@ Graph unit (BGI, as used in the examples)
 Later (real TP features, not in the examples, worth doing in order)
 
 1. (Done, now in tier 2: sets.)
-2. Variant records (flattened; no type punning)
+2. (Tagged variant records are done, in tier 2.) Variant parts without a
+   tag field (type punning), and variant parts nested in a variant
 3. (Done, now in tier 2: `virtual` methods, constructors and destructors,
    polymorphic pointers to objects.)
 4. Procedural types and procedure parameters (`type Func = function(x: real):

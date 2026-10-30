@@ -131,8 +131,8 @@ pub enum TypeExpr {
     Subrange { lo: Box<Expr>, hi: Box<Expr>, span: Span },
     /// `(red, green, blue)`.
     Enum(Vec<Ident>, Span),
-    /// `record ... end`.
-    Record(Vec<FieldDecl>, Span),
+    /// `record ... end`, with its variant part (`case ... of`) if it has one.
+    Record(Vec<FieldDecl>, Option<Box<VariantDecl>>, Span),
     /// `^Name`. Pascal allows a pointer to a type that's declared later in
     /// the same `type` section, so this holds a name, not a resolved type.
     Pointer(Ident, Span),
@@ -153,13 +153,34 @@ impl TypeExpr {
             | TypeExpr::Array { span, .. }
             | TypeExpr::Subrange { span, .. }
             | TypeExpr::Enum(_, span)
-            | TypeExpr::Record(_, span)
+            | TypeExpr::Record(_, _, span)
             | TypeExpr::Pointer(_, span)
             | TypeExpr::Set(_, span)
             | TypeExpr::File(_, span)
             | TypeExpr::Object { span, .. } => *span,
         }
     }
+}
+
+/// A record's variant part: `case Kind: Shape of Circle: (R: Real); Rect:
+/// (W, H: Integer)`, or without a tag field, `case Integer of ...`. Each
+/// variant is a field list that may end in a variant part of its own.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariantDecl {
+    /// The tag field's name (`Kind`), if there is one.
+    pub tag: Option<Ident>,
+    /// The tag's type (`Shape`, or `Integer` for a tagless part).
+    pub tag_type: Ident,
+    pub variants: Vec<VariantArm>,
+    pub span: Span,
+}
+
+/// One variant: its labels (`Circle`, or `0, 1`) and its fields.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariantArm {
+    pub labels: Vec<Expr>,
+    pub fields: Vec<FieldDecl>,
+    pub variant: Option<Box<VariantDecl>>,
 }
 
 /// `a, b: Type` inside a record.

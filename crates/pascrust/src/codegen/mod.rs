@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 use crate::ast::*;
 use crate::diag::{SourceMap, Span};
-use crate::sema::types::ObjectType;
+use crate::sema::types::{ObjectType, RecordType, VariantPart};
 use crate::sema::{Access, Analysis, Builtin, CaptureMode, MAIN, ProcId, SymId, SymKind, Type, VarRole};
 
 /// Generate the Rust source for a program and its units: one file per
@@ -452,6 +452,17 @@ impl<'a> Codegen<'a> {
                 self.line(comment);
             }
             self.line(format!("/// Pascal: `{text}`"));
+            if let Type::Record(r) = ty
+                && let Some(part) = &r.variant
+                && let Some(tag) = part.tag
+            {
+                let (pascal, rust) = (&r.fields[tag].name, &r.fields[tag].rust_name);
+                self.line("///");
+                self.line(format!("/// The `case {pascal}: ... of` part is a tagged union: the program sets `{rust}`"));
+                self.line("/// to say which variant's fields are in use. Rust would use an `enum`, but");
+                self.line("/// Pascal lets a program set the fields before the tag, so every variant's");
+                self.line("/// fields are plain fields here; only `file of` looks at the tag.");
+            }
             let groups = self.comments.field_groups.get(&span.start).cloned().unwrap_or_default();
             match ty {
                 Type::Enum(e) => {
@@ -582,6 +593,42 @@ impl<'a> Codegen<'a> {
         found
     }
 
+    /// The `case` clause of a variant record's `file_record!`: in TP the
+    /// variants share the bytes after the fixed fields, so a file holds the
+    /// fields of the variant the tag selects, padded to the largest one.
+    fn file_record_variants(&mut self, r: &RecordType, part: &VariantPart) -> String {
+        let Some(tag) = part.tag else { return String::new() };
+        let area = r.variant_area().unwrap_or(0);
+        let tag_name = &r.fields[tag].rust_name;
+        self.line(format!("// A variant record keeps one variant in a file: the one `{tag_name}` selects,"));
+        self.line(format!("// padded with zeros to the {area} bytes the variants share in TP."));
+        let mut arms: Vec<String> = Vec::new();
+        let mut covered = 0;
+        for variant in &part.variants {
+            if variant.labels.is_empty() {
+                continue;
+            }
+            let pattern: Vec<String> =
+                variant.labels.iter().map(|&n| self.ord_range_pattern(&part.tag_type, n, n)).collect();
+            covered += variant.labels.len() as i64;
+            let fields: Vec<String> = r.fields[variant.fields.clone()].iter().map(file_record_field).collect();
+            arms.push(format!("{} => [{}]", pattern.join(" | "), fields.join(", ")));
+        }
+        // A tag value no variant has stores no fields. (Rust warns about a
+        // `_` arm when the others already cover every value.)
+        let domain = match &part.tag_type {
+            Type::Enum(e) => e.variants.len() as i64,
+            Type::Bool => 2,
+            Type::Char => 256,
+            Type::Int(kind) => kind.range().1 - kind.range().0 + 1,
+            _ => i64::MAX,
+        };
+        if covered < domain {
+            arms.push("_ => []".to_string());
+        }
+        format!("; case {tag_name}: {area} {{ {} }}", arms.join(", "))
+    }
+
     /// `file_record!(...)`: let a `file of T` store this type.
     fn file_record(&mut self, ty: &Type) {
         self.blank();
@@ -592,8 +639,12 @@ impl<'a> Codegen<'a> {
         match ty {
             Type::Enum(e) => self.line(format!("file_record!(enum {});", e.rust_name)),
             Type::Record(r) => {
-                let fields: Vec<String> = r.fields.iter().map(file_record_field).collect();
-                self.line(format!("file_record!({} {{ {} }});", r.rust_name, fields.join(", ")));
+                let fields: Vec<String> = r.fixed_fields().iter().map(file_record_field).collect();
+                let variant = match &r.variant {
+                    Some(part) => self.file_record_variants(r, part),
+                    None => String::new(),
+                };
+                self.line(format!("file_record!({} {{ {}{variant} }});", r.rust_name, fields.join(", ")));
             }
             Type::Object(o) => {
                 let mut fields: Vec<String> = o.parent.iter().map(|_| "base".to_string()).collect();

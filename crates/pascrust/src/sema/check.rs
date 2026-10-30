@@ -5,7 +5,9 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::names::{self, screaming_snake_case, snake_case};
-use super::types::{ArrayType, EnumType, Field, ObjectType, PointerType, RecordType, same_ordinal_kind};
+use super::types::{
+    ArrayType, EnumType, Field, ObjectType, PointerType, RecordType, Variant, VariantPart, same_ordinal_kind,
+};
 use super::*;
 use crate::ast::*;
 
@@ -592,11 +594,29 @@ impl Checker {
                     self.const_value(item, &a.elem);
                 }
             }
-            (ConstValue::Record(fields, _), Type::Record(r)) => {
+            (ConstValue::Record(fields, span), Type::Record(r)) => {
                 for (name, value) in fields {
                     match r.field(&name.name) {
                         Some(field) => self.const_value(value, &field.ty.clone()),
                         None => self.error(name.span, format!("`{}` has no field `{}`", r.rust_name, name.name)),
+                    }
+                }
+                // TP: a constant of a variant record gives the fields of one
+                // variant only, and its tag's value.
+                if let Some(part) = &r.variant {
+                    let index = |name: &Ident| r.fields.iter().position(|f| f.name.eq_ignore_ascii_case(&name.name));
+                    let mut chosen: Vec<usize> = fields
+                        .iter()
+                        .filter_map(|(name, _)| index(name))
+                        .filter_map(|i| part.variants.iter().position(|v| v.fields.contains(&i)))
+                        .collect();
+                    chosen.dedup();
+                    let tag_given = part.tag.is_none_or(|tag| fields.iter().any(|(name, _)| index(name) == Some(tag)));
+                    if chosen.len() > 1 {
+                        self.error(*span, "a constant of a variant record gives the fields of one variant only");
+                    } else if !chosen.is_empty() && !tag_given {
+                        let tag = &r.fields[part.tag.unwrap()].name;
+                        self.error(*span, format!("a constant of a variant record gives its tag (`{tag}`) too"));
                     }
                 }
             }
@@ -929,19 +949,12 @@ impl Checker {
                 }
                 ty
             }
-            TypeExpr::Record(fields, _) => {
+            TypeExpr::Record(fields, variant, _) => {
                 let rust_name = self.type_name(name.unwrap_or("Record"));
                 let mut resolved: Vec<Field> = Vec::new();
-                for group in fields {
-                    let ty = self.resolve_type(&group.ty);
-                    for n in &group.names {
-                        if resolved.iter().any(|f| f.name.eq_ignore_ascii_case(&n.name)) {
-                            self.error(n.span, format!("duplicate field `{}`", n.name));
-                        }
-                        resolved.push(Field { name: n.name.clone(), rust_name: snake_case(&n.name), ty: ty.clone() });
-                    }
-                }
-                let ty = Type::Record(Rc::new(RecordType { rust_name, fields: resolved }));
+                self.record_fields(fields, &mut resolved);
+                let variant = variant.as_deref().and_then(|v| self.variant_part(v, &mut resolved));
+                let ty = Type::Record(Rc::new(RecordType { rust_name, fields: resolved, variant }));
                 self.a.type_defs.push((ty.clone(), t.span()));
                 ty
             }
@@ -983,6 +996,72 @@ impl Checker {
                 Type::Error
             }
         }
+    }
+
+    /// A record's fields, added to `resolved` (where a name may not repeat:
+    /// the variants' fields share one namespace with the fixed ones).
+    fn record_fields(&mut self, groups: &[FieldDecl], resolved: &mut Vec<Field>) {
+        for group in groups {
+            let ty = self.resolve_type(&group.ty);
+            for n in &group.names {
+                self.add_field(n, ty.clone(), resolved);
+            }
+        }
+    }
+
+    fn add_field(&mut self, name: &Ident, ty: Type, resolved: &mut Vec<Field>) {
+        if resolved.iter().any(|f| f.name.eq_ignore_ascii_case(&name.name)) {
+            self.error(name.span, format!("duplicate field `{}`", name.name));
+        }
+        resolved.push(Field { name: name.name.clone(), rust_name: snake_case(&name.name), ty });
+    }
+
+    /// A record's variant part: its tag becomes a field, and so do the
+    /// variants' fields (a tagged variant record is flattened; see
+    /// `docs/architecture.md`).
+    fn variant_part(&mut self, v: &VariantDecl, resolved: &mut Vec<Field>) -> Option<VariantPart> {
+        let tag_type = self.resolve_type(&TypeExpr::Named(v.tag_type.clone()));
+        if !tag_type.is_ordinal() && tag_type != Type::Error {
+            self.error(v.tag_type.span, format!("a variant part's tag needs an ordinal type, not {tag_type}"));
+        }
+        let Some(tag_name) = &v.tag else {
+            self.error(v.span, "a variant part without a tag field (`case Integer of`) is not supported yet");
+            return None;
+        };
+        let tag = resolved.len();
+        self.add_field(tag_name, tag_type.clone(), resolved);
+        let mut variants = Vec::new();
+        let mut seen: Vec<i64> = Vec::new();
+        for arm in &v.variants {
+            let mut labels = Vec::new();
+            for label in &arm.labels {
+                let label_ty = self.expr(label);
+                if !tag_type.accepts(&label_ty) {
+                    self.error(label.span, format!("expected a {tag_type} label, found {label_ty}"));
+                }
+                let ord = match self.eval_const(label) {
+                    Some(ConstVal::Int(n)) => n,
+                    Some(ConstVal::Bool(b)) => b as i64,
+                    Some(ConstVal::Str(bytes)) if bytes.len() == 1 => bytes[0] as i64,
+                    _ => {
+                        self.error(label.span, "a variant's labels must be constants");
+                        continue;
+                    }
+                };
+                if seen.contains(&ord) {
+                    self.error(label.span, "this label selects another variant already");
+                }
+                seen.push(ord);
+                labels.push(ord);
+            }
+            if let Some(nested) = &arm.variant {
+                self.error(nested.span, "a variant part inside a variant is not supported yet");
+            }
+            let start = resolved.len();
+            self.record_fields(&arm.fields, resolved);
+            variants.push(Variant { labels, fields: start..resolved.len() });
+        }
+        Some(VariantPart { tag: Some(tag), tag_type, variants })
     }
 
     /// A unique Rust type name (`CamelCase`) for a Pascal name.

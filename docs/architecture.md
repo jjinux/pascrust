@@ -336,13 +336,28 @@ a Rust move/copy or `.clone()`, inserted by codegen based on the type.
 `Default` is derived so `var r: Rec;` becomes `let mut r = Rec::default();`
 (TP leaves locals uninitialized; zero-initializing is strictly safer).
 
-Variant records (`case tag of ...`) are **flattened**: every field of every
-variant becomes an ordinary field of the struct. All normal uses (read and
-write the fields of the active variant) work. What breaks is type punning
-through overlapping variants and `SizeOf`, which the examples do not do and
-which `language_spec.md` lists as unsupported. Rejected: Rust `enum` (requires
-the tag to be set before the fields, which Pascal does not require, and free
-variants have no tag at all); Rust `union` (unsafe, and `Copy`-only fields).
+Variant records follow `notes/variant_records_and_procedural_types.md`
+(Fable's design, the user's answers at its end). The shape of the variant
+part decides the representation:
+
+- **A tagged part (`case Kind: Shape of`) is flattened**: the tag and every
+  variant's fields are ordinary struct fields, so `f.kind = Shape::Rect;
+  f.w = 3;` reads as plain Rust. `RecordType::variant` keeps the shape (the
+  tag's index, each variant's labels and its range of `fields`), from which
+  `tp_size` is TP's (fixed fields plus the largest variant, unpadded) and
+  `file_record!` gets a `case kind: 4 { Shape::Circle => [r], ... }` clause:
+  a file holds the variant the tag selects, padded with zeros to the area
+  the variants share, and reading fills that variant only. What differs
+  from TP: reading a variant other than the one in use gives that field's
+  own last value, not the other variant's bytes (a program punning through
+  a tagged record contradicts its declaration; documented, not detected).
+- **A tagless part (`case Integer of`)**, the type-punning idiom, will keep
+  TP's bytes behind accessors (step 2 of the note); refused until then.
+
+Rejected: flattening everything (punning silently wrong), bytes for every
+variant part (pointers can't be bytes, and the tagged case would read
+`fig.w()` everywhere), a Rust `enum` (needs the tag before the fields, and
+tagless parts have none), a Rust `union` (`unsafe`, `Copy`-only fields).
 
 ## 12. Pointers and the heap: `Ptr<T>`
 

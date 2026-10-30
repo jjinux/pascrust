@@ -85,6 +85,7 @@ pub fn search_rec_type() -> Type {
             field("Size", Type::Int(IntKind::LongInt)),
             field("Name", Type::Str { cap: 255 }),
         ],
+        variant: None,
     }))
 }
 
@@ -96,7 +97,7 @@ pub fn date_time_type() -> Type {
         .iter()
         .map(|n| Field { name: n.to_string(), rust_name: n.to_ascii_lowercase(), ty: Type::Int(IntKind::Word) })
         .collect();
-    Type::Record(std::rc::Rc::new(RecordType { rust_name: "DateTime".to_string(), fields }))
+    Type::Record(std::rc::Rc::new(RecordType { rust_name: "DateTime".to_string(), fields, variant: None }))
 }
 
 /// The `Dos` unit's `Registers`, for `Intr` and `MsDos`, which PascRust
@@ -110,7 +111,7 @@ pub fn registers_type() -> Type {
         .iter()
         .map(|n| Field { name: n.to_string(), rust_name: n.to_ascii_lowercase(), ty: Type::Int(IntKind::Word) })
         .collect();
-    Type::Record(std::rc::Rc::new(RecordType { rust_name: "Registers".to_string(), fields }))
+    Type::Record(std::rc::Rc::new(RecordType { rust_name: "Registers".to_string(), fields, variant: None }))
 }
 
 /// A record type a unit declares, whose Rust struct the runtime defines with
@@ -121,7 +122,7 @@ fn unit_record(rust_name: &str, fields: &[(&str, Type)]) -> Type {
         .iter()
         .map(|(name, ty)| Field { name: name.to_string(), rust_name: super::names::snake_case(name), ty: ty.clone() })
         .collect();
-    Type::Record(std::rc::Rc::new(RecordType { rust_name: rust_name.to_string(), fields }))
+    Type::Record(std::rc::Rc::new(RecordType { rust_name: rust_name.to_string(), fields, variant: None }))
 }
 
 /// `Graph`'s record types.

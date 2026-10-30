@@ -1,0 +1,20 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/variant_errors.pas
+---
+variant_errors.pas:9:13: error: this label selects another variant already
+      Rect, Circle: (W: Integer);
+            ^^^^^^
+
+variant_errors.pas:10:7: error: expected a Shape label, found Integer
+      3: (Z: Integer);
+      ^
+
+variant_errors.pas:18:16: error: a constant of a variant record gives the fields of one variant only
+  Both: Pair = (Kind: True; A: 1; B: 2);
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+
+variant_errors.pas:19:17: error: a constant of a variant record gives its tag (`Kind`) too
+  NoTag: Pair = (A: 1);
+                ^^^^^^
