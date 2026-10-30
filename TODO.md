@@ -250,7 +250,18 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 697e1d1 (three batches; their findings fixed in the commits after, or noted here). Not yet reviewed: `697e1d1..HEAD` (variant records steps 1 and 2, the review fixes themselves, `docs/rust_limits.md`, subranges at TP's size). Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to d1097cb (batches A-D). Not yet reviewed: `d1097cb..HEAD` (nested variant parts, procedural types). Keep this range up to date.
+- [ ] Findings of review batch D (697e1d1..d1097cb), to fix:
+  - [ ] A routine that changes a lent Char array through a `var` argument or as a method isn't run first (check_lends looks at captures only; use the call site's var_args too).
+  - [ ] A record or enum field in a tagless variant part doesn't compile (its type needs a FileRecord: register it); then a nested setter that reads its own record needs the value in a `let` first.
+  - [ ] Insert/Delete/FillChar on a `string[n]` field of a tagless part, and `Delete(p^, ...)`: `place()`'s leading `*` before a method; and `S4(data) := t + 'z'` needs parentheses in `write_string(&(...), n)`.
+  - [ ] An index inside a byte-field place is evaluated as a mutable place (`p.B[p.B[0]] := 9` borrows `p` twice).
+  - [ ] Sets of a subrange take 32 bytes in SizeOf, byte views and files; TP sizes them by range (`(Max div 8) - (Min div 8) + 1`).
+  - [ ] Move between two fields of one heap record of different types is still runtime error 204.
+  - [ ] A cast on the left of `<` doesn't compile (`i shr 1 < 50`, `Word(i) < w`).
+  - [ ] A `string[n]` field of a tagless part writes cap+1 bytes and clamps the length; TP touches Length+1 bytes (the `S[0] := #3` overlay idiom).
+  - [ ] Untyped var arguments skip the aliasing check (a rustc error instead of PascRust's message).
+  - [ ] Smaller: `Str(1234:5, s)` into a `string[3]` isn't cut; `New(PNode(q))` through a Pointer; a typed constant whose tag selects another variant than its fields; the accessor comment's "bytes 0 to 4".
 - [x] Untyped memory, as planned in `notes/untyped_memory.md` (agreed with Fable's review; the user said go ahead). Done: step 0 (TP-exact typed files), step 1 (untyped `var` parameters, byte views, `Move`/`FillChar` between types), step 2 (untyped files, `BlockRead`/`BlockWrite`), step 3 (the untyped `Pointer`, `GetMem`/`FreeMem`), step 4 (`GetImage`/`PutImage` in TP's layout), step 5 (`PChar` and `Strings`, with `Char` arrays lent a copy for one statement).
 - [x] Question for the user (from a Fable review): is the directory the program starts in a drive's root? Answered by 7d058ff: no, C: is the file system's root, so the start directory is just the current directory, and `FindFirst` lists `.`/`..` there.
 - [x] Untyped files (`file` without `of`) with `BlockRead`/`BlockWrite`, and untyped `var` parameters, as byte views of records and arrays (with `SizeOf`).
