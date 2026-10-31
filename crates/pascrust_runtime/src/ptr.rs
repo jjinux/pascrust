@@ -389,11 +389,12 @@ impl<F: Copy> ProcVar<F> {
     }
 
     /// The routine, to call. Calling a nil procedural variable is runtime
-    /// error 210, where TP jumped to address 0.
+    /// error 216, what TP 7's protected-mode runtime gave for its jump to
+    /// address 0 (real-mode TP just crashed).
     pub fn get(&self) -> F {
         match self.routine {
             Some(routine) => routine,
-            None => crate::rte(210, "Call of a nil procedural variable"),
+            None => crate::rte(216, "General protection fault: call of a nil procedural variable"),
         }
     }
 

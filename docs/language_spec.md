@@ -206,7 +206,7 @@ Built-ins (System unit)
   and `F = G` (which calls them in TP; write `@F = @G`). `{$F+}` and `far`
   aren't required. A procedural value is 4 bytes (`SizeOf`), stored in a
   file or seen as bytes as 4 zeros, and reads back as nil. Calling a nil
-  one is runtime error 210
+  one is runtime error 216, as in protected-mode TP 7.
 - Untyped `var` parameters (`procedure Dump(var Data; Size: Word)`): the
   routine sees the caller's variable as TP's bytes, through a typecast
   (`TBytes(Data)[i]`, read or written; `TRec(Data)` read, or assigned as a

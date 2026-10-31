@@ -700,7 +700,7 @@ procedural type is the runtime's `ProcVar<F>`: an `Option` of a Rust
 function pointer `F` and the routine's name, `Copy`, nil by default:
 `type Func = ProcVar<fn(f64, f64) -> f64>;`. `F := Square` is
 `ProcVar::of(square, "Square")`, a call `F(x)` is `f.get()(globals...,
-x)` (runtime error 210 for nil), `@F` is `f.address()`, an `AnyPtr::Code`
+x)` (runtime error 216 for nil, as in protected-mode TP 7 and Free Pascal), `@F` is `f.address()`, an `AnyPtr::Code`
 compared by name, as `@Handler` is (Rust warns that comparing function
 pointers is unreliable).
 

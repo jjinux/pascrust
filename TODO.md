@@ -259,7 +259,7 @@ Last: raw bytes and C strings
   - [x] Two untyped `var` arguments from one heap record (`Both(pp^.y, pp^.x, 2)`) are runtime error 204.
   - [x] The typed-constant tag check doesn't reach nested variant parts.
   - [x] `Str(p^.v:2, p^.name)` and `Val` into a heap record's field from the same record: runtime error 204 (the value needs a `let`).
-  - [ ] Question for the user: a nil procedural call is runtime error 210 (TP: "Object not initialized"); FPC and the design note say 216.
+  - [x] Answered (216, the user): a nil procedural call is runtime error 210 (TP: "Object not initialized"); FPC and the design note say 216.
   - [x] TODO's "Procedural types and procedure parameters" item; a procedural type alias's doc comment shows the signature, not the declaration (kept: a record's shows its type alone too).
 - [x] Findings of review batch D (697e1d1..d1097cb), fixed:
   - [x] A routine that changes a lent Char array through a `var` argument or as a method isn't run first (check_lends looks at captures only; use the call site's var_args too).
