@@ -48,7 +48,8 @@ impl<'a> Codegen<'a> {
             return (format!("{ty}::of({}, \"{}\")", info.rust_name, info.name), prec::POSTFIX);
         }
         // `N := F` for a function value without parameters: a call.
-        if self.a.proc_calls.contains_key(&e.id) && matches!(e.kind, ExprKind::Name(_)) {
+        if self.a.proc_calls.contains_key(&e.id) && matches!(e.kind, ExprKind::Name(_)) && !self.calling.contains(&e.id)
+        {
             return (self.call(e, &[]), prec::POSTFIX);
         }
         // `N := R.Next`: the same for a field or element (whose type is
@@ -454,10 +455,12 @@ impl<'a> Codegen<'a> {
     pub(super) fn postfix(&mut self, e: &Expr, ty: &Type) -> String {
         // Method calls dereference automatically, so a reference variable
         // can be used as is: `x.abs()` rather than `(*x).abs()`.
+        // (Not a function variable that's called: `Abs(F)`.)
         if let ExprKind::Name(_) = e.kind
             && let Some(&sym) = self.a.refs.get(&e.id)
             && let SymKind::Var(_) = self.a.sym(sym).kind
             && *self.a.type_of(e.id) == *ty
+            && !self.a.proc_calls.contains_key(&e.id)
         {
             return self.a.var_name(self.proc, sym).to_string();
         }
@@ -1088,9 +1091,18 @@ impl<'a> Codegen<'a> {
         // its class's globals and the arguments.
         if let Some(&class) = self.a.proc_calls.get(&callee.id) {
             let value = match &callee.kind {
-                ExprKind::Name(_) => self.a.var_name(self.proc, self.a.refs[&callee.id]).to_string(),
-                // `R.F(x)`, `Handlers[i](x)`: the value is copied out first.
-                _ => paren(self.expr(callee), prec::POSTFIX),
+                ExprKind::Name(_) if !self.a.self_fields.contains_key(&callee.id) => {
+                    self.a.var_name(self.proc, self.a.refs[&callee.id]).to_string()
+                }
+                // `R.F(x)`, `Handlers[i](x)`, a method's `Next`: the value is
+                // copied out first (as a value: `calling` keeps `expr` from
+                // calling it again).
+                _ => {
+                    self.calling.insert(callee.id);
+                    let value = paren(self.expr(callee), prec::POSTFIX);
+                    self.calling.remove(&callee.id);
+                    value
+                }
             };
             let (args, records) = self.call_args(class, args, None);
             return wrap_with_mut(format!("{value}.get()({args})"), records);

@@ -2153,7 +2153,9 @@ impl Checker {
     fn call_statement(&mut self, e: &Expr) {
         let (callee, args): (&Expr, &[Expr]) = match &e.kind {
             ExprKind::Call { callee, args } => (callee, args),
-            ExprKind::Name(_) | ExprKind::Field(..) => (e, &[]),
+            // `Arr[1];` and `PS^;` call a procedural element or pointer's
+            // target, as `H.S;` calls a field.
+            ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => (e, &[]),
             _ => {
                 self.error(e.span, "expected a procedure call");
                 return;
@@ -2193,9 +2195,13 @@ impl Checker {
     pub(super) fn expr(&mut self, e: &Expr) -> Type {
         let ty = match (&e.kind, self.expr_inner(e)) {
             // A parameterless function in a field or element (`R.Next`,
-            // `Fs[1]`), in an expression, is called, as a variable's is.
-            (ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_), Type::Proc(p))
-                if p.ret.is_some() && p.params.is_empty() && self.uncalled != Some(e.id) =>
+            // `Fs[1]`, or `Next` in a method of its object), in an
+            // expression, is called, as a variable's is.
+            (ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) | ExprKind::Name(_), Type::Proc(p))
+                if p.ret.is_some()
+                    && p.params.is_empty()
+                    && self.uncalled != Some(e.id)
+                    && (!matches!(e.kind, ExprKind::Name(_)) || self.a.self_fields.contains_key(&e.id)) =>
             {
                 self.proc_call(e, e, None, &p, &[])
             }
@@ -3902,8 +3908,8 @@ impl Checker {
             self.error(span, format!("`{name}` takes exactly one argument"));
             return Type::Error;
         }
-        // `Assigned(F)` looks at `F`, it doesn't call it.
-        let ty = if matches!(self.place_type(&args[0]), Some(Type::Proc(_))) {
+        // `Assigned(F)` looks at `F`, it doesn't call it (`Odd(F)` does).
+        let ty = if name.eq_ignore_ascii_case("assigned") && matches!(self.place_type(&args[0]), Some(Type::Proc(_))) {
             self.proc_place(&args[0])
         } else {
             self.expr(&args[0])

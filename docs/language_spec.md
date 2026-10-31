@@ -195,7 +195,7 @@ Built-ins (System unit)
   `var`, too): variables, parameters, record fields, array elements and
   typed constants of them; a routine of the program as a value (`F :=
   Square`, `Plot(Square)`); calls through them (`F(x)`, `R.F(x)`,
-  `Ops[i](x)`, with `var` parameters too); a parameterless function value
+  `Ops[i](x)`, `H.S;`, `Arr[1];`, `PS^;`, with `var` parameters too); a parameterless function value
   (in a variable, field or element) called in an expression (`N := F`,
   `N := R.Next`) and copied where a procedural value is wanted (`G := F`,
   `Run(F)`); `nil`, `Assigned(F)`, `@F` as a

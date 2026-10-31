@@ -252,12 +252,12 @@ Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 076ffea (batches A-F). Not yet reviewed: `076ffea..HEAD`. Keep this range up to date.
 - [ ] Findings of review batch F (3ab3ee4..076ffea), to fix:
-  - [ ] A parameterless procedure field or element called as a statement (`H.S;`, `with H do S;`) is called twice: `.get()(..).get()(..)`.
-  - [ ] Every unary builtin (`Odd(F)`, `Abs(R.Next)`) refuses a parameterless function value; only `Assigned` should look at the value.
-  - [ ] In a method, a bare object field holding a parameterless function (`N := Next`) isn't called.
+  - [x] A parameterless procedure field or element called as a statement (`H.S;`, `with H do S;`) is called twice: `.get()(..).get()(..)`.
+  - [x] Every unary builtin (`Odd(F)`, `Abs(R.Next)`) refuses a parameterless function value; only `Assigned` should look at the value.
+  - [x] In a method, a bare object field holding a parameterless function (`N := Next`) isn't called.
   - [ ] `Val(S, p^.v, p^.code)`: two targets in one heap record are runtime error 204.
   - [ ] `Insert`, `Delete`, `FillChar`, `Move` writing a heap field while reading the same record: runtime error 204.
-  - [ ] A call statement through an element or a dereference (`Arr[1];`, `PS^;`) is refused.
+  - [x] A call statement through an element or a dereference (`Arr[1];`, `PS^;`) is refused.
 - [x] Findings of review batch E (d1097cb..3ab3ee4), fixed:
   - [x] Answered (a newtype, the user): a routine kept in a procedural type whose globals include a variable of that type (a state machine's `Current := Second`) makes a recursive type alias (rustc E0391). A newtype `struct State(ProcVar<...>)`, or a documented refusal?
   - [x] A parameterless function *variable* is called where TP uses its value: `G := F`, `Run(F)`, `Assigned(F)`, `@F`, `@F = nil`.
