@@ -42,6 +42,26 @@ impl<'a> Codegen<'a> {
         {
             return self.builtin(b, &args[1..], call_id);
         }
+        // `Delete(p^.name, p^.w, 1)`: a value read from the heap record the
+        // routine changes is worked out first, into a `let`, so the record
+        // isn't borrowed for reading and writing at once.
+        let (target, values): (usize, &[usize]) = match b {
+            Insert => (1, &[0, 2]),
+            Delete | FillChar => (0, &[1, 2]),
+            Move => (1, &[2]),
+            _ => (0, &[]),
+        };
+        for &i in values {
+            if let Some(arg) = args.get(i)
+                && super::borrows_while_writing(arg, &args[target])
+                && !self.hoisted.contains_key(&arg.id)
+            {
+                let code = self.expr(arg).0;
+                let name = self.temp_name(&super::value_temp_base(arg));
+                self.pending.push(format!("let {name} = {code};"));
+                self.hoisted.insert(arg.id, name);
+            }
+        }
         match b {
             Write | Writeln => match args.first().map(|a| ty(self, a)) {
                 // `Write(f, x, y)` on a typed file writes whole records.
@@ -418,6 +438,21 @@ impl<'a> Codegen<'a> {
                     let name = self.temp_name("text");
                     self.pending.push(format!("let {name} = {s};"));
                     s = name;
+                }
+                // `Val(s, p^.v, p^.code)`: both in one heap record, which is
+                // borrowed once, as for a routine's two `var` arguments.
+                let same_record = match (crate::sema::heap_field(&args[1]), crate::sema::heap_field(&args[2])) {
+                    (Some((a, ..)), Some((b, ..))) => a == b,
+                    _ => false,
+                };
+                if same_record {
+                    let (x, code) = (self.place(&args[1]), self.place(&args[2]));
+                    let (pointer, x_fields) = x.rsplit_once(".get_mut()").expect("a heap field");
+                    let (_, code_fields) = code.rsplit_once(".get_mut()").expect("a heap field");
+                    let name = self.temp_name(&self.record_name(&args[1]));
+                    return format!(
+                        "{pointer}.with_mut(|{name}| val({s}, &mut {name}{x_fields}, &mut {name}{code_fields}));"
+                    );
                 }
                 let (x, code) = (self.place_mut(&args[1]), self.place_mut(&args[2]));
                 format!("val({s}, {x}, {code});")

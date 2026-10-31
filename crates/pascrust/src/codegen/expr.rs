@@ -1477,7 +1477,7 @@ impl<'a> Codegen<'a> {
 
     /// A name for the heap record that `arg` (`q^.x`) is a field of, after
     /// its type: `point` for a `Point`.
-    fn record_name(&self, arg: &Expr) -> String {
+    pub(super) fn record_name(&self, arg: &Expr) -> String {
         let mut e = arg;
         while let ExprKind::Field(base, _) = &e.kind {
             e = base;
