@@ -4,13 +4,13 @@ unit OvlHelp;
 {$O+,F+}
 interface
 
-function Twice(n: Integer): Integer;
+   function Twice(n: Integer): Integer;
 
 implementation
 
-function Twice(n: Integer): Integer;
-begin
-  Twice := n * 2;
-end;
+   function Twice(n: Integer): Integer;
+      begin
+         Twice := n * 2;
+      end;
 
 end.

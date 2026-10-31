@@ -3,9 +3,9 @@ program PrinterErrors;
   for reading. }
 uses Printer;
 var
-  s: string;
+   s: string;
 begin
-  ReadLn(Lst, s);
-  Rewrite(Lst);
-  WriteLn(Input, 'x');
+   ReadLn(Lst, s);
+   Rewrite(Lst);
+   WriteLn(Input, 'x');
 end.

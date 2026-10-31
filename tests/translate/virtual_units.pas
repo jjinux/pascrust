@@ -3,26 +3,26 @@ program VirtualUnits;
   virtual method. }
 uses Shapes;
 type
-  PCircle = ^TCircle;
-  TCircle = object(TShape)
-    radius: Integer;
-    procedure Draw; virtual;
-  end;
+   PCircle = ^TCircle;
+   TCircle = object(TShape)
+      radius: Integer;
+      procedure Draw; virtual;
+   end;
 
 var
-  c: TCircle;
-  p: PShape;
+   c: TCircle;
+   p: PShape;
 
 procedure TCircle.Draw;
-begin
-  WriteLn('circle ', x, ' radius ', radius);
-end;
+   begin
+      WriteLn('circle ', x, ' radius ', radius);
+   end;
 
 begin
-  c.Init(1);
-  c.radius := 2;
-  ShowAll(c);
-  p := New(PCircle, Init(3));
-  p^.Show;
-  Dispose(p);
+   c.Init(1);
+   c.radius := 2;
+   ShowAll(c);
+   p := New(PCircle, Init(3));
+   p^.Show;
+   Dispose(p);
 end.

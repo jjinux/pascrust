@@ -3,21 +3,21 @@
 program ProcUnitTypes;
 uses ProcUnit;
 type
-  Stats = record
-    Count, Total: Integer;
-  end;
+   Stats = record
+      Count, Total: Integer;
+   end;
 var
-  S: Stats;
+   S: Stats;
 procedure Tally(N: Integer);
+   begin
+      Inc(S.Count);
+      S.Total := S.Total + N;
+   end;
 begin
-  Inc(S.Count);
-  S.Total := S.Total + N;
-end;
-begin
-  S.Count := 0;
-  S.Total := 0;
-  OnEvent := Tally;
-  Fire(3);
-  Fire(4);
-  WriteLn(S.Count, ' ', S.Total);
+   S.Count := 0;
+   S.Total := 0;
+   OnEvent := Tally;
+   Fire(3);
+   Fire(4);
+   WriteLn(S.Count, ' ', S.Total);
 end.

@@ -1,5 +1,5 @@
-//! `pascrust fmt` on the examples: they stay formatted, and formatting never
-//! changes a program's tokens.
+//! `pascrust fmt` on the examples and the test programs: they stay
+//! formatted, and formatting never changes a program's tokens.
 
 use std::path::{Path, PathBuf};
 
@@ -17,6 +17,22 @@ fn examples() -> Vec<PathBuf> {
             if path.is_dir() {
                 dirs.push(path);
             } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pas")) {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// The test programs (`tests/run`, `tests/translate`, `tests/errors`).
+fn test_programs() -> Vec<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests");
+    let mut files = Vec::new();
+    for dir in ["run", "translate", "errors"] {
+        for entry in std::fs::read_dir(root.join(dir)).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|e| e == "pas") {
                 files.push(path);
             }
         }
@@ -69,5 +85,17 @@ fn formatting_keeps_tokens() {
     for ((file, before), after) in files.iter().zip(&mangled).zip(&formatted) {
         assert!(tokens(before) == tokens(after), "formatting changed the tokens of {}", file.display());
         assert!(!after.contains(&b'\r'), "{} still has DOS line endings", file.display());
+    }
+}
+
+/// The test programs are formatted one by one (each is its own program,
+/// so its identifiers keep its own spelling): `pascrust fmt tests/run/x.pas`
+/// changes nothing.
+#[test]
+fn test_programs_are_formatted() {
+    for file in test_programs() {
+        let source = std::fs::read(&file).unwrap();
+        let formatted = format_files(&[&source]).unwrap();
+        assert!(formatted[0] == source, "{} is not formatted; run `pascrust fmt` on it", file.display());
     }
 }

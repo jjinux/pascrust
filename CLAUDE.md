@@ -46,6 +46,7 @@ INSTA_UPDATE=always cargo test --test translate_tests   # accept new snapshots, 
 cargo run -p pascrust -- emit file.pas       # print generated Rust
 cargo run -p pascrust -- run file.pas        # transpile, build and run (project goes in out/)
 cargo run -p pascrust -- fmt examples/*.pas examples/*/*.pas   # keep the examples formatted (checked by fmt_tests)
+cargo run -p pascrust -- fmt tests/run/foo.pas  # format each new test program on its own (checked by fmt_tests)
 tests/gen_expected.sh tests/run/foo.pas      # expected output from Free Pascal (fpc -Mtp)
 cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
 ```
@@ -67,6 +68,9 @@ program to produce expected output (`tests/gen_expected.sh`) is fine.
   needed an unusual translation.
 - Generated code must compile without warnings.
 - Every new Pascal construct needs a translate test *and* a run test.
+- Write Pascal test programs the way `pascrust fmt` formats them:
+  3 spaces a level, as in the user's examples. Run `pascrust fmt` on each
+  new test program.
 - Commit as you go, with focused commits.
 
 ## Reviews

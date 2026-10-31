@@ -5,76 +5,76 @@ program IndexCalls;
   calls a method reads fine. The same goes for other places that are
   written: Inc, and a var argument. }
 type
-  Bag = object
-    items: array[1..3] of Char;
-    n: Integer;
-    procedure Init;
-    function Count: Integer;
-    function Last: Char;
-    procedure Grow;
-  end;
+   Bag = object
+      items: array[1..3] of Char;
+      n: Integer;
+      procedure Init;
+      function Count: Integer;
+      function Last: Char;
+      procedure Grow;
+   end;
 var
-  arr: array[1..3] of Integer;
-  counts: array[1..3] of Integer;
-  calls: Integer;
-  b: Bag;
+   arr: array[1..3] of Integer;
+   counts: array[1..3] of Integer;
+   calls: Integer;
+   b: Bag;
 
 function Pick: Integer;
-begin
-  Pick := arr[1];
-end;
+   begin
+      Pick := arr[1];
+   end;
 
 function Next: Integer;
-begin
-  calls := calls + 1;
-  Next := calls;
-end;
+   begin
+      calls := calls + 1;
+      Next := calls;
+   end;
 
 procedure Bag.Init;
-begin
-  items[1] := 'x';
-  items[2] := 'y';
-  items[3] := 'z';
-  n := 2;
-end;
+   begin
+      items[1] := 'x';
+      items[2] := 'y';
+      items[3] := 'z';
+      n := 2;
+   end;
 
 function Bag.Count: Integer;
-begin
-  Count := n;
-end;
+   begin
+      Count := n;
+   end;
 
 function Bag.Last: Char;
-begin
-  Last := items[Count];
-end;
+   begin
+      Last := items[Count];
+   end;
 
 procedure Bag.Grow;
-begin
-  Inc(items[Count]);
-end;
+   begin
+      Inc(items[Count]);
+   end;
 
 procedure Touch(var v: Integer);
-begin
-  v := v + 100;
-end;
+   begin
+      v := v + 100;
+   end;
 
 begin
-  arr[1] := 2;
-  arr[2] := 0;
-  arr[3] := 0;
-  arr[Pick] := 7;
-  WriteLn(arr[1], ' ', arr[2], ' ', arr[3]);
-  counts[1] := 0;
-  counts[2] := 0;
-  counts[3] := 0;
-  calls := 0;
-  counts[Next] := counts[Next] + 5;
-  WriteLn(counts[1], ' ', counts[2], ' ', counts[3], ' ', calls);
-  b.Init;
-  WriteLn(b.Last);
-  b.Grow;
-  WriteLn(b.Last);
-  Inc(arr[Pick]);
-  Touch(arr[Pick]);
-  WriteLn(arr[1], ' ', arr[2], ' ', arr[3]);
+   arr[1] := 2;
+   arr[2] := 0;
+   arr[3] := 0;
+   arr[Pick] := 7;
+   WriteLn(arr[1], ' ', arr[2], ' ', arr[3]);
+   counts[1] := 0;
+   counts[2] := 0;
+   counts[3] := 0;
+   calls := 0;
+   counts[Next] := counts[Next] + 5;
+   WriteLn(counts[1], ' ', counts[2], ' ', counts[3], ' ', calls);
+   b.Init;
+   WriteLn(b.Last);
+   b.Grow;
+   WriteLn(b.Last);
+   Inc(arr[Pick]);
+   Touch(arr[Pick]);
+   WriteLn(arr[1], ' ', arr[2], ' ', arr[3]);
 end.

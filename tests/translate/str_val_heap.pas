@@ -2,21 +2,21 @@
   (or read) first, so the record isn't read and written at once. }
 program StrValHeap;
 type
-  PNode = ^TNode;
-  TNode = record
-    v: Integer;
-    name: string[4];
-  end;
+   PNode = ^TNode;
+   TNode = record
+      v: Integer;
+      name: string[4];
+   end;
 var
-  p: PNode;
-  code: Integer;
+   p: PNode;
+   code: Integer;
 begin
-  New(p);
-  p^.v := 7;
-  Str(p^.v:2, p^.name);
-  WriteLn('[', p^.name, ']');
-  p^.name := '42';
-  Val(p^.name, p^.v, code);
-  WriteLn(p^.v, ' ', code);
-  Dispose(p);
+   New(p);
+   p^.v := 7;
+   Str(p^.v:2, p^.name);
+   WriteLn('[', p^.name, ']');
+   p^.name := '42';
+   Val(p^.name, p^.v, code);
+   WriteLn(p^.v, ' ', code);
+   Dispose(p);
 end.

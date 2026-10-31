@@ -30,7 +30,7 @@ fn check(checks: &mut i16, failures: &mut i16, ok: bool, what: PString) {
     }
 }
 
-/// Pascal: `procedure Make(name: string; text: string);`
+/// Pascal: `procedure Make(Name: string; text: string);`
 ///
 /// Uses globals, which are passed in as parameters.
 fn make(f: &mut PText, name: PString, text: PString) {
@@ -40,7 +40,7 @@ fn make(f: &mut PText, name: PString, text: PString) {
     f.close();
 }
 
-/// Pascal: `function Exists(name: string): Boolean;`
+/// Pascal: `function Exists(Name: string): Boolean;`
 fn exists(name: PString) -> bool {
     let mut result: bool = false;
     let mut t: SearchRec = SearchRec::default();

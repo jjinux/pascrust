@@ -40,7 +40,7 @@ impl Enumerated for Color {
     const VALUES: &'static [Self] = &[Color::Red, Color::Green, Color::Blue, Color::Yellow];
 }
 
-/// Pascal: `record name: string[10]; colors: Colors; end`
+/// Pascal: `record name: string[10]; colors: colors; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Palette {
     name: PString,

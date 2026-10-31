@@ -21,27 +21,27 @@ type
    end;
 const
    UnitCircle: Fig = (X: 0; Y: 0; Kind: Circle; R: 1);
-   var
+var
    f, g: Fig;
    a: Account;
    fl: file of Fig;
 
-   procedure Grow(var n: Integer);
+procedure Grow(var n: Integer);
    begin
-   n := n * 2;
+      n := n * 2;
    end;
 
-   function Area(const Fig: Fig): Integer;
+function Area(const Fig: Fig): Integer;
    begin
-   case Fig.Kind of
-    Circle: Area := 3 * Fig.R * Fig.R;
-    Rect: Area := Fig.W * Fig.H;
-   else
-    Area := 0;
-   end;
+      case Fig.Kind of
+         Circle: Area := 3 * Fig.R * Fig.R;
+         Rect: Area := Fig.W * Fig.H;
+         else
+            Area := 0;
+      end;
    end;
 
-   begin
+begin
    f.X := 1;
    f.Y := 2;
    f.Kind := Rect;
@@ -49,7 +49,7 @@ const
    f.H := 4;
    WriteLn(Area(f), ' ', SizeOf(Fig));
    with f do
-    WriteLn(X + Y + W);
+      WriteLn(X + Y + W);
    Grow(f.H);
    WriteLn(Area(f));
    WriteLn(Area(UnitCircle), ' ', Ord(UnitCircle.Kind));
@@ -75,4 +75,4 @@ const
    WriteLn(Ord(g.Kind), ' ', Area(g), ' ', FileSize(fl));
    Close(fl);
    Erase(fl);
-   end.
+end.

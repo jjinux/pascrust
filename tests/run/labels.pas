@@ -4,24 +4,24 @@ unit Labels;
 
 interface
 
-uses Geometry;
+   uses Geometry;
 
-function Name: string;
-procedure Tag(p: Point; text: string);
+   function Name: string;
+   procedure Tag(p: Point; text: string);
 
 implementation
 
-function Name: string;
-begin
-  Name := 'labels';
-end;
+   function Name: string;
+      begin
+         Name := 'labels';
+      end;
 
-procedure Tag(p: Point; text: string);
-begin
-  write(text, ' at ');
-  Describe(p);
-end;
+   procedure Tag(p: Point; text: string);
+      begin
+         write(text, ' at ');
+         Describe(p);
+      end;
 
 begin
-  writeln('Labels initialized');
+   writeln('Labels initialized');
 end.

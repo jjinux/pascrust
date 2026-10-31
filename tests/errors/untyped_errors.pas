@@ -1,22 +1,22 @@
 program UntypedErrors;
 { What untyped parameters can't do. }
 var
-  t: Text;
+   t: Text;
 
 procedure Show(Data);
-begin
-end;
+   begin
+   end;
 
 procedure Bad(var Data);
-begin
-  WriteLn(Data);
-end;
+   begin
+      WriteLn(Data);
+   end;
 
 procedure Dump(var Data);
-begin
-end;
+   begin
+   end;
 
 begin
-  Dump(t);
-  Dump(5);
+   Dump(t);
+   Dump(5);
 end.

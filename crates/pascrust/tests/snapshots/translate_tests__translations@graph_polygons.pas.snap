@@ -34,7 +34,7 @@ fn check(checks: &mut i16, failures: &mut i16, ok: bool, what: PString) {
     }
 }
 
-/// Pascal: `procedure SetPoint(var p: PointType; x, y: Integer);`
+/// Pascal: `procedure SetPoint(var p: PointType; X, Y: Integer);`
 fn set_point(p: &mut PointType, x: i16, y: i16) {
     p.x = x;
     p.y = y;

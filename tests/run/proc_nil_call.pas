@@ -2,20 +2,20 @@
   protected-mode TP 7 (and Free Pascal). }
 program ProcNilCall;
 type
-  Action = procedure;
+   Action = procedure;
 var
-  Go: Action;
+   Go: Action;
 
 procedure Hello;
-begin
-  WriteLn('hello');
-end;
+   begin
+      WriteLn('hello');
+   end;
 
 begin
-  Go := Hello;
-  Go;
-  Go := nil;
-  WriteLn(Assigned(Go));
-  Go;
-  WriteLn('not reached');
+   Go := Hello;
+   Go;
+   Go := nil;
+   WriteLn(Assigned(Go));
+   Go;
+   WriteLn('not reached');
 end.

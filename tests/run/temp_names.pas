@@ -12,9 +12,9 @@ var
    total: integer;
 
 function Double(n: integer): integer;
-begin
-   Double := n * 2;
-end;
+   begin
+      Double := n * 2;
+   end;
 
 begin
    new(p);

@@ -3,29 +3,29 @@
   typed fields are fine. }
 program UntypedHeapAlias;
 type
-  Pair = record
-    x, y: Word;
-  end;
-  PPair = ^Pair;
+   Pair = record
+      x, y: Word;
+   end;
+   PPair = ^Pair;
 var
-  pp: PPair;
+   pp: PPair;
 
 procedure Swap(var a, b: Word);
-var
-  t: Word;
-begin
-  t := a;
-  a := b;
-  b := t;
-end;
+   var
+      t: Word;
+   begin
+      t := a;
+      a := b;
+      b := t;
+   end;
 
 procedure Both(var x, y; n: Integer);
-begin
-  Move(x, y, n);
-end;
+   begin
+      Move(x, y, n);
+   end;
 
 begin
-  New(pp);
-  Swap(pp^.x, pp^.y);
-  Both(pp^.y, pp^.x, 2);
+   New(pp);
+   Swap(pp^.x, pp^.y);
+   Both(pp^.y, pp^.x, 2);
 end.

@@ -7,19 +7,19 @@ type
    end;
 
 procedure Local;
-type
-   NodePtr = ^Node;
-   Node = record
-      b: integer;
+   type
+      NodePtr = ^Node;
+      Node = record
+         b: integer;
+      end;
+   var
+      p: NodePtr;
+   begin
+      new(p);
+      p^.b := 1;
+      writeln(p^.b);
+      dispose(p);
    end;
-var
-   p: NodePtr;
-begin
-   new(p);
-   p^.b := 1;
-   writeln(p^.b);
-   dispose(p);
-end;
 
 var
    n: Node;

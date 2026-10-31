@@ -3,6 +3,6 @@ program DosRefused;
 uses Dos;
 var r: Registers;
 begin
-  Intr($10, r);
-  Keep(0);
+   Intr($10, r);
+   Keep(0);
 end.

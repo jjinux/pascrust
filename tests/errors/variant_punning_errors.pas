@@ -4,35 +4,35 @@ program VariantPunningErrors;
   a pointer can't be bytes, so it can't go in a file; a set in a tagless
   part isn't supported yet. }
 type
-  Pun = record
-    case Integer of
-      0: (L: LongInt);
-      1: (Lo, Hi: Word);
-  end;
-  PNode = ^Node;
-  Node = record
-    case Integer of
-      0: (Next: PNode);
-      1: (Value: LongInt);
-  end;
-  Flags = record
-    case Integer of
-      0: (S: set of 0..7);
-      1: (B: Byte);
-  end;
+   Pun = record
+      case Integer of
+         0: (L: LongInt);
+         1: (Lo, Hi: Word);
+   end;
+   PNode = ^Node;
+   Node = record
+      case Integer of
+         0: (Next: PNode);
+         1: (Value: LongInt);
+   end;
+   Flags = record
+      case Integer of
+         0: (S: set of 0..7);
+         1: (b: Byte);
+   end;
 var
-  p: Pun;
-  f: file of Node;
+   p: Pun;
+   f: file of Node;
 
 procedure Swap(var a, b: Word);
-var
-  t: Word;
-begin
-  t := a;
-  a := b;
-  b := t;
-end;
+   var
+      t: Word;
+   begin
+      t := a;
+      a := b;
+      b := t;
+   end;
 
 begin
-  Swap(p.Lo, p.Hi);
+   Swap(p.Lo, p.Hi);
 end.

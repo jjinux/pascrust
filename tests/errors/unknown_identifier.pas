@@ -1,4 +1,4 @@
 program Typo;
 begin
-  writeln(undefinedThing);
+   writeln(undefinedThing);
 end.

@@ -4,11 +4,11 @@ program DivOverflow;
   division by zero. (Free Pascal divides in a wider type and prints
   32768, so this .out is written by hand.) }
 var
-  i, j: Integer;
+   i, j: Integer;
 begin
-  i := -32767 - 1;
-  j := -1;
-  WriteLn('dividing');
-  WriteLn(i div j);
-  WriteLn('not reached');
+   i := -32767 - 1;
+   j := -1;
+   WriteLn('dividing');
+   WriteLn(i div j);
+   WriteLn('not reached');
 end.
