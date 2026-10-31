@@ -87,36 +87,36 @@ fn fold(f: Op, x: i16, y: i16) -> i16 {
 /// The main program: the `begin ... end.` block of `ProcTypes`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    let mut s: SwapProc = ProcVar::nil();
-    let mut next: IntFunc = ProcVar::nil();
+    let mut s: SwapProc = SwapProc::nil();
+    let mut next: IntFunc = IntFunc::nil();
     let mut counter: i16 = 0;
     let mut a: i16 = 0;
     let mut b: i16 = 0;
     let mut ops: PArray<Op, 1, 3> = PArray::default();
     let mut e: Entry = Entry::default();
     let mut n: i16 = 0;
-    let default: Op = ProcVar::of(add, "Add");
+    let default: Op = Op::of(add, "Add");
     a = 1;
     b = 2;
-    s = ProcVar::of(swap, "Swap");
+    s = SwapProc::of(swap, "Swap");
     s.get()(&mut a, &mut b);
     pwriteln!(a, " ", b);
     counter = 0;
-    next = ProcVar::of(tick, "Tick");
+    next = IntFunc::of(tick, "Tick");
     n = next.get()(&mut counter);
     n += next.get()(&mut counter);
     pwriteln!(n, " ", counter);
-    ops[1] = ProcVar::of(add, "Add");
-    ops[2] = ProcVar::of(mul, "Mul");
-    ops[3] = ProcVar::of(sub, "Sub");
+    ops[1] = Op::of(add, "Add");
+    ops[2] = Op::of(mul, "Mul");
+    ops[3] = Op::of(sub, "Sub");
     for i in 1_i16..=3 {
         pwrite!(ops[i].get()(7, 3), " ");
     }
     pwriteln!();
     e.name = pstr("mul");
-    e.apply = ProcVar::of(mul, "Mul");
+    e.apply = Op::of(mul, "Mul");
     pwriteln!(e.name, " ", e.apply.get()(6, 7), " ", fold(e.apply, 2, 3), " ", fold(default, 2, 3));
-    ops[2] = ProcVar::nil();
+    ops[2] = Op::nil();
     pwriteln!(!ops[1].is_nil(), " ", !ops[2].is_nil());
     pwriteln!(
         e.apply.address() == AnyPtr::code("Mul"),

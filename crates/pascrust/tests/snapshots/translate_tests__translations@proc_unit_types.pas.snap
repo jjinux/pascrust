@@ -40,11 +40,11 @@ fn tally(s: &mut Stats, n: i16) {
 /// Its local variables are the Pascal program's global variables.
 /// (Including the global variables of every unit.)
 fn pascal_main() {
-    let mut on_event: Handler = ProcVar::nil();
+    let mut on_event: Handler = Handler::nil();
     let mut s: Stats = Stats::default();
     s.count = 0;
     s.total = 0;
-    on_event = ProcVar::of(tally, "Tally");
+    on_event = Handler::of(tally, "Tally");
     fire(on_event, &mut s, 3);
     fire(on_event, &mut s, 4);
     pwriteln!(s.count, " ", s.total);

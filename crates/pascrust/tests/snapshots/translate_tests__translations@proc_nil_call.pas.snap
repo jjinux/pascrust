@@ -30,10 +30,10 @@ fn hello() {
 /// The main program: the `begin ... end.` block of `ProcNilCall`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    let mut go: Action = ProcVar::nil();
-    go = ProcVar::of(hello, "Hello");
+    let mut go: Action = Action::nil();
+    go = Action::of(hello, "Hello");
     go.get()();
-    go = ProcVar::nil();
+    go = Action::nil();
     pwriteln!(!go.is_nil());
     go.get()();
     pwriteln!("not reached");

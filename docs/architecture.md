@@ -699,10 +699,16 @@ Following `notes/variant_records_and_procedural_types.md` (steps 4-6). A
 procedural type is the runtime's `ProcVar<F>`: an `Option` of a Rust
 function pointer `F` and the routine's name, `Copy`, nil by default:
 `type Func = ProcVar<fn(f64, f64) -> f64>;`. `F := Square` is
-`ProcVar::of(square, "Square")`, a call `F(x)` is `f.get()(globals...,
+`Func::of(square, "Square")` (and nil `Func::nil()`), a call `F(x)` is `f.get()(globals...,
 x)` (runtime error 216 for nil, as in protected-mode TP 7 and Free Pascal), `@F` is `f.address()`, an `AnyPtr::Code`
 compared by name, as `@Handler` is (Rust warns that comparing function
-pointers is unreliable).
+pointers is unreliable). A type whose routines use a global of that same
+type (a state machine's `Current := Second`, recursion through a global
+`Fact`) would be an alias that names itself, which Rust refuses, so it's
+a struct around the `ProcVar` instead (`self_naming_classes`, through
+arrays, pointers and other procedural types too): `struct
+State(ProcVar<fn(&mut State)>);` with the same `nil` and `of`, `Deref` to
+the `ProcVar`, and `file_record!(newtype State)` when it's stored.
 
 Routines kept in one type must share one Rust signature, globals
 included, so procedural types with the same parameters and result form a

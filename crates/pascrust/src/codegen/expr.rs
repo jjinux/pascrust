@@ -44,7 +44,8 @@ impl<'a> Codegen<'a> {
         // `F := Square`: the routine as a procedural value.
         if let Some(&p) = self.a.proc_values.get(&e.id) {
             let info = &self.a.procs[p];
-            return (format!("ProcVar::of({}, \"{}\")", info.rust_name, info.name), prec::POSTFIX);
+            let ty = self.a.type_of(e.id).rust();
+            return (format!("{ty}::of({}, \"{}\")", info.rust_name, info.name), prec::POSTFIX);
         }
         // `N := F` for a function value without parameters: a call.
         if self.a.proc_calls.contains_key(&e.id) && matches!(e.kind, ExprKind::Name(_)) {
@@ -387,7 +388,7 @@ impl<'a> Codegen<'a> {
                 return (format!("PChar::literal({})", self.expr(e).0), prec::POSTFIX);
             }
             (Type::PChar, Type::Nil) => return ("PChar::nil()".to_string(), prec::POSTFIX),
-            (Type::Proc(_), Type::Nil) => return ("ProcVar::nil()".to_string(), prec::POSTFIX),
+            (Type::Proc(_), Type::Nil) => return (format!("{}::nil()", to.rust()), prec::POSTFIX),
             (Type::PChar, Type::AnyPointer) => {
                 return (format!("PChar::from_any(&{})", self.selector_base(e)), prec::POSTFIX);
             }

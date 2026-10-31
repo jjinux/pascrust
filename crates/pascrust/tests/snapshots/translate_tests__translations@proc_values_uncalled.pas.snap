@@ -59,20 +59,20 @@ fn run_(counter: &mut i16, h: IntFunc) {
 /// The main program: the `begin ... end.` block of `ProcValuesUncalled`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    let mut f: IntFunc = ProcVar::nil();
-    let mut g: IntFunc = ProcVar::nil();
+    let mut f: IntFunc = IntFunc::nil();
+    let mut g: IntFunc = IntFunc::nil();
     let mut r: Rec = Rec::default();
     let mut fs: PArray<IntFunc, 1, 2> = PArray::default();
     let mut n: i16 = 0;
     let mut counter: i16 = 0;
     counter = 0;
-    f = ProcVar::of(tick, "Tick");
+    f = IntFunc::of(tick, "Tick");
     g = f;
     run_(&mut counter, f);
     pwriteln!(g.get()(&mut counter), " ", counter);
     pwriteln!(!f.is_nil(), " ", f.is_nil(), " ", g.address() == AnyPtr::code("Tick"));
-    r.next = ProcVar::of(tick, "Tick");
-    fs[1] = ProcVar::of(ten, "Ten");
+    r.next = IntFunc::of(tick, "Tick");
+    fs[1] = IntFunc::of(ten, "Ten");
     fs[2] = g;
     n = r.next.get()(&mut counter);
     pwriteln!(n, " ", fs[1].get()(&mut counter) + fs[2].get()(&mut counter), " ", counter);

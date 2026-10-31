@@ -54,12 +54,14 @@ pub fn generate(
         lent_roots: Vec::new(),
         running_first: HashSet::new(),
         calling: HashSet::new(),
+        newtypes: HashSet::new(),
         loops: Vec::new(),
         io_unchecked,
         self_expr: None,
         comments: comments::Comments::new(map, program, units, comments),
         decl_starts: HashMap::new(),
     };
+    g.newtypes = g.self_naming_classes();
     // `decls` also maps a `for` statement's variable to its symbol, so keep
     // the earliest place each symbol is named: its declaration.
     for (&start, &sym) in &analysis.decls {
@@ -117,6 +119,9 @@ struct Codegen<'a> {
     /// Procedural fields and elements being called (`R.Next` with no
     /// parameters): inside the call, the same expression is the value.
     calling: HashSet<NodeId>,
+    /// Procedural types whose signatures name themselves (see
+    /// `self_naming_classes`): structs rather than aliases.
+    newtypes: HashSet<ProcId>,
     /// The loops we're inside, innermost last: the labels `Break` and
     /// `Continue` must use for a `repeat` that has a `Continue` in it (see
     /// `repeat_loop`), or `None` for a loop where plain `break` and
@@ -617,14 +622,26 @@ impl<'a> Codegen<'a> {
                             self.line("/// kept in one has this Rust signature, so the globals any of them uses are");
                             self.line("/// parameters of them all (and of every call through one).");
                         }
-                        self.line(format!("{}type {class} = ProcVar<{}>;", self.vis, self.fn_pointer_type(p.class)));
+                        let signature = self.fn_pointer_type(p.class);
+                        if self.newtypes.contains(&p.class) {
+                            self.proc_newtype(&class, &signature);
+                        } else {
+                            self.line(format!("{}type {class} = ProcVar<{signature}>;", self.vis));
+                        }
                     } else {
                         self.line(format!("{}type {} = {class};", self.vis, p.alias));
                     }
                 }
                 _ => {}
             }
-            if self.stored_in_files().contains(&ty.rust()) {
+            if let Type::Proc(p) = ty
+                && self.newtypes.contains(&p.class)
+                && p.alias == self.a.procs[p.class].rust_name
+                && self.stored_in_files().contains(&p.alias)
+            {
+                self.blank();
+                self.line(format!("file_record!(newtype {});", p.alias));
+            } else if !matches!(ty, Type::Proc(_)) && self.stored_in_files().contains(&ty.rust()) {
                 self.file_record(ty);
             }
         }
@@ -663,6 +680,9 @@ impl<'a> Codegen<'a> {
                     found.insert(e.rust_name.clone());
                 }
                 Type::Array(a) => visit(&a.elem, found),
+                Type::Proc(p) => {
+                    found.insert(p.alias.clone());
+                }
                 _ => {}
             }
         }
@@ -1315,6 +1335,88 @@ impl<'a> Codegen<'a> {
 
     /// The function-pointer type of a procedural type's class: what every
     /// routine kept in one is, `fn(&mut f64, f64) -> f64`.
+    /// A procedural type `State` whose routines use a `State` variable
+    /// can't be the alias `type State = ProcVar<fn(&mut State)>`: an alias
+    /// can't name itself. A struct can, so it's a struct around the
+    /// `ProcVar`, with the same `nil`/`of`, and `Deref` for the rest.
+    fn proc_newtype(&mut self, class: &str, signature: &str) {
+        let vis = self.vis;
+        self.line("///");
+        self.line(format!("/// A `{class}` routine uses a `{class}` variable, and a type alias can't name"));
+        self.line("/// itself, so this one is a struct around its `ProcVar`.");
+        self.line("#[derive(Clone, Copy, Debug, Default, PartialEq)]");
+        self.line(format!("{vis}struct {class}(ProcVar<{signature}>);"));
+        self.blank();
+        self.line(format!("impl {class} {{"));
+        self.line(format!("    {vis}const fn nil() -> {class} {{"));
+        self.line(format!("        {class}(ProcVar::nil())"));
+        self.line("    }");
+        self.blank();
+        self.line(format!("    {vis}const fn of(routine: {signature}, name: &'static str) -> {class} {{"));
+        self.line(format!("        {class}(ProcVar::of(routine, name))"));
+        self.line("    }");
+        self.line("}");
+        self.blank();
+        if self.first_time("proc_deref") {
+            self.line("// `Deref` lets the struct be used as the `ProcVar` inside it: `f.get()`,");
+            self.line("// `f.is_nil()` and `f.address()` reach the `ProcVar`'s methods.");
+        }
+        self.line(format!("impl std::ops::Deref for {class} {{"));
+        self.line(format!("    type Target = ProcVar<{signature}>;"));
+        self.blank();
+        self.line("    fn deref(&self) -> &Self::Target {");
+        self.line("        &self.0");
+        self.line("    }");
+        self.line("}");
+    }
+
+    /// The procedural types whose signatures name themselves through
+    /// aliases alone (a global of the type, an array of them, a pointer to
+    /// one, or another procedural type that names this one back). A record
+    /// or object between them is a struct, which breaks the cycle.
+    fn self_naming_classes(&self) -> HashSet<ProcId> {
+        fn named(ty: &Type, out: &mut Vec<ProcId>) {
+            match ty {
+                Type::Proc(p) => out.push(p.class),
+                Type::Array(a) => named(&a.elem, out),
+                Type::Pointer(p) => named(&p.target(), out),
+                Type::File(elem) => named(elem, out),
+                _ => {}
+            }
+        }
+        // Each class's signature: its globals, parameters and result.
+        let names = |class: ProcId| {
+            let info = &self.a.procs[class];
+            let mut out = Vec::new();
+            for cap in &info.captures {
+                named(&self.a.var(cap.sym).ty, &mut out);
+            }
+            for &param in &info.params {
+                named(&self.a.var(param).ty, &mut out);
+            }
+            if let Some(ret) = &info.ret {
+                named(ret, &mut out);
+            }
+            out
+        };
+        let mut found = HashSet::new();
+        for &class in &self.a.proc_classes {
+            // A walk from `class`: does it come back?
+            let mut seen = HashSet::new();
+            let mut todo = names(class);
+            while let Some(next) = todo.pop() {
+                if next == class {
+                    found.insert(class);
+                    break;
+                }
+                if seen.insert(next) {
+                    todo.extend(names(next));
+                }
+            }
+        }
+        found
+    }
+
     fn fn_pointer_type(&self, class: ProcId) -> String {
         let params: Vec<String> = self.signature_parts(class).into_iter().map(|(_, ty)| ty).collect();
         match &self.a.procs[class].ret {
@@ -2447,7 +2549,7 @@ fn default_value(ty: &Type) -> String {
         Type::Pointer(_) => "Ptr::nil()".to_string(),
         Type::AnyPointer => "AnyPtr::nil()".to_string(),
         Type::PChar => "PChar::nil()".to_string(),
-        Type::Proc(_) => "ProcVar::nil()".to_string(),
+        Type::Proc(_) => format!("{}::nil()", ty.rust()),
         Type::Text => "PText::default()".to_string(),
         Type::File(elem) if **elem == Type::Untyped => "PBlockFile::default()".to_string(),
         // `file of string[10]`: its records take 11 bytes, which the

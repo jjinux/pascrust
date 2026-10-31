@@ -601,9 +601,21 @@ impl<T> FileRecord for crate::ptr::Ptr<T> {
 /// ```ignore
 /// file_record!(Person { name: string 30, age });
 /// file_record!(enum Color);
+/// file_record!(newtype State);
 /// ```
 #[macro_export]
 macro_rules! file_record {
+    // A struct around one value (`struct State(ProcVar<...>)`): that value.
+    (newtype $ty:ident) => {
+        impl $crate::io::FileRecord for $ty {
+            fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
+                $crate::io::FileRecord::encode(&self.0, out);
+            }
+            fn decode(input: &mut &[u8]) -> Self {
+                $ty($crate::io::FileRecord::decode(input))
+            }
+        }
+    };
     (enum $ty:ident) => {
         impl $crate::io::FileRecord for $ty {
             fn encode(&self, out: &mut ::std::vec::Vec<u8>) {

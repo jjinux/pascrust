@@ -63,7 +63,7 @@ fn pascal_main() {
     let mut back: Entry = Entry::default();
     let mut f: PFile<Entry> = PFile::default();
     e.code = 258;
-    e.apply = ProcVar::of(add, "Add");
+    e.apply = Op::of(add, "Add");
     pwriteln!(e.apply.get()(2, 3), " ", 6);
     dump(&mut e, 6);
     f.assign("proc_storage.dat");

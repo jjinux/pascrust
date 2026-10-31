@@ -52,14 +52,14 @@ fn run_(count: &mut i16, other: &mut i16, q: Bump, times: i16) {
 fn pascal_main() {
     let mut count: i16 = 0;
     let mut other: i16 = 0;
-    let mut p: Bump = ProcVar::nil();
+    let mut p: Bump = Bump::nil();
     count = 0;
     other = 0;
-    p = ProcVar::of(add_one, "AddOne");
+    p = Bump::of(add_one, "AddOne");
     p.get()(&mut count, &mut other);
-    run_(&mut count, &mut other, ProcVar::of(add_count, "AddCount"), 3);
+    run_(&mut count, &mut other, Bump::of(add_count, "AddCount"), 3);
     pwriteln!(other, " ", count);
-    p = ProcVar::of(add_count, "AddCount");
+    p = Bump::of(add_count, "AddCount");
     run_(&mut count, &mut other, p, 2);
     pwriteln!(other, " ", count);
 }

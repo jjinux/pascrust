@@ -201,7 +201,8 @@ Built-ins (System unit)
   `Run(F)`); `nil`, `Assigned(F)`, `@F` as a
   `Pointer`, and `@F = @Square`, `@F = nil`. A routine that uses globals
   works too: every routine of the type takes the globals any of them
-  uses. Refused, with TP's reasons: a nested routine, a method or a
+  uses, even a global of the type itself (a state machine whose states
+  set `Current`, or recursion through a global `Fact`). Refused, with TP's reasons: a nested routine, a method or a
   standard routine as a value, a function returning a procedural type,
   and `F = G` (which calls them in TP; write `@F = @G`). `{$F+}` and `far`
   aren't required. A procedural value is 4 bytes (`SizeOf`), stored in a
