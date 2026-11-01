@@ -465,10 +465,16 @@ Graph unit (BGI, as used in the examples)
   the original programs still draw. `ImageSize` of 64K or more is 0 with
   `GraphResult` `grError`. A buffer too small is runtime error 201.
   `PutImage` is clipped to the viewport (with `ClipOn`)
-- `label` and `goto` (names or numbers, `10:`), in the structured uses:
-  a jump forward, to a label later in the same statement list or one
-  around it (out of nested loops, past the rest of a routine), and a
-  jump back, to a label earlier in such a list. Refused, with a link to
+- `label` and `goto` (names or numbers, `10:`): some uses, not all.
+  PascRust supports the ones Rust can say directly, with a labeled block
+  or loop: a jump forward, to a label later in the same statement list
+  or one around it (out of nested loops, past the rest of a routine), and
+  a jump back, to a label earlier in such a list. Rust has no `goto`: it
+  keeps control flow structured so that it can check every variable is
+  set before it's read and every borrow is still valid, so jumping into
+  the middle of a loop has no direct translation. (It could be emulated,
+  with a loop around a `match` on a "where to go next" variable, but the
+  code would no longer read like the Pascal.) Refused, with a link to
   a rewrite: a jump into a statement the `goto` isn't in, and two jumps
   whose blocks would cross. Not yet: `Break` or `Continue` inside the
   statements a `goto` skips or repeats, for a loop around them

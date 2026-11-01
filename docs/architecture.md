@@ -857,8 +857,14 @@ window meanwhile (§19).
   a `repeat`, which must still run the `until` test: the body goes in a
   labeled block, `'repeat_body: { ... }`, and `Continue` is
   `break 'repeat_body;`.
-- **`goto`** (`sema/goto.rs`): Rust can't jump, but it can leave a labeled
-  block early and go back to the top of a labeled loop. In each
+- **`goto`** (`sema/goto.rs`): some uses, not all, on purpose. Rust has no
+  `goto`, because its checks (every variable set before it's read, every
+  borrow still valid) follow structured control flow; an arbitrary jump,
+  into the middle of a loop say, would only translate as a state machine
+  (a loop around a `match` on where to go next), which would no longer
+  read like the program. What Rust *can* say directly is to leave a
+  labeled block early and go back to the top of a labeled loop, so
+  PascRust supports the jumps that are one of those. In each
   statement list, `goto::plan` gives a label with `goto`s before it a
   block from the first such statement up to the label (`'done: { ... }`,
   the `goto` is `break 'done`), and a label with `goto`s from it on a
