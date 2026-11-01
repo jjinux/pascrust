@@ -286,7 +286,7 @@ Last: raw bytes and C strings
 - [x] `WinDos`: the `Dos` routines, and wrappers with `PChar` strings.
 - [x] `Write`/`Read`/`Str`/`Val`/`Assign`/`Rename` on `Char` arrays and `PChar`s (TP 7's extended syntax).
 - [x] Packed strings: a string constant assigned to a `Char` array, and one used as a string (assigned, compared, joined, passed).
-- [ ] Skip: `Graph3` and `Turbo3` (Turbo Pascal 3.0 compatibility).
+- [x] Skipped, on purpose: `Graph3` and `Turbo3`, TP 7's units for running Turbo Pascal 3.0 programs (TP 3's turtle and point graphics, and its `Kbd` file, integer `MemAvail` and the like). The examples are TP 5.5/6.0 code; `uses Graph3` says the unit can't be found.
 
 ## Phase 8: Tier 3 and FFI (as interest dictates)
 
