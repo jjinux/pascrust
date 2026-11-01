@@ -225,10 +225,17 @@ impl UnitLoader<'_> {
             return Err(self.map.render(&at));
         }
         let not_found = |map: &SourceMap| {
-            map.render(&crate::diag::Diagnostic::new(
-                name.span,
-                format!("cannot find unit `{}` (looked for {key}.pas)", name.name),
-            ))
+            // TP 4.0 to 7.0 came with `Graph3` and `Turbo3` so that Turbo
+            // Pascal 3.0 programs still compiled; PascRust doesn't have them.
+            let message = if key == "graph3" || key == "turbo3" {
+                format!(
+                    "`{}` is Turbo Pascal's unit for running Turbo Pascal 3.0 programs, which PascRust doesn't provide (looked for {key}.pas)",
+                    name.name
+                )
+            } else {
+                format!("cannot find unit `{}` (looked for {key}.pas)", name.name)
+            };
+            map.render(&crate::diag::Diagnostic::new(name.span, message))
         };
         let Some(path) = self.dirs.iter().find_map(|dir| find_file(dir, &format!("{key}.pas"))) else {
             return Err(not_found(&self.map));

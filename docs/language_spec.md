@@ -520,6 +520,9 @@ Never (DOS/x86 machinery with no sensible Rust translation)
   `std::process::Command`; `turbo.exe` will not be found)
 - Direct video memory writes (`DirectVideo` is accepted and ignored)
 - `far`, `near`, `export`, Windows (`TPW`) units
+- `Graph3` and `Turbo3`, the units TP 4.0 to 7.0 kept for Turbo Pascal
+  3.0 programs (TP 3's turtle graphics, its `Kbd` file, and so on);
+  `uses` of one says so
 - ISO-only: conformant arrays, `pack`/`unpack`, `get`/`put` with file buffer
   variables `f^`, `program(input, output)` header parameters (ignored)
 

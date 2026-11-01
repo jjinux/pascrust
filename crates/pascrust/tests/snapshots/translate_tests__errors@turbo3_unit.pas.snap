@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/turbo3_unit.pas
+---
+turbo3_unit.pas:3:11: error: `Turbo3` is Turbo Pascal's unit for running Turbo Pascal 3.0 programs, which PascRust doesn't provide (looked for turbo3.pas)
+uses Crt, Turbo3;
+          ^^^^^^
