@@ -287,7 +287,7 @@ Last: raw bytes and C strings
 - [x] `WinDos`: the `Dos` routines, and wrappers with `PChar` strings.
 - [x] `Write`/`Read`/`Str`/`Val`/`Assign`/`Rename` on `Char` arrays and `PChar`s (TP 7's extended syntax).
 - [x] Packed strings: a string constant assigned to a `Char` array, and one used as a string (assigned, compared, joined, passed).
-- [x] Skipped, on purpose: `Graph3` and `Turbo3`, TP 7's units for running Turbo Pascal 3.0 programs (TP 3's turtle and point graphics, and its `Kbd` file, integer `MemAvail` and the like). The examples are TP 5.5/6.0 code; `uses Graph3` says the unit can't be found.
+- [x] Skipped, on purpose: `Graph3` and `Turbo3`, TP 7's units for running Turbo Pascal 3.0 programs (TP 3's turtle and point graphics, and its `Kbd` file, integer `MemAvail` and the like). The examples are TP 5.5/6.0 code; `uses Graph3` or `Turbo3` says it's a TP 3.0 compatibility unit PascRust doesn't provide. Graph3 on top of our Graph was estimated (2026-10-31: CGA modes and palettes, `Write` on the graphics screen, turtle graphics, no FPC to compare with) and punted by the user until a program needs it.
 
 ## Phase 8: Tier 3 and FFI (as interest dictates)
 
