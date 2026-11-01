@@ -31,11 +31,11 @@ acceptance test for the whole project.
   - [x] Is it even possible to have a FFI to Pascal that's already been compiled? (Low priority; save ideas for later.) (Not directly; ideas in §22.)
   - [x] Can we skip implementing threads? Do Pascal / Turbo Pascal even have those built in? (Yes, skip; TP has none; §23.)
   - [x] Write all of the core architectural decisions to a file named docs/architecture.md.
-- [ ] Start building a battery of tests to verify we're compiling it correctly:
+- [x] Start building a battery of tests to verify we're compiling it correctly:
   - [x] Are there existing tests in other open source projects that we can use for inspiration? (Free Pascal `tests/`, p2c `examples/`, Pascal Validation Suite; `notes/p2c.md` §3-4.)
-  - [ ] There should be tests that test what Pascal constructs translate into what Rust constructs.
-- [ ] How do we build at least a small standard library, including things like printing to stdout?
-  - [ ] There should be tests that compile Pascal to Rust and then run the Rust to generate expected output.
+  - [x] There should be tests that test what Pascal constructs translate into what Rust constructs. (`tests/translate`, snapshotted.)
+- [x] How do we build at least a small standard library, including things like printing to stdout? (`crates/pascrust_runtime`.)
+  - [x] There should be tests that compile Pascal to Rust and then run the Rust to generate expected output. (`tests/run`, expected output from `fpc -Mtp`.)
 - [x] Is there an official standard library for Pascal or Turbo Pascal that has an interface that we can match? (The TP `System` unit plus `Crt`/`Dos`/`Graph`; list in `notes/p2c.md` §5.)
 - [x] If possible, copy all the code in ~/Dropbox/programming/turbo_pascal to an examples directory and get them working.
   - [x] Copy the code into `examples/`.
@@ -86,7 +86,7 @@ chosen so each step is testable with the previous ones.
   - [ ] Copy-in/copy-out for `Swap(a[i], a[j])` on arrays of `Copy` elements (currently rejected because both roots are `a`).
 - [x] `PString`: runtime type (`[u8; 255]` + `len` + `cap`), `Index<i32>`, concatenation, comparison, `assign` with truncation, `pstr!` literal macro; string vs char coercions in sema. `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`, `Val`.
 - [x] Enumerated types and `Ordinal` trait (generated impl per enum; runtime impls for integers, `u8`, `bool`); `Ord`, `Chr`, `Succ`, `Pred`, `Inc`, `Dec`, `Low`, `High`; `for` over enums and chars.
-  - [ ] `Low`/`High`, and `Inc`/`Dec` on enums.
+  - [ ] `Inc`/`Dec` on an enum variable: `Inc(c)` comes out as `c += 1`, which doesn't compile (found 2026-10-31; `Low`/`High` of an enum work).
 - [x] Subranges as host types.
   - [ ] `--range-checks` flag.
 - [x] `case` → `match` with lists, ranges, `else`, and no-match-is-no-op.
@@ -111,7 +111,8 @@ chosen so each step is testable with the previous ones.
 - [x] `{$I-}` and a real `IOResult`: I/O calls in a `{$I-}` region are wrapped in `io_unchecked`, which keeps the error code for `IOResult`.
 - [x] Hoist pointer dereferences out of call arguments too, so `f(p^.x)` never holds a `RefCell` guard across the call.
 - [ ] Methods that don't modify `Self` could take `&self` instead of `&mut self`.
-- [ ] `Break`/`Continue`; `FillChar`/`Move` on arrays of scalars; `ParamCount`/`ParamStr`; `SizeOf` for sized types; `{$N+}` float types.
+- [x] `Break`/`Continue`; `FillChar`/`Move` on arrays of scalars; `ParamCount`/`ParamStr`; `SizeOf` for sized types; `{$N+}` float types (`Single`, `Double`, `Extended`).
+  - [ ] `Comp`, the 8087's 64-bit integer type: `unknown type`.
 - [x] Milestone: `examples/database/` (bstunit, founit, filesys) transpiles and the non-interactive paths run (with `Crt` stubbed to plain mode).
 
 ## Phase 4: Crt, then the text-mode examples
@@ -126,7 +127,7 @@ chosen so each step is testable with the previous ones.
   - [ ] Turn those scripted sessions into run tests (`examples/` acceptance tests in CI).
   - [x] `examples/database/founit.pas` empties the master file on delete: `Fcopy` stops at `eof` because nothing seeks back to the start. Confirmed as a bug in the original program and fixed there (plus `BST.ShiftLocations`, since later records move up a position).
   - [x] `bstunit.pas`: deleting a node with two children copied the successor's links (`Root^ := TempPtr^`). Fixed in the example.
-- [ ] CI builds every example; runs the non-interactive ones.
+- [ ] CI builds every example; runs the non-interactive ones. Done: CI builds every example warning-free (`examples_tests.rs`). Not yet: running any of them.
 
 ## Requests from the user, 2026-10-27
 
@@ -166,7 +167,7 @@ chosen so each step is testable with the previous ones.
 
 - [x] `dos` feature (the parts the examples use; the rest is in Phase 7): `GetDate`/`GetTime` (`chrono`), `FExpand`/`FSearch`/`FSplit` with the drive-letter mapping and `\`→`/` translation, `Exec`/`DosExitCode` via `std::process::Command`, `ChDir`/`MkDir`/`RmDir`/`GetDir`, `GetEnv`, `DosVersion`, `FindFirst`/`FindNext`, `DiskFree`/`DiskSize` best effort; `PathStr` and friends as `PString` aliases.
 - [x] `graph` feature, headless core first: 640x480 framebuffer of colour numbers, EGA palette (`SetBkColor`, `SetPalette`), `PutPixel`/`GetPixel`, Bresenham `Line`/`LineTo`/`LineRel`, `Rectangle`, `Bar`/`Bar3D` with 8x8 fill patterns (`SetFillStyle`/`SetFillPattern`/`GetFillPattern`), `Circle`/`Arc`/`Ellipse`/`FillEllipse`/`PieSlice`/`Sector`, `FloodFill`, line styles and `ThickWidth`, viewports (`SetViewPort`/`ClearViewPort`/`ClearDevice`), `SetWriteMode`.
-  - [ ] The rest of Graph: see Phase 7.
+  - [x] The rest of Graph: see Phase 7.
 - [x] Bitmap text: the public-domain 8x8 VGA font (ASCII); `OutText`/`OutTextXY`/`SetTextJustify`/`SetTextStyle` (default font, integer scale; stroked fonts approximated with it)/`TextWidth`/`TextHeight`.
   - [ ] CP437 characters 128-255 in the font (box drawing, accented letters).
 - [x] `InitGraph`/`Detect`/`DetectGraph`/`CloseGraph`/`GraphResult`/`GraphErrorMsg`/`SetGraphMode`/`GetGraphMode`/`RestoreCrtMode`/`GetMaxX`/`GetMaxY`/`GetMaxColor`/`GetAspectRatio`.
@@ -196,7 +197,7 @@ chosen so each step is testable with the previous ones.
   - [ ] `and`/`or`/`xor` of two Byte values compared with a constant that fits: `s.Attr and Directory = Directory` comes out as `i16::from(s.attr) & i16::from(DIRECTORY) == i16::from(DIRECTORY)`; `s.attr & DIRECTORY == DIRECTORY` computes the same (found by the Fable review of FindFirst).
 - [ ] Read through the generated Rust for `life.pas` and `bstunit.pas` as if reviewing a colleague's code; fix anything an intermediate Rust programmer would not write (unneeded clones, casts, parentheses, `mut`).
 - [ ] Commit showcase generated output for `hello.pas` and `life.pas` (per open question 7) with a refresh script.
-- [ ] Make transpiler diagnostics show the source line with a caret; add `--explain` text for the alias-detection error.
+- [x] Make transpiler diagnostics show the source line with a caret; add `--explain` text for the alias-detection error. (Instead of `--explain`, errors caused by a limit of Rust link to a worked rewrite in `docs/rust_limits.md`.)
 - [ ] Write `docs/translating.md`: a user guide with the Pascal→Rust mapping table and the known limitations, generated partly from the translate-test snapshots.
 - [ ] Measure and trim compile time of generated crates (feature flags, no unused dependencies).
 
@@ -290,7 +291,8 @@ Last: raw bytes and C strings
 
 ## Phase 8: Tier 3 and FFI (as interest dictates)
 
-- [ ] Variant records and procedural types, as in `notes/variant_records_and_procedural_types.md`. Done: step 1 (tagged variant parts, flattened, with TP's layout in files), step 2 (tagless parts as TP's bytes, behind accessors), step 3 (nested parts), steps 4-6 (procedural types: values, calls, globals through them, as bytes). Left for later, if a program needs it: `Func(P)`, a `Pointer` turned back into a routine.
+- [x] Variant records and procedural types, as in `notes/variant_records_and_procedural_types.md`: step 1 (tagged variant parts, flattened, with TP's layout in files), step 2 (tagless parts as TP's bytes, behind accessors), step 3 (nested parts), steps 4-6 (procedural types: values, calls, globals through them, as bytes).
+- [ ] Left for later, if a program needs it: `Func(P)`, a `Pointer` turned back into a routine.
 - [ ] Argument order in `Inc(a[Pick], Bump)`: PascRust runs `Pick` before `Bump`, Free Pascal `Bump` first (from the Fable review of 99e4f09). TP doesn't document it; obscure.
 - [ ] Hex constants as TP reads them: a 32-bit `$AABBCCDD` is a `LongInt` bit pattern (`$FFFFFFFF` is -1); PascRust says it's out of range.
 - [ ] An anonymous record type is named `Record` in Rust (`fn pair(&self) -> Record`); naming it after its field (`Pair`) would read better.
@@ -312,7 +314,7 @@ Last: raw bytes and C strings
 
 - [ ] One translate snapshot and one run test per construct in `docs/language_spec.md` tier 1 and 2; keep a checklist table in `tests/README.md`.
 - [x] If FPC is installed (open question 2): script `tests/gen_expected.sh` that compiles each `tests/run/*.pas` with `fpc -Mtp` and records its stdout as `*.out`; commit the outputs.
-- [ ] Write our own self-checking run tests (exit code 0 when every check passes) for the System, Crt, Dos and Graph routines, covering the kinds of cases Free Pascal's test suite covers. Don't copy FPC's or p2c's tests: both are GPL and this project is MIT. Running `fpc -Mtp` as an external program to produce expected output (`tests/gen_expected.sh`) is fine.
-- [ ] Negative tests: malformed programs produce the expected diagnostic text (snapshot).
-- [ ] Alias-detection tests (should fail to transpile) and `RefCell` aliasing tests (should fail at run time with the clear message).
-- [ ] `cargo clippy -- -D warnings` on the transpiler and the runtime; `#![deny(warnings)]` is not applied to generated code, but generated code must build warning-free for every example.
+- [x] Write our own self-checking run tests (exit code 0 when every check passes) for the System, Crt, Dos and Graph routines (`system_*`, `crt_vars`, `dos_misc`, `graph_*` and others; see `tests/README.md`), covering the kinds of cases Free Pascal's test suite covers. Don't copy FPC's or p2c's tests: both are GPL and this project is MIT. Running `fpc -Mtp` as an external program to produce expected output (`tests/gen_expected.sh`) is fine.
+- [x] Negative tests: malformed programs produce the expected diagnostic text (snapshot). (`tests/errors`.)
+- [x] Alias-detection tests (should fail to transpile) and `RefCell` aliasing tests (should fail at run time with the clear message). (`tests/errors/alias_*` and others; at run time, the runtime's `record_used_through_two_references_is_an_error` test.)
+- [x] `cargo clippy -- -D warnings` on the transpiler and the runtime; `#![deny(warnings)]` is not applied to generated code, but generated code must build warning-free for every example. (CI and `out/gate.sh`; the run and examples tests build with `-D warnings`.)

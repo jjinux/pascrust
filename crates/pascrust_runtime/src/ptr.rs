@@ -199,6 +199,25 @@ mod tests {
         let _ = b.get().value;
     }
 
+    // A record read through one pointer while it's changed through another
+    // is runtime error 204, not a `RefCell` panic message.
+    #[test]
+    fn record_used_through_two_references_is_an_error() {
+        let a: Ptr<Node> = Ptr::alloc();
+        let b = a.clone();
+        // `catch_unwind` runs the closure and turns its panic into an `Err`
+        // holding the payload, here the `RuntimeError` that `rte` raises.
+        // (`AssertUnwindSafe` says the `RefCell`s the closure uses aren't
+        // looked at again after a panic.)
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let reading = a.get();
+            b.get_mut().value = reading.value + 1;
+        }));
+        let payload = caught.expect_err("using the record twice should fail");
+        let error = payload.downcast_ref::<crate::run::RuntimeError>().expect("a Pascal runtime error");
+        assert_eq!(error.code, 204);
+    }
+
     #[test]
     #[should_panic]
     fn nil_dereference_is_an_error() {
