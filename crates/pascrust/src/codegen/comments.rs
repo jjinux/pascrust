@@ -266,6 +266,10 @@ impl Anchors<'_> {
     fn decls(&mut self, decls: &[Decl]) {
         for decl in decls {
             match decl {
+                Decl::Label(labels) => {
+                    let (first, last) = (labels[0].span, labels[labels.len() - 1].span);
+                    self.anchors.push((first.start, last.end));
+                }
                 Decl::Const(c) => {
                     // To the end of the value: a typed constant's list of
                     // values can go on for lines.
@@ -359,7 +363,10 @@ impl Anchors<'_> {
                     self.stmt(e);
                 }
             }
-            StmtKind::While { body, .. } | StmtKind::For { body, .. } | StmtKind::With { body, .. } => self.stmt(body),
+            StmtKind::While { body, .. }
+            | StmtKind::For { body, .. }
+            | StmtKind::With { body, .. }
+            | StmtKind::Labeled { body, .. } => self.stmt(body),
             StmtKind::Repeat { body, cond } => {
                 self.stmts(body);
                 // The `until` test: comments before `until` stay in the loop.
@@ -374,7 +381,7 @@ impl Anchors<'_> {
                 }
                 self.block_end(s.span);
             }
-            StmtKind::Empty | StmtKind::Assign { .. } | StmtKind::Call(_) => {}
+            StmtKind::Empty | StmtKind::Assign { .. } | StmtKind::Call(_) | StmtKind::Goto(_) => {}
         }
     }
 }

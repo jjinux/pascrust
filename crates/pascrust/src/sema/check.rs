@@ -492,11 +492,24 @@ impl Checker {
         self.decls(&block.decls);
         self.check_forwards();
         self.stmts(&block.body);
+        let labels: Vec<Ident> = block
+            .decls
+            .iter()
+            .filter_map(|d| match d {
+                Decl::Label(labels) => Some(labels.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let errors = super::goto::check(&labels, &block.body, block.body_span);
+        self.errors.extend(errors);
     }
 
     fn decls(&mut self, decls: &[Decl]) {
         for (i, decl) in decls.iter().enumerate() {
             match decl {
+                // Checked with the routine's statements (`goto::check`).
+                Decl::Label(_) => {}
                 Decl::Const(c) => self.const_decl(c),
                 Decl::Type(t) if matches!(t.ty, TypeExpr::Object { .. }) => self.object_type(&t.name, &t.ty),
                 Decl::Type(t) => {
@@ -1504,7 +1517,8 @@ impl Checker {
 
     fn stmt_kind(&mut self, s: &Stmt) {
         match &s.kind {
-            StmtKind::Empty => {}
+            StmtKind::Empty | StmtKind::Goto(_) => {}
+            StmtKind::Labeled { body, .. } => self.stmt(body),
             // `RandSeed := 42`: a runtime variable's setter.
             StmtKind::Assign { target, value } if self.runtime_var(target).is_some() => {
                 let (sym, ty) = self.runtime_var(target).unwrap();
@@ -1836,6 +1850,8 @@ impl Checker {
             StmtKind::With { records, body } => {
                 StmtKind::With { records: records.iter().map(e).collect(), body: body.clone() }
             }
+            StmtKind::Labeled { label, body } => StmtKind::Labeled { label: label.clone(), body: boxed(body) },
+            StmtKind::Goto(label) => StmtKind::Goto(label.clone()),
         };
         Stmt { kind, span: s.span }
     }
@@ -4160,7 +4176,8 @@ fn mentions_name(s: &Stmt, pointer: &Expr) -> bool {
 /// Call `f` on every expression in a statement, nested statements included.
 fn visit_stmt_exprs(s: &Stmt, f: &mut impl FnMut(&Expr)) {
     match &s.kind {
-        StmtKind::Empty => {}
+        StmtKind::Empty | StmtKind::Goto(_) => {}
+        StmtKind::Labeled { body, .. } => visit_stmt_exprs(body, f),
         StmtKind::Assign { target, value } => {
             f(target);
             f(value);
@@ -4229,11 +4246,14 @@ fn visit_stmts(s: &Stmt, f: &mut impl FnMut(&Stmt)) {
                 visit_stmts(e, f);
             }
         }
-        StmtKind::While { body, .. } | StmtKind::For { body, .. } | StmtKind::With { body, .. } => visit_stmts(body, f),
+        StmtKind::While { body, .. }
+        | StmtKind::For { body, .. }
+        | StmtKind::With { body, .. }
+        | StmtKind::Labeled { body, .. } => visit_stmts(body, f),
         StmtKind::Case { arms, else_body, .. } => {
             arms.iter().for_each(|arm| visit_stmts(&arm.body, f));
             else_body.iter().flatten().for_each(|s| visit_stmts(s, f));
         }
-        StmtKind::Empty | StmtKind::Assign { .. } | StmtKind::Call(_) => {}
+        StmtKind::Empty | StmtKind::Assign { .. } | StmtKind::Call(_) | StmtKind::Goto(_) => {}
     }
 }

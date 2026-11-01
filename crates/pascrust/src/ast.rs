@@ -78,6 +78,8 @@ pub struct Block {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Decl {
+    /// `label Done, 10;`: the labels the routine's `goto`s may jump to.
+    Label(Vec<Ident>),
     Const(ConstDecl),
     Type(TypeDecl),
     Var(VarDecl),
@@ -316,6 +318,13 @@ pub enum StmtKind {
         records: Vec<Expr>,
         body: Box<Stmt>,
     },
+    /// `Done: body`, a statement a `goto` can jump to. A label is a name or
+    /// a number (`10:`), kept as written.
+    Labeled {
+        label: Ident,
+        body: Box<Stmt>,
+    },
+    Goto(Ident),
 }
 
 #[derive(Debug, Clone, PartialEq)]

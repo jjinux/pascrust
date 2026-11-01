@@ -20,6 +20,7 @@ use std::rc::Rc;
 
 use crate::ast::*;
 use crate::diag::{SourceMap, Span};
+use crate::sema::goto::GotoBlock;
 use crate::sema::types::{ObjectType, RecordType, VariantPart, tp_size};
 use crate::sema::{Access, Analysis, Builtin, CaptureMode, MAIN, ProcId, SymId, SymKind, Type, VarRole};
 
@@ -55,6 +56,7 @@ pub fn generate(
         running_first: HashSet::new(),
         calling: HashSet::new(),
         newtypes: HashSet::new(),
+        goto_blocks: Vec::new(),
         loops: Vec::new(),
         io_unchecked,
         self_expr: None,
@@ -122,6 +124,9 @@ struct Codegen<'a> {
     /// Procedural types whose signatures name themselves (see
     /// `self_naming_classes`): structs rather than aliases.
     newtypes: HashSet<ProcId>,
+    /// The goto blocks and loops we're inside, innermost last: a label
+    /// (lowercase), its Rust name, and whether it jumps forward.
+    goto_blocks: Vec<(String, String, bool)>,
     /// The loops we're inside, innermost last: the labels `Break` and
     /// `Continue` must use for a `repeat` that has a `Continue` in it (see
     /// `repeat_loop`), or `None` for a loop where plain `break` and
@@ -1525,8 +1530,65 @@ impl<'a> Codegen<'a> {
     // ----- Statements ---------------------------------------------------------
 
     fn stmts(&mut self, stmts: &[Stmt]) {
-        for s in stmts {
-            self.stmt(s);
+        // Sema checked the jumps, so `plan` succeeds here.
+        let blocks = crate::sema::goto::plan(stmts).unwrap_or_default();
+        self.stmts_in(stmts, 0..stmts.len(), blocks);
+    }
+
+    /// The statements `range` of a list, with the goto blocks inside that
+    /// range (outermost first; they nest, so each one is either inside the
+    /// first or after it).
+    fn stmts_in(&mut self, stmts: &[Stmt], range: std::ops::Range<usize>, mut blocks: Vec<GotoBlock>) {
+        let mut i = range.start;
+        while !blocks.is_empty() {
+            let block = blocks.remove(0);
+            while i < block.lo {
+                self.stmt(&stmts[i]);
+                i += 1;
+            }
+            let (inside, after): (Vec<GotoBlock>, Vec<GotoBlock>) =
+                blocks.into_iter().partition(|b| b.lo >= block.lo && b.hi <= block.hi);
+            blocks = after;
+            // The label's statement: where a block ends, or a loop starts.
+            let at = if block.forward { block.hi } else { block.lo };
+            let StmtKind::Labeled { label, .. } = &stmts[at].kind else { unreachable!("plan found a label here") };
+            let name = goto_label(&label.name);
+            if block.forward {
+                if self.first_time("goto_forward") {
+                    self.line(format!(
+                        "// `goto {}` jumps forward: Rust can't jump, but it can leave a block",
+                        label.name
+                    ));
+                    self.line(format!("// early, so the statements it skips are in the block `{name}`, and the"));
+                    self.line(format!("// jump is `break {name}`."));
+                }
+                self.line(format!("{name}: {{"));
+            } else {
+                if self.first_time("goto_back") {
+                    self.line(format!(
+                        "// `goto {}` jumps back: the statements from the label on are a loop,",
+                        label.name
+                    ));
+                    self.line(format!("// and the jump is `continue {name}`. Otherwise the loop runs once."));
+                }
+                self.line(format!("{name}: loop {{"));
+            }
+            self.indent += 1;
+            self.goto_blocks.push((block.label.clone(), name.clone(), block.forward));
+            self.stmts_in(stmts, block.lo..block.hi, inside);
+            self.goto_blocks.pop();
+            // (Not after a `continue` that ends the loop: it would never run.)
+            let repeats = matches!(&stmts[block.hi - 1].kind, StmtKind::Goto(l) if l.key() == block.label);
+            if !block.forward && !repeats {
+                self.line(format!("break {name};"));
+            }
+            self.indent -= 1;
+            self.line("}");
+            i = block.hi;
+        }
+        while i < range.end {
+            self.stmt(&stmts[i]);
+            i += 1;
         }
     }
 
@@ -1540,7 +1602,8 @@ impl<'a> Codegen<'a> {
                 self.stmts(body);
                 self.end_comment = self.block_end_comments(s.span);
             }
-            _ => self.stmt(s),
+            // (As a list of one, which may hold a label: `if c then L: x`.)
+            _ => self.stmts(std::slice::from_ref(s)),
         }
         self.indent -= 1;
     }
@@ -1621,6 +1684,18 @@ impl<'a> Codegen<'a> {
                 self.loops.pop();
             }
             StmtKind::Case { scrutinee, arms, else_body } => self.case(s.span, scrutinee, arms, else_body.as_deref()),
+            // The label itself is where `stmts` put the block's end or the
+            // loop's start.
+            StmtKind::Labeled { body, .. } => self.stmt(body),
+            // The innermost block or loop for the label: `break` leaves a
+            // block, `continue` repeats a loop.
+            StmtKind::Goto(label) => {
+                let key = label.key();
+                let (_, name, forward) =
+                    self.goto_blocks.iter().rev().find(|(k, ..)| *k == key).expect("sema checked the jump").clone();
+                let word = if forward { "break" } else { "continue" };
+                self.line(format!("{word} {name};"));
+            }
             StmtKind::With { .. } => {
                 // `self.a` is a plain shared reference, so copying it out lets
                 // us borrow the rewritten body while `self` is borrowed mutably.
@@ -2513,6 +2588,15 @@ pub(super) fn root_expr(e: &Expr) -> &Expr {
 /// Then the value is worked out into a `let` first.
 pub(super) fn borrows_while_writing(value: &Expr, target: &Expr) -> bool {
     contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target)))
+}
+
+/// A label's Rust name: `'done` for `Done`, `'label_10` for `10`.
+fn goto_label(name: &str) -> String {
+    if name.starts_with(|c: char| c.is_ascii_digit()) {
+        format!("'label_{name}")
+    } else {
+        format!("'{}", crate::sema::names::snake_case(name))
+    }
 }
 
 fn root_name(e: &Expr) -> String {

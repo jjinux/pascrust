@@ -856,7 +856,20 @@ window meanwhile (§19).
   `Break`/`Continue` map directly, except `Continue` in
   a `repeat`, which must still run the `until` test: the body goes in a
   labeled block, `'repeat_body: { ... }`, and `Continue` is
-  `break 'repeat_body;`. `goto` is unsupported.
+  `break 'repeat_body;`.
+- **`goto`** (`sema/goto.rs`): Rust can't jump, but it can leave a labeled
+  block early and go back to the top of a labeled loop. In each
+  statement list, `goto::plan` gives a label with `goto`s before it a
+  block from the first such statement up to the label (`'done: { ... }`,
+  the `goto` is `break 'done`), and a label with `goto`s from it on a
+  loop from the label to the last one (`'again: loop { ... break
+  'again; }`, the `goto` is `continue 'again`). Blocks must nest: where
+  two cross, a block starts earlier or a loop ends later, and if neither
+  works the jumps are refused. A `goto` that no list's block reaches
+  jumps into a statement, and is refused too (both link to
+  `docs/rust_limits.md`). A plain `break` can't leave a labeled block, so
+  `Break`/`Continue` inside a goto block, for a loop around it, are
+  refused for now (they'd need that loop labeled).
 - **System variables** (`ExitCode`, `RandSeed`, `FileMode`, and a unit's,
   like Crt's `TextAttr`, listed in `units::unit_vars`) live in the
   runtime, as a getter and a setter (`SymKind::RuntimeVar`): reading is

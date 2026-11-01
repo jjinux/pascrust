@@ -134,7 +134,9 @@ Most of Turbo Pascal 5.5/6.0 as students used it: the usual types, strings,
 arrays, records (variant records too), enums, sets, pointers, procedural
 types, nested procedures, `with`, units,
 objects with inheritance and virtual methods (constructors, destructors,
-`inherited`, polymorphic pointers, `TypeOf`), text and typed files with
+`inherited`, polymorphic pointers, `TypeOf`), `goto` forward or back
+within a statement list (as Rust's labeled blocks and loops), text and
+typed files with
 `{$I-}`/`IOResult`, `PChar` strings, and the `Crt`, `Dos`, `Graph`,
 `Printer`, `Overlay`, `Strings` and `WinDos` units. Some things a modern
 machine doesn't have are faked so old programs still run: `Lst` prints to
@@ -142,7 +144,8 @@ a file or a command (see [Printing](docs/printing.md)), overlays need no `.OVR`
 file, `MemAvail` reports plenty of memory, and interrupt vectors keep the
 handlers set in them (which never run).
 
-Not supported yet: `goto`, pointer arithmetic other than on `PChar`,
+Not supported yet: a `goto` into a statement it isn't in, pointer
+arithmetic other than on `PChar`,
 keeping a `PChar` into a `Char` array (`P := A`; a `PChar` from `StrNew`
 or `GetMem` works), and interrupts (`SetIntVec` keeps a handler, with a
 warning, but never calls it). See the [language spec](docs/language_spec.md)

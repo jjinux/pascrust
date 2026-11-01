@@ -1,0 +1,32 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/goto_errors.pas
+---
+goto_errors.pas:17:4: error: the label `Twice` marks another statement already
+   Twice:
+   ^^^^^
+
+goto_errors.pas:19:9: error: `Nowhere` isn't declared in a `label` section
+   goto Nowhere;
+        ^^^^^^^
+
+goto_errors.pas:20:9: error: no statement is marked with the label `Unused`
+   goto Unused;
+        ^^^^^^
+
+goto_errors.pas:35:4: error: PascRust can't arrange these jumps as blocks: the `goto`s to `Y` jump back into the statements a `goto X` jumps over; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#goto-blocks
+   Y:
+   ^^^^^
+
+goto_errors.pas:26:10: error: PascRust can't yet translate this `Break` inside the statements of `goto A`; use another `goto` to leave the loop
+         Break;
+         ^^^^^
+
+goto_errors.pas:9:9: error: this `goto Inside` jumps into a statement it isn't in; Rust can only leave a block or repeat a loop, so PascRust jumps only forward or back within a statement list the `goto` is in; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#goto-blocks
+   goto Inside;
+        ^^^^^^
+
+goto_errors.pas:32:12: error: this `goto A` jumps into a statement it isn't in; Rust can only leave a block or repeat a loop, so PascRust jumps only forward or back within a statement list the `goto` is in; how to rewrite it: https://github.com/jjinux/pascrust/blob/main/docs/rust_limits.md#goto-blocks
+      goto A;
+           ^

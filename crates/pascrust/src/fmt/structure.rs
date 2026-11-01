@@ -310,6 +310,17 @@ impl Structure {
 
     fn stmt(&mut self, level: usize) {
         self.mark(level);
+        // `Done:` or `10:` labels the statement after it, which lines up
+        // with the label when it starts the next line.
+        let label = self.at_name() || self.peek().starts_with(|c: char| c.is_ascii_digit());
+        if label && self.at(1) == ":" {
+            self.advance();
+            self.advance();
+            if !self.done() && !self.is_any(&[";", "end", "else", "until"]) {
+                self.stmt(level);
+            }
+            return;
+        }
         match self.peek() {
             "begin" => {
                 self.advance();

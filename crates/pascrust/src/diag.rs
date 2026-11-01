@@ -6,7 +6,7 @@ use std::fmt;
 ///
 /// Spans are tiny and copied everywhere, so the type derives `Copy`: passing
 /// one around duplicates the two numbers instead of moving ownership.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Span {
     pub start: usize,
     pub end: usize,

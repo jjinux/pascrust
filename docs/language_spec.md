@@ -36,8 +36,7 @@ and behaves like TP, and there is a test for it.
 Program structure
 
 - `program Name;` (parameters after the name are ignored, as in TP)
-- `const`, `type`, `var` sections, repeated and in any order; `label` is
-  parsed but `goto` is rejected (tier 3)
+- `const`, `type`, `var` and `label` sections, repeated and in any order
 - `procedure` / `function` declarations, nested to any depth, recursive
 - `forward` declarations
 - Compiler directives `{$...}`: `{$I-}`/`{$I+}` switch I/O checking (see
@@ -466,6 +465,13 @@ Graph unit (BGI, as used in the examples)
   the original programs still draw. `ImageSize` of 64K or more is 0 with
   `GraphResult` `grError`. A buffer too small is runtime error 201.
   `PutImage` is clipped to the viewport (with `ClipOn`)
+- `label` and `goto` (names or numbers, `10:`), in the structured uses:
+  a jump forward, to a label later in the same statement list or one
+  around it (out of nested loops, past the rest of a routine), and a
+  jump back, to a label earlier in such a list. Refused, with a link to
+  a rewrite: a jump into a statement the `goto` isn't in, and two jumps
+  whose blocks would cross. Not yet: `Break` or `Continue` inside the
+  statements a `goto` skips or repeats, for a loop around them
 
 ## Tier 3: later, or never
 
@@ -479,8 +485,8 @@ Later (real TP features, not in the examples, worth doing in order)
    polymorphic pointers to objects.)
 4. (Procedural types are done, in tier 2.) A `Pointer` cast back to a
    routine (`Func(P)`, `@F := P`)
-5. `goto` / `label` (only the structured uses: jump forward out of nested
-   loops, which Rust can express with labeled `break`)
+5. (`goto` forward or back within a statement list is done, in tier 2.) A
+   `goto` into a statement it isn't in, and jumps whose blocks would cross
 6. (Untyped `var` parameters, `GetMem`/`FreeMem` and the untyped `Pointer`
    are done, in tier 2.) Pointer arithmetic, `Addr`/`@` on variables (would need
    the place-descriptor representation from `architecture.md` §15)

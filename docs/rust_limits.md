@@ -261,3 +261,48 @@ Rewrite: give the call a statement of its own (here, keeping TP's order:
 n := StrLen(StrUpper(buf));
 WriteLn(n, ' ', Fill);
 ```
+
+<a id="goto-blocks"></a>
+
+## A `goto` that isn't a block or a loop
+
+```text
+error: this `goto Start` jumps into a statement it isn't in; Rust can
+only leave a block or repeat a loop, so PascRust jumps only forward or
+back within a statement list the `goto` is in
+```
+
+Rust has no `goto`. It can leave a labeled block early (`break 'done`)
+and go back to the start of a labeled loop (`continue 'again`), so a
+`goto` to a label later in the same statement list, or in one around it,
+becomes a block that ends at the label, and a `goto` back becomes a loop
+that starts at it (see [the architecture](architecture.md), the `goto`
+part). A jump *into* a loop, an `if` or a `begin ... end` the `goto`
+isn't in has no such shape, and neither do two jumps whose blocks would
+cross: one jumping back into the statements another jumps over.
+
+Refused:
+
+```pascal
+   if Fresh then
+      goto Start;
+   Prepare;
+   if Ready then
+   begin
+   Start:
+      Run;
+   end;
+```
+
+Rewrite: say with conditions what the jump skipped.
+
+```pascal
+   if not Fresh then
+      Prepare;
+   if Fresh or Ready then
+      Run;
+```
+
+For crossing jumps, move one label so that the statements each `goto`
+skips or repeats are inside the other's, or split the statements into a
+routine of their own.

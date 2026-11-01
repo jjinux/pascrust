@@ -20,6 +20,7 @@
 
 pub mod builtins;
 mod check;
+pub mod goto;
 pub use check::{int_common, numeric_common};
 mod lift;
 pub mod names;

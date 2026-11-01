@@ -64,6 +64,32 @@ end.
 }
 
 #[test]
+fn labels_line_up_with_statements() {
+    check(
+        "program P;
+label 10, Again;
+begin
+Again:
+      writeln('a');
+  if x then goto 10;
+    10: writeln('b');
+  goto Again
+end.
+",
+        "program P;
+label 10, Again;
+begin
+   Again:
+   writeln('a');
+   if x then goto 10;
+   10: writeln('b');
+   goto Again
+end.
+",
+    );
+}
+
+#[test]
 fn case_repeat_and_comments() {
     check(
         "program P;

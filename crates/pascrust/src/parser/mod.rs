@@ -275,10 +275,28 @@ impl Parser {
                     decls.push(Decl::Proc(self.proc_decl(headings_only)?));
                 }
                 TokenKind::Keyword(Keyword::Label) => {
-                    return Err(Diagnostic::new(self.span(), "labels and `goto` are not supported"));
+                    self.bump();
+                    let mut labels = vec![self.label()?];
+                    while self.eat(&TokenKind::Comma) {
+                        labels.push(self.label()?);
+                    }
+                    self.expect(&TokenKind::Semi)?;
+                    decls.push(Decl::Label(labels));
                 }
                 _ => return Ok(decls),
             }
+        }
+    }
+
+    /// A label: a name, or a number as TP allowed (`10`).
+    pub(super) fn label(&mut self) -> PResult<Ident> {
+        let span = self.span();
+        match self.peek().clone() {
+            TokenKind::Integer(n) => {
+                self.bump();
+                Ok(Ident { name: n.to_string(), span })
+            }
+            _ => self.expect_ident(),
         }
     }
 

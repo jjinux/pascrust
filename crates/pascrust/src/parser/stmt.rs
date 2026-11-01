@@ -21,6 +21,14 @@ impl Parser {
 
     pub(super) fn statement(&mut self) -> PResult<Stmt> {
         let start = self.span();
+        // `Done: x := 1` or `10: x := 1`: a name or number and a colon start
+        // a labeled statement (an assignment's `:=` is one token).
+        if matches!(self.peek(), TokenKind::Ident(_) | TokenKind::Integer(_)) && *self.peek_at(1) == TokenKind::Colon {
+            let label = self.label()?;
+            self.expect(&TokenKind::Colon)?;
+            let body = Box::new(self.statement()?);
+            return Ok(Stmt { kind: StmtKind::Labeled { label, body }, span: start.to(self.prev_span()) });
+        }
         let kind = match self.peek() {
             TokenKind::Keyword(Keyword::Begin) => {
                 self.bump();
@@ -78,7 +86,8 @@ impl Parser {
                 StmtKind::With { records, body: Box::new(self.statement()?) }
             }
             TokenKind::Keyword(Keyword::Goto) => {
-                return Err(Diagnostic::new(start, "`goto` is not supported"));
+                self.bump();
+                StmtKind::Goto(self.label()?)
             }
             TokenKind::Ident(_) | TokenKind::Keyword(Keyword::Inherited) => {
                 let target = self.designator()?;
