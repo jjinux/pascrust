@@ -45,6 +45,28 @@ pub trait Enumerated: Ordinal + 'static {
     fn pred(self) -> Self {
         Self::from_ord(self.ord() - 1)
     }
+
+    /// Pascal `Inc(x)`: `x` becomes the next value. (A method on `&mut
+    /// self` changes the place it's called on: `p.get_mut().day.inc()`
+    /// borrows the record once.)
+    fn inc(&mut self) {
+        *self = self.succ();
+    }
+
+    /// Pascal `Dec(x)`: `x` becomes the previous value.
+    fn dec(&mut self) {
+        *self = self.pred();
+    }
+
+    /// Pascal `Inc(x, n)`: `n` values on.
+    fn inc_by(&mut self, n: impl Into<i64>) {
+        *self = Self::from_ord(self.ord() + n.into());
+    }
+
+    /// Pascal `Dec(x, n)`: `n` values back.
+    fn dec_by(&mut self, n: impl Into<i64>) {
+        *self = Self::from_ord(self.ord() - n.into());
+    }
 }
 
 /// The values from `lo` to `hi` inclusive, for `for x := lo to hi` over an

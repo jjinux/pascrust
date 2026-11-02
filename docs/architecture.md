@@ -538,7 +538,9 @@ pub trait Enumerated: Ordinal + 'static { const VALUES: &'static [Self]; /* from
 `Ordinal` turns a value into its position, and `u8` (char), `bool` and the
 integer types implement it too; `Enumerated` lists an enum's values in
 order, which is all that's needed to go back (`Color(2)`, `Succ`, `Pred`,
-`for x := Lo to Hi`). Enum-indexed arrays go through `Ordinal`.
+`for x := Lo to Hi`). An enum has no `+=`, so `Inc(day)` is `day.inc()`
+(and `Dec(day, n)` `day.dec_by(n)`), methods on `&mut self` that change
+the place they're called on. Enum-indexed arrays go through `Ordinal`.
 
 Subranges (`0..maxsize`, `'A'..'Z'`) are their host type. For integers
 that's TP's: the smallest of `ShortInt`, `Byte`, `Integer`, `Word` and

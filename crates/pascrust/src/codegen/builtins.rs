@@ -217,6 +217,15 @@ impl<'a> Codegen<'a> {
                 let op = if b == Inc { "+=" } else { "-=" };
                 format!("{place} {op} {amount};")
             }
+            // An enum has no `+=`: `day.inc()`, `day.inc_by(2)`.
+            Inc | Dec if matches!(ty(self, &args[0]).concrete(), Type::Enum(_)) => {
+                let place = self.place_receiver(&args[0]);
+                let method = if b == Inc { "inc" } else { "dec" };
+                match args.get(1) {
+                    Some(n) => format!("{place}.{method}_by({});", self.expr(n).0),
+                    None => format!("{place}.{method}();"),
+                }
+            }
             Inc | Dec => {
                 let target_ty = ty(self, &args[0]);
                 let place = self.place(&args[0]);

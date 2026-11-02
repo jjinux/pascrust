@@ -86,7 +86,7 @@ chosen so each step is testable with the previous ones.
   - [ ] Copy-in/copy-out for `Swap(a[i], a[j])` on arrays of `Copy` elements (currently rejected because both roots are `a`).
 - [x] `PString`: runtime type (`[u8; 255]` + `len` + `cap`), `Index<i32>`, concatenation, comparison, `assign` with truncation, `pstr!` literal macro; string vs char coercions in sema. `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`, `Val`.
 - [x] Enumerated types and `Ordinal` trait (generated impl per enum; runtime impls for integers, `u8`, `bool`); `Ord`, `Chr`, `Succ`, `Pred`, `Inc`, `Dec`, `Low`, `High`; `for` over enums and chars.
-  - [ ] `Inc`/`Dec` on an enum variable: `Inc(c)` comes out as `c += 1`, which doesn't compile (found 2026-10-31; `Low`/`High` of an enum work).
+  - [x] `Inc`/`Dec` on an enum variable: `Inc(c)` came out as `c += 1`, which doesn't compile (found 2026-10-31); now `c.inc()`, `c.dec_by(n)`.
 - [x] Subranges as host types.
   - [ ] `--range-checks` flag.
 - [x] `case` → `match` with lists, ranges, `else`, and no-match-is-no-op.
