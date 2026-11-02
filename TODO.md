@@ -159,6 +159,15 @@ chosen so each step is testable with the previous ones.
 - [ ] Evaluation order where a function has side effects (the user: follow Free Pascal). Done: `Write(F, G)` writes F before running G; `n := n + Bump` reads `n` first. Not yet, and worth asking whether to chase: on aarch64 Free Pascal calls the function first for reals, strings and sets (`t := t + Ext` where `Ext` changes `t` gives `ayz`, PascRust `az`), and works out an assignment's target index before the right side (now done: such an index goes into a `let` first). These are Free Pascal code-generator details, and may differ on x86.
 - [x] Rename the project to "PascRust" wherever a friendly name fits: the README, the other docs, `Cargo.toml` descriptions, the GitHub repo description, CLI help text and messages, comments and generated-code headers. The directory, the crates, the binary (`pascrust`), the repo name and other identifiers stay `pascrust`.
 
+## Requests from the user, 2026-11-02
+
+In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffea..HEAD`:
+
+- [ ] PascRust's own units, named with a `PR` prefix (`PRJson`, `PRTurtle`), as Turbo Pascal's types start with `T`. Settle the type names with the user first: TP's `P` already starts pointer types (`PNode = ^TNode`), so a type `PRValue` could read as a pointer.
+  - [ ] `PRJson`: read and write JSON from Turbo Pascal.
+  - [ ] `PRTurtle`: turtle graphics on top of `Graph` (`Forwd`, `TurnLeft`, `PenUp`, ...), so a program that used Graph3's turtle can use `Graph` with these instead.
+- [ ] Document how Turbo Pascal code can call existing Rust code (and make it work: see the "FFI to Rust" item in Phase 8).
+
 ## Requests from the user, 2026-10-29
 
 - [ ] A command like `fmt` that turns a binary file written by a Turbo Pascal program (`file of T`) into JSON: an input file and an output file. A binary file doesn't say what its records look like, so it also needs the record type: probably the Pascal source that declares it and the type's name (`pascrust json founit.pas People mark.dat mark.json`), or the only `file of` type the program uses. It can reuse the runtime's TP-exact layout (`FileRecord`), decoding through the type's fields; one JSON object per record, in an array.
