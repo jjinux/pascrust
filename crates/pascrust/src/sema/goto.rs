@@ -71,8 +71,8 @@ fn visit(s: &Stmt, f: &mut impl FnMut(&Stmt)) {
 /// first, or the reason the jumps can't be arranged as blocks.
 pub fn plan(stmts: &[Stmt]) -> Result<Vec<GotoBlock>, Diagnostic> {
     let mut blocks = Vec::new();
-    for (k, s) in stmts.iter().enumerate() {
-        let StmtKind::Labeled { label, .. } = &s.kind else { continue };
+    // (`L1: L2: x` puts two labels on one statement.)
+    for (k, label) in stmts.iter().enumerate().flat_map(|(k, s)| labels_of(s).into_iter().map(move |l| (k, l))) {
         let key = label.key();
         let from: Vec<usize> = (0..stmts.len()).filter(|&i| jumps_to(&stmts[i], &key)).collect();
         // Jumps from before the label go forward, past a block that ends
@@ -221,6 +221,18 @@ fn all_lists<'s>(list: &'s [Stmt], out: &mut Vec<&'s [Stmt]>) {
     }
 }
 
+/// The labels on `s`: none, one, or a chain (`L1: L2: x`).
+pub fn labels_of(s: &Stmt) -> Vec<&Ident> {
+    match &s.kind {
+        StmtKind::Labeled { label, body } => {
+            let mut labels = vec![label];
+            labels.extend(labels_of(body));
+            labels
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// The statement lists directly in `s`. A single statement where a list
 /// could be (`if c then L: x`) counts as a list of one.
 pub fn statement_lists(s: &Stmt) -> Vec<&[Stmt]> {
@@ -233,10 +245,12 @@ pub fn statement_lists(s: &Stmt) -> Vec<&[Stmt]> {
             }
             lists
         }
-        StmtKind::While { body, .. }
-        | StmtKind::For { body, .. }
-        | StmtKind::With { body, .. }
-        | StmtKind::Labeled { body, .. } => vec![std::slice::from_ref(&**body)],
+        StmtKind::While { body, .. } | StmtKind::For { body, .. } | StmtKind::With { body, .. } => {
+            vec![std::slice::from_ref(&**body)]
+        }
+        // A label belongs to the list its statement is in; the lists are
+        // those of the statement it labels.
+        StmtKind::Labeled { body, .. } => statement_lists(body),
         StmtKind::Case { arms, else_body, .. } => {
             let mut lists: Vec<&[Stmt]> = arms.iter().map(|arm| std::slice::from_ref(&arm.body)).collect();
             if let Some(body) = else_body {

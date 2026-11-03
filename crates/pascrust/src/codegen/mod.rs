@@ -1551,7 +1551,10 @@ impl<'a> Codegen<'a> {
             blocks = after;
             // The label's statement: where a block ends, or a loop starts.
             let at = if block.forward { block.hi } else { block.lo };
-            let StmtKind::Labeled { label, .. } = &stmts[at].kind else { unreachable!("plan found a label here") };
+            let label = crate::sema::goto::labels_of(&stmts[at])
+                .into_iter()
+                .find(|l| l.key() == block.label)
+                .expect("plan found the label here");
             let name = goto_label(&label.name);
             if block.forward {
                 if self.first_time("goto_forward") {
@@ -1578,7 +1581,7 @@ impl<'a> Codegen<'a> {
             self.stmts_in(stmts, block.lo..block.hi, inside);
             self.goto_blocks.pop();
             // (Not after a `continue` that ends the loop: it would never run.)
-            let repeats = matches!(&stmts[block.hi - 1].kind, StmtKind::Goto(l) if l.key() == block.label);
+            let repeats = ends_with_goto(&stmts[block.hi - 1], &block.label);
             if !block.forward && !repeats {
                 self.line(format!("break {name};"));
             }
@@ -2588,6 +2591,17 @@ pub(super) fn root_expr(e: &Expr) -> &Expr {
 /// Then the value is worked out into a `let` first.
 pub(super) fn borrows_while_writing(value: &Expr, target: &Expr) -> bool {
     contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target)))
+}
+
+/// True if the last thing `s` does is `goto label` (looking into a
+/// `begin ... end` and through labels, which codegen writes out flat).
+fn ends_with_goto(s: &Stmt, label: &str) -> bool {
+    match &s.kind {
+        StmtKind::Goto(l) => l.key() == label,
+        StmtKind::Compound(body) => body.last().is_some_and(|s| ends_with_goto(s, label)),
+        StmtKind::Labeled { body, .. } => ends_with_goto(body, label),
+        _ => false,
+    }
 }
 
 /// A label's Rust name: `'done` for `Done`, `'label_10` for `10`.

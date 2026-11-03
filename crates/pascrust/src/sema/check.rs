@@ -2772,6 +2772,10 @@ impl Checker {
                 return self.user_call(e, pid, args);
             }
             Some(Resolved::SelfField { .. }) => {
+                // `Show(n)` in a method, where `Show` is a procedural field.
+                if let Type::Proc(p) = self.proc_place(callee) {
+                    return self.proc_call(e, callee, None, &p, args);
+                }
                 self.error(ident.span, format!("`{}` is a field, not a method", ident.name));
                 return Type::Error;
             }
