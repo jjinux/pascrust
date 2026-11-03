@@ -876,8 +876,10 @@ window meanwhile (§19).
   works the jumps are refused. A `goto` that no list's block reaches
   jumps into a statement, and is refused too (both link to
   `docs/rust_limits.md`). A plain `break` can't leave a labeled block, so
-  `Break`/`Continue` inside a goto block, for a loop around it, are
-  refused for now (they'd need that loop labeled). Statements after a
+  a loop whose `Break` or `Continue` is inside one of its goto blocks
+  (`goto::exits_in_blocks`) gets a label, `'while_loop: while ...`, and
+  they use it (`break 'while_loop`, `continue 'while_loop`; a `repeat`'s
+  `Continue` still leaves `'repeat_body`). Statements after a
   `goto`, `Exit`, `Break` or `Continue`, up to the next label, never run
   (`goto::dead`), and Rust warns about code it can't reach, so codegen
   writes their Rust commented out (the user's choice), under "Never runs,

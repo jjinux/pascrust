@@ -213,7 +213,6 @@ pub fn check(labels: &[Ident], body: &[Stmt], body_span: Span) -> Vec<Diagnostic
                                 reached.insert(label.span);
                             }
                         });
-                        caught_loop_exits(s, &block.name, &mut errors);
                     }
                 }
             }
@@ -305,29 +304,38 @@ pub fn statement_lists(s: &Stmt) -> Vec<&[Stmt]> {
     }
 }
 
-/// A `Break` or `Continue` in a goto block's statements that belongs to a
-/// loop outside the block: Rust's plain `break` can't leave a labeled block
-/// (and in a goto loop it would leave that loop instead).
-fn caught_loop_exits(s: &Stmt, label: &str, errors: &mut Vec<Diagnostic>) {
-    match &s.kind {
-        // A loop's own `Break` and `Continue` stay inside it.
-        StmtKind::While { .. } | StmtKind::For { .. } | StmtKind::Repeat { .. } => {}
-        StmtKind::Call(e) => {
-            let name = match &e.kind {
-                ExprKind::Name(id) => id.key(),
-                _ => String::new(),
-            };
-            if name == "break" || name == "continue" {
-                errors.push(Diagnostic::new(
-                    e.span,
-                    format!("PascRust can't yet translate this `{}` inside the statements of `goto {label}`; use another `goto` to leave the loop", if name == "break" { "Break" } else { "Continue" }),
-                ));
-            }
-        }
-        _ => {
-            for list in statement_lists(s) {
-                list.iter().for_each(|s| caught_loop_exits(s, label, errors));
+/// Whether a loop's `Break` and `Continue` are inside one of its goto
+/// blocks (not in a loop nested in it): Rust's plain `break` can't leave a
+/// labeled block (and in a goto loop it would leave that loop instead), so
+/// then the loop needs a label of its own. `body` is the loop's body.
+pub fn exits_in_blocks(body: &[Stmt]) -> (bool, bool) {
+    // A loop's own `Break` and `Continue` stay inside it.
+    fn exits(s: &Stmt, found: &mut (bool, bool)) {
+        match &s.kind {
+            StmtKind::While { .. } | StmtKind::For { .. } | StmtKind::Repeat { .. } => {}
+            StmtKind::Call(e) => match &e.kind {
+                ExprKind::Name(id) if id.key() == "break" => found.0 = true,
+                ExprKind::Name(id) if id.key() == "continue" => found.1 = true,
+                _ => {}
+            },
+            _ => {
+                for list in statement_lists(s) {
+                    list.iter().for_each(|s| exits(s, found));
+                }
             }
         }
     }
+    fn lists(list: &[Stmt], found: &mut (bool, bool)) {
+        for block in plan(list).unwrap_or_default() {
+            list[block.lo..block.hi].iter().for_each(|s| exits(s, found));
+        }
+        for s in list {
+            if !matches!(s.kind, StmtKind::While { .. } | StmtKind::For { .. } | StmtKind::Repeat { .. }) {
+                statement_lists(s).into_iter().for_each(|inner| lists(inner, found));
+            }
+        }
+    }
+    let mut found = (false, false);
+    lists(body, &mut found);
+    found
 }

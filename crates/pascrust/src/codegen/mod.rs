@@ -145,13 +145,17 @@ struct Codegen<'a> {
     decl_starts: HashMap<SymId, usize>,
 }
 
-/// Labels for a `repeat ... until` loop whose body uses `Continue`.
+/// Labels for a loop where plain `break`/`continue` won't do: a `repeat
+/// ... until` whose body uses `Continue`, or a loop whose `Break` or
+/// `Continue` is inside a goto block.
+#[derive(Clone)]
 struct LoopLabels {
     /// `Break` jumps out of the loop: `break 'repeat_loop;`. (Only if the
     /// body uses `Break`: Rust warns about unused labels.)
     loop_label: Option<String>,
-    /// `Continue` jumps to the `until` test: `break 'repeat_body;`.
-    body_label: String,
+    /// `Continue` jumps to the `until` test: `break 'repeat_body;`. (`None`
+    /// for a loop where `Continue` is `continue 'label`.)
+    body_label: Option<String>,
 }
 
 impl<'a> Codegen<'a> {
@@ -1698,15 +1702,20 @@ impl<'a> Codegen<'a> {
             StmtKind::If { .. } => self.if_chain(s, ""),
             StmtKind::While { cond, body } => {
                 let cond = self.condition(cond);
-                self.line(format!("while {cond} {{"));
-                self.loops.push(None);
+                let labels = self.goto_loop_labels(body, "while_loop");
+                match labels.as_ref().and_then(|l| l.loop_label.as_ref()) {
+                    Some(label) => self.line(format!("{label}: while {cond} {{")),
+                    None => self.line(format!("while {cond} {{")),
+                }
+                self.loops.push(labels);
                 self.block_body(body);
                 self.loops.pop();
                 self.line("}");
             }
             StmtKind::Repeat { body, cond } => self.repeat_loop(body, cond),
             StmtKind::For { var, start, end, down, body } => {
-                self.loops.push(None);
+                let labels = self.goto_loop_labels(body, "for_loop");
+                self.loops.push(labels);
                 self.for_loop(s, var, start, end, *down, body);
                 self.loops.pop();
             }
@@ -1740,6 +1749,31 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// The label a `while` or `for` loop needs when a goto block inside it
+    /// holds its `Break` or `Continue` (a plain `break` can't leave a
+    /// labeled block): `'while_loop`, then `break 'while_loop;`.
+    fn goto_loop_labels(&mut self, body: &Stmt, kind: &str) -> Option<LoopLabels> {
+        let (breaks, continues) = crate::sema::goto::exits_in_blocks(std::slice::from_ref(body));
+        if !(breaks || continues) {
+            return None;
+        }
+        self.explain_goto_loop_label();
+        Some(LoopLabels { loop_label: Some(format!("'{kind}{}", self.loop_label_suffix())), body_label: None })
+    }
+
+    fn explain_goto_loop_label(&mut self) {
+        if self.first_time("goto_loop_label") {
+            self.line("// A plain `break` can't leave a labeled block, so this loop has a label,");
+            self.line("// and its `Break` and `Continue` inside the goto block below use it.");
+        }
+    }
+
+    /// `""` for the outermost labeled loop, then `2`, `3`, ...
+    fn loop_label_suffix(&self) -> String {
+        let n = self.loops.iter().flatten().count();
+        if n == 0 { String::new() } else { (n + 1).to_string() }
+    }
+
     /// `repeat ... until cond` becomes `loop { ...; if cond { break; } }`.
     fn repeat_loop(&mut self, body: &[Stmt], cond: &Expr) {
         self.line("// Pascal `repeat ... until`: the body always runs at least once.");
@@ -1748,35 +1782,37 @@ impl<'a> Codegen<'a> {
         // body that uses `Continue` goes in a labeled block, and `Continue`
         // leaves the block with `break 'repeat_body;`. Inside that block a
         // plain `break` isn't allowed, so `Break` needs a label for the loop.
-        let labels = self.uses(body, Builtin::Continue).then(|| {
-            let n = self.loops.iter().flatten().count();
-            let suffix = if n == 0 { String::new() } else { (n + 1).to_string() };
+        // (A `Break` inside a goto block needs the label too.)
+        let (break_in_block, _) = crate::sema::goto::exits_in_blocks(body);
+        let continues = self.uses(body, Builtin::Continue);
+        if break_in_block {
+            self.explain_goto_loop_label();
+        }
+        let labels = (continues || break_in_block).then(|| {
+            let suffix = self.loop_label_suffix();
             LoopLabels {
                 loop_label: self.uses(body, Builtin::Break).then(|| format!("'repeat_loop{suffix}")),
-                body_label: format!("'repeat_body{suffix}"),
+                body_label: continues.then(|| format!("'repeat_body{suffix}")),
             }
         });
-        match &labels {
-            Some(l) => {
-                if self.first_time("repeat-continue") {
-                    self.line("// `Continue` must still test the `until` condition, so it jumps out of");
-                    self.line("// the labeled block below rather than back to the top of the loop.");
-                }
-                match &l.loop_label {
-                    Some(label) => self.line(format!("{label}: loop {{")),
-                    None => self.line("loop {"),
-                }
-                self.indent += 1;
-                self.line(format!("{}: {{", l.body_label));
-            }
+        let body_block = labels.as_ref().and_then(|l| l.body_label.clone());
+        if body_block.is_some() && self.first_time("repeat-continue") {
+            self.line("// `Continue` must still test the `until` condition, so it jumps out of");
+            self.line("// the labeled block below rather than back to the top of the loop.");
+        }
+        match labels.as_ref().and_then(|l| l.loop_label.as_ref()) {
+            Some(label) => self.line(format!("{label}: loop {{")),
             None => self.line("loop {"),
         }
+        if let Some(block) = &body_block {
+            self.indent += 1;
+            self.line(format!("{block}: {{"));
+        }
         self.indent += 1;
-        let labeled = labels.is_some();
         self.loops.push(labels);
         self.stmts(body);
         self.loops.pop();
-        if labeled {
+        if body_block.is_some() {
             self.indent -= 1;
             self.line("}");
         }
@@ -1818,6 +1854,7 @@ impl<'a> Codegen<'a> {
                     || else_body.as_deref().is_some_and(|body| self.uses(body, b))
             }
             StmtKind::With { .. } => self.uses(std::slice::from_ref(&self.a.with_bodies[&s.span.start]), b),
+            StmtKind::Labeled { body, .. } => self.uses(std::slice::from_ref(body), b),
             // A `Break` or `Continue` inside a nested loop belongs to that loop.
             _ => false,
         })
@@ -2144,7 +2181,8 @@ impl<'a> Codegen<'a> {
         if scoped {
             // Pascal's `for i := 1 to n` evaluates both bounds once and does
             // nothing if `n < 1`, exactly like Rust's inclusive range `1..=n`.
-            self.line(format!("for {name} in {range} {{"));
+            let label = self.loops.last().cloned().flatten().and_then(|l| l.loop_label).map(|l| format!("{l}: "));
+            self.line(format!("{}for {name} in {range} {{", label.unwrap_or_default()));
             self.block_body(body);
             self.line("}");
         } else {
@@ -2157,7 +2195,8 @@ impl<'a> Codegen<'a> {
                 self.line("// last value), so the loop updates it on every pass instead of declaring");
                 self.line("// a fresh loop variable.");
             }
-            self.line(format!("for {name}_value in {range} {{"));
+            let label = self.loops.last().cloned().flatten().and_then(|l| l.loop_label).map(|l| format!("{l}: "));
+            self.line(format!("{}for {name}_value in {range} {{", label.unwrap_or_default()));
             self.line(format!("    {place} = {name}_value;"));
             self.block_body(body);
             self.line("}");

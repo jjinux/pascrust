@@ -262,7 +262,7 @@ Graph, the rest
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 86ec036 (batches A-G). Not yet reviewed: `86ec036..HEAD`. Keep this range up to date.
-- [ ] Findings of review batch G (076ffea..86ec036), to fix:
+- [x] Findings of review batch G (076ffea..86ec036), fixed:
   - [x] A labeled `begin ... goto Main end` (a main loop) gets an unreachable `break 'main` after the `continue` (a warning).
   - [x] Two labels on one statement (`L1: L2: x`): a `goto L2` is refused as a jump into a statement.
   - [x] `Inc(p^.v, p^.n)` (a step read from the heap record being changed): runtime error 204.
@@ -271,7 +271,7 @@ Last: raw bytes and C strings
   - [x] `Dec(c, 2)` on a Char gives `c -= 2 as u8` (a needless cast).
   - [x] Document that `Inc`/`Dec`/`Succ`/`Pred` past the ends of an enum are a range error (a Rust enum can't hold an ordinal outside it; TP with `{$R-}` stored it).
   - [x] Dead code after an unconditional `goto` or `Exit` gave an `unreachable_code` warning. The user's choice: the Rust keeps it, commented out.
-  - [ ] Question for the user: label a loop that holds a goto block, so `Break`/`Continue` inside the block work, now or later?
+  - [x] Label a loop that holds a goto block, so `Break`/`Continue` inside the block work (the user: now).
 - [x] Findings of review batch F (3ab3ee4..076ffea), fixed:
   - [x] A parameterless procedure field or element called as a statement (`H.S;`, `with H do S;`) is called twice: `.get()(..).get()(..)`.
   - [x] Every unary builtin (`Odd(F)`, `Abs(R.Next)`) refuses a parameterless function value; only `Assigned` should look at the value.
@@ -320,7 +320,7 @@ Last: raw bytes and C strings
 - [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, docs/architecture.md §16), and `TypeOf`.
 - [x] Procedural types and procedure parameters (steps 4-6 of the variant records and procedural types item).
 - [x] Structured `goto`, the user's idea (2026-10-30): a jump forward is a labeled block (`'done: { ... break 'done; }`), a jump back a labeled loop (`continue 'again`), in `sema/goto.rs`. Jumps into a statement, and crossing ones, are refused with a rust_limits link.
-- [ ] `Break`/`Continue` inside the statements a `goto` skips or repeats, for a loop around them: label that loop (`break 'outer`) instead of refusing.
+- [x] `Break`/`Continue` inside the statements a `goto` skips or repeats, for a loop around them: label that loop (`break 'while_loop`) instead of refusing.
 - [x] TP-exact binary file layout including 6-byte `Real`, so `examples/database/mark.dat` can be read (step 0 of `notes/untyped_memory.md`).
 - [ ] The per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
 - [ ] Bundled-globals option (`struct Globals` per unit) for programs with very many globals.

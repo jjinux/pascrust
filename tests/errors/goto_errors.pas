@@ -22,8 +22,6 @@ begin
    begin
       if i = 5 then
          goto A;
-      if i = 6 then
-         Break;
       Inc(i);
       A:
    end;

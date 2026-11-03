@@ -179,7 +179,8 @@ impl<'a> Codegen<'a> {
                 _ => "break;".to_string(),
             },
             Continue => match self.loops.last() {
-                Some(Some(labels)) => format!("break {};", labels.body_label),
+                Some(Some(LoopLabels { body_label: Some(body), .. })) => format!("break {body};"),
+                Some(Some(LoopLabels { loop_label: Some(label), .. })) => format!("continue {label};"),
                 _ => "continue;".to_string(),
             },
             Ord => {
