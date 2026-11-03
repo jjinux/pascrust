@@ -27,64 +27,24 @@ use pascrust_runtime::prelude::*;
 /// Its local variables are the Pascal program's global variables.
 /// (Including the global variables of every unit.)
 fn pascal_main() {
-    let mut ready: bool = false; // the window has been set up
-    let mut pos_x: f64 = 0.0;
-    let mut pos_y: f64 = 0.0; // where the turtle is, in turtle coordinates
-    let mut dir: f64 = 0.0; // its heading, in degrees from north
-    let mut down: bool = false; // the pen draws
-    let mut shown: bool = false; // the turtle is drawn
-    let mut wrapping: bool = false; // leaving one side comes back on the other
-    let mut pen: u16 = 0; // the pen's colour
-    let pause: i16 = 0; // milliseconds to wait after each move
-    let mut win_left: i16 = 0;
-    let mut win_top: i16 = 0;
-    let mut win_width: i16 = 0;
-    let mut win_height: i16 = 0;
+    let mut turtle: TTurtleContext = TTurtleContext::default();
     let mut driver: i16 = 0;
     let mut mode: i16 = 0;
     driver = i16::from(DETECT);
     init_graph(&mut driver, &mut mode, "");
-    pwriteln!("home: ", xcor(pos_x), " ", ycor(pos_y), " ", heading(dir));
+    pwriteln!("home: ", xcor(turtle), " ", ycor(turtle), " ", heading(turtle));
     // A square, north first, turning right.
     for i in 1_i16..=4 {
-        forwd(
-            &mut ready,
-            &mut pos_x,
-            &mut pos_y,
-            dir,
-            &mut down,
-            shown,
-            wrapping,
-            &mut pen,
-            pause,
-            &mut win_left,
-            &mut win_top,
-            &mut win_width,
-            &mut win_height,
-            100,
-        );
-        turn_right(
-            &mut ready,
-            pos_x,
-            pos_y,
-            &mut dir,
-            &mut down,
-            shown,
-            &mut pen,
-            &mut win_left,
-            &mut win_top,
-            &mut win_width,
-            &mut win_height,
-            90,
-        );
+        forwd(&mut turtle, 100);
+        turn_right(&mut turtle, 90);
     }
     pwriteln!(
         "square: ",
-        xcor(pos_x),
+        xcor(turtle),
         " ",
-        ycor(pos_y),
+        ycor(turtle),
         " ",
-        heading(dir),
+        heading(turtle),
         ", ",
         get_pixel(320, 190),
         " ",
@@ -95,300 +55,41 @@ fn pascal_main() {
         get_pixel(300, 100)
     );
     // Pen up: moving draws nothing.
-    pen_up(&mut ready, &mut down, &mut pen, &mut win_left, &mut win_top, &mut win_width, &mut win_height);
-    set_heading(
-        &mut ready,
-        pos_x,
-        pos_y,
-        &mut dir,
-        &mut down,
-        shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        WEST,
-    );
-    forwd(
-        &mut ready,
-        &mut pos_x,
-        &mut pos_y,
-        dir,
-        &mut down,
-        shown,
-        wrapping,
-        &mut pen,
-        pause,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        50,
-    );
-    pwriteln!("pen up: ", xcor(pos_x), " ", get_pixel(295, 240));
-    pen_down(&mut ready, &mut down, &mut pen, &mut win_left, &mut win_top, &mut win_width, &mut win_height);
-    set_pen_color(
-        &mut ready,
-        &mut down,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        u16::from(RED),
-    );
-    back(
-        &mut ready,
-        &mut pos_x,
-        &mut pos_y,
-        dir,
-        &mut down,
-        shown,
-        wrapping,
-        &mut pen,
-        pause,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        20,
-    );
-    pwriteln!("back: ", xcor(pos_x), " ", get_pixel(280, 240));
+    pen_up(&mut turtle);
+    set_heading(&mut turtle, WEST);
+    forwd(&mut turtle, 50);
+    pwriteln!("pen up: ", xcor(turtle), " ", get_pixel(295, 240));
+    pen_down(&mut turtle);
+    set_pen_color(&mut turtle, u16::from(RED));
+    back(&mut turtle, 20);
+    pwriteln!("back: ", xcor(turtle), " ", get_pixel(280, 240));
     // TurnLeft from north is west; SetPosition moves without drawing.
-    set_heading(
-        &mut ready,
-        pos_x,
-        pos_y,
-        &mut dir,
-        &mut down,
-        shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        NORTH,
-    );
-    turn_left(
-        &mut ready,
-        pos_x,
-        pos_y,
-        &mut dir,
-        &mut down,
-        shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        90,
-    );
-    pwriteln!("left: ", heading(dir));
-    set_position(
-        &mut ready,
-        &mut pos_x,
-        &mut pos_y,
-        dir,
-        &mut down,
-        shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        -200,
-        -100,
-    );
-    pwriteln!("position: ", xcor(pos_x), " ", ycor(pos_y), " ", get_pixel(170, 290));
+    set_heading(&mut turtle, NORTH);
+    turn_left(&mut turtle, 90);
+    pwriteln!("left: ", heading(turtle));
+    set_position(&mut turtle, -200, -100);
+    pwriteln!("position: ", xcor(turtle), " ", ycor(turtle), " ", get_pixel(170, 290));
     // Wrap: off the right edge, back in on the left.
-    wrap(&mut wrapping);
-    set_position(
-        &mut ready,
-        &mut pos_x,
-        &mut pos_y,
-        dir,
-        &mut down,
-        shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        300,
-        0,
-    );
-    set_heading(
-        &mut ready,
-        pos_x,
-        pos_y,
-        &mut dir,
-        &mut down,
-        shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        EAST,
-    );
-    forwd(
-        &mut ready,
-        &mut pos_x,
-        &mut pos_y,
-        dir,
-        &mut down,
-        shown,
-        wrapping,
-        &mut pen,
-        pause,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        40,
-    );
-    pwriteln!(
-        "wrap: ",
-        xcor(pos_x),
-        " ",
-        turtle_there(
-            &mut ready,
-            pos_x,
-            pos_y,
-            &mut down,
-            &mut pen,
-            &mut win_left,
-            &mut win_top,
-            &mut win_width,
-            &mut win_height
-        ),
-        " ",
-        get_pixel(630, 240),
-        " ",
-        get_pixel(5, 240)
-    );
-    no_wrap(&mut wrapping);
-    forwd(
-        &mut ready,
-        &mut pos_x,
-        &mut pos_y,
-        dir,
-        &mut down,
-        shown,
-        wrapping,
-        &mut pen,
-        pause,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        1000,
-    );
-    pwriteln!(
-        "nowrap: ",
-        xcor(pos_x),
-        " ",
-        turtle_there(
-            &mut ready,
-            pos_x,
-            pos_y,
-            &mut down,
-            &mut pen,
-            &mut win_left,
-            &mut win_top,
-            &mut win_width,
-            &mut win_height
-        )
-    );
+    wrap(&mut turtle);
+    set_position(&mut turtle, 300, 0);
+    set_heading(&mut turtle, EAST);
+    forwd(&mut turtle, 40);
+    pwriteln!("wrap: ", xcor(turtle), " ", turtle_there(&mut turtle), " ", get_pixel(630, 240), " ", get_pixel(5, 240));
+    no_wrap(&mut turtle);
+    forwd(&mut turtle, 1000);
+    pwriteln!("nowrap: ", xcor(turtle), " ", turtle_there(&mut turtle));
     // A turtle window: 100 x 100 around (100, 100); home is its centre.
-    turtle_window(
-        &mut ready,
-        &mut pos_x,
-        &mut pos_y,
-        &mut dir,
-        &mut down,
-        &mut shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        100,
-        100,
-        100,
-        100,
-    );
-    set_pen_color(
-        &mut ready,
-        &mut down,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        u16::from(GREEN),
-    );
-    forwd(
-        &mut ready,
-        &mut pos_x,
-        &mut pos_y,
-        dir,
-        &mut down,
-        shown,
-        wrapping,
-        &mut pen,
-        pause,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-        30,
-    );
-    pwriteln!("window: ", xcor(pos_x), " ", ycor(pos_y), " ", get_pixel(0, 50), " ", get_pixel(50, 20));
+    turtle_window(&mut turtle, 100, 100, 100, 100);
+    set_pen_color(&mut turtle, u16::from(GREEN));
+    forwd(&mut turtle, 30);
+    pwriteln!("window: ", xcor(turtle), " ", ycor(turtle), " ", get_pixel(0, 50), " ", get_pixel(50, 20));
     // The turtle itself, a triangle with its tip 10 pixels ahead (50, 40)
     // and its back edge 5 behind (50, 55): shown, it's drawn (in XOR);
     // hidden, it's gone.
-    clear_screen(
-        &mut ready,
-        &mut pos_x,
-        &mut pos_y,
-        &mut dir,
-        &mut down,
-        &mut shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-    );
-    show_turtle(
-        &mut ready,
-        pos_x,
-        pos_y,
-        dir,
-        &mut down,
-        &mut shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-    );
+    clear_screen(&mut turtle);
+    show_turtle(&mut turtle);
     pwriteln!("shown: ", get_pixel(50, 40), " ", get_pixel(50, 55));
-    hide_turtle(
-        &mut ready,
-        pos_x,
-        pos_y,
-        dir,
-        &mut down,
-        &mut shown,
-        &mut pen,
-        &mut win_left,
-        &mut win_top,
-        &mut win_width,
-        &mut win_height,
-    );
+    hide_turtle(&mut turtle);
     pwriteln!("hidden: ", get_pixel(50, 40), " ", get_pixel(50, 55));
     close_graph();
 }
@@ -422,29 +123,41 @@ pub const EAST: i16 = 90;
 pub const SOUTH: i16 = 180;
 pub const WEST: i16 = 270;
 
+// All the turtle's state, in one record: PascRust passes a unit's
+// variables to its routines, so one record makes for one argument.
+/// Pascal: `TTurtleContext = record ... end`
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TTurtleContext {
+    pub ready: bool, // the window has been set up
+    pub pos_x: f64,
+    pub pos_y: f64,     // where the turtle is, in turtle coordinates
+    pub dir: f64,       // its heading, in degrees from north
+    pub down: bool,     // the pen draws
+    pub shown: bool,    // the turtle is drawn
+    pub wrapping: bool, // leaving one side comes back on the other
+    pub pen: u16,       // the pen's colour
+    pub pause: i16,     // milliseconds to wait after each move
+    pub win_left: i16,
+    pub win_top: i16,
+    pub win_width: i16,
+    pub win_height: i16,
+}
+
 // The whole screen, the first time any routine is called (InitGraph has
 // run by then, so GetMaxX knows the screen).
 /// Pascal: `procedure Setup;`
 ///
 /// The global variables this procedure uses are passed in as parameters,
 /// because the globals are local variables of `pascal_main`.
-pub fn setup(
-    ready: &mut bool,
-    down: &mut bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-) {
-    if !*ready {
-        *ready = true;
-        *win_left = 0;
-        *win_top = 0;
-        *win_width = get_max_x() + 1;
-        *win_height = get_max_y() + 1;
-        *pen = get_max_color();
-        *down = true;
+pub fn setup(turtle: &mut TTurtleContext) {
+    if !turtle.ready {
+        turtle.ready = true;
+        turtle.win_left = 0;
+        turtle.win_top = 0;
+        turtle.win_width = get_max_x() + 1;
+        turtle.win_height = get_max_y() + 1;
+        turtle.pen = get_max_color();
+        turtle.down = true;
     }
 }
 
@@ -453,18 +166,18 @@ pub fn setup(
 /// Pascal: `function ScreenX(X: Real): Integer;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn screen_x(win_width: i16, x: f64) -> i16 {
+pub fn screen_x(turtle: TTurtleContext, x: f64) -> i16 {
     let mut result: i16 = 0;
-    result = (i32::from(win_width / 2) + x.round() as i32) as i16;
+    result = (i32::from(turtle.win_width / 2) + x.round() as i32) as i16;
     result
 }
 
 /// Pascal: `function ScreenY(Y: Real): Integer;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn screen_y(win_height: i16, y: f64) -> i16 {
+pub fn screen_y(turtle: TTurtleContext, y: f64) -> i16 {
     let mut result: i16 = 0;
-    result = (i32::from(win_height / 2) - y.round() as i32) as i16;
+    result = (i32::from(turtle.win_height / 2) - y.round() as i32) as i16;
     result
 }
 
@@ -481,7 +194,7 @@ pub fn flip_pixel(x: i16, y: i16) {
 /// Pascal: `procedure DrawTurtle;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn draw_turtle(pos_x: f64, pos_y: f64, dir: f64, win_width: i16, win_height: i16) {
+pub fn draw_turtle(turtle: TTurtleContext) {
     let mut a: f64 = 0.0;
     let mut tip_x: f64 = 0.0;
     let mut tip_y: f64 = 0.0;
@@ -489,64 +202,40 @@ pub fn draw_turtle(pos_x: f64, pos_y: f64, dir: f64, win_width: i16, win_height:
     let mut left_y: f64 = 0.0;
     let mut right_x: f64 = 0.0;
     let mut right_y: f64 = 0.0;
-    a = dir * ::std::f64::consts::PI / 180.0;
-    tip_x = pos_x + 10.0 * a.sin();
-    tip_y = pos_y + 10.0 * a.cos();
-    left_x = pos_x + 6.0 * (a - 2.5).sin();
-    left_y = pos_y + 6.0 * (a - 2.5).cos();
-    right_x = pos_x + 6.0 * (a + 2.5).sin();
-    right_y = pos_y + 6.0 * (a + 2.5).cos();
+    a = turtle.dir * ::std::f64::consts::PI / 180.0;
+    tip_x = turtle.pos_x + 10.0 * a.sin();
+    tip_y = turtle.pos_y + 10.0 * a.cos();
+    left_x = turtle.pos_x + 6.0 * (a - 2.5).sin();
+    left_y = turtle.pos_y + 6.0 * (a - 2.5).cos();
+    right_x = turtle.pos_x + 6.0 * (a + 2.5).sin();
+    right_y = turtle.pos_y + 6.0 * (a + 2.5).cos();
     set_write_mode(XOR_PUT);
     set_color(get_max_color());
-    line(
-        screen_x(win_width, tip_x),
-        screen_y(win_height, tip_y),
-        screen_x(win_width, left_x),
-        screen_y(win_height, left_y),
-    );
-    line(
-        screen_x(win_width, left_x),
-        screen_y(win_height, left_y),
-        screen_x(win_width, right_x),
-        screen_y(win_height, right_y),
-    );
-    line(
-        screen_x(win_width, right_x),
-        screen_y(win_height, right_y),
-        screen_x(win_width, tip_x),
-        screen_y(win_height, tip_y),
-    );
+    line(screen_x(turtle, tip_x), screen_y(turtle, tip_y), screen_x(turtle, left_x), screen_y(turtle, left_y));
+    line(screen_x(turtle, left_x), screen_y(turtle, left_y), screen_x(turtle, right_x), screen_y(turtle, right_y));
+    line(screen_x(turtle, right_x), screen_y(turtle, right_y), screen_x(turtle, tip_x), screen_y(turtle, tip_y));
     set_write_mode(NORMAL_PUT);
-    flip_pixel(screen_x(win_width, tip_x), screen_y(win_height, tip_y));
-    flip_pixel(screen_x(win_width, left_x), screen_y(win_height, left_y));
-    flip_pixel(screen_x(win_width, right_x), screen_y(win_height, right_y));
+    flip_pixel(screen_x(turtle, tip_x), screen_y(turtle, tip_y));
+    flip_pixel(screen_x(turtle, left_x), screen_y(turtle, left_y));
+    flip_pixel(screen_x(turtle, right_x), screen_y(turtle, right_y));
 }
 
 // Draw from the turtle to (ToX, ToY) if the pen is down, and move there.
 /// Pascal: `procedure DrawTo(ToX, ToY: Real);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn draw_to(
-    pos_x: &mut f64,
-    pos_y: &mut f64,
-    down: bool,
-    pen: u16,
-    win_width: i16,
-    win_height: i16,
-    to_x: f64,
-    to_y: f64,
-) {
-    if down {
-        set_color(pen);
+pub fn draw_to(turtle: &mut TTurtleContext, to_x: f64, to_y: f64) {
+    if turtle.down {
+        set_color(turtle.pen);
         line(
-            screen_x(win_width, *pos_x),
-            screen_y(win_height, *pos_y),
-            screen_x(win_width, to_x),
-            screen_y(win_height, to_y),
+            screen_x(*turtle, turtle.pos_x),
+            screen_y(*turtle, turtle.pos_y),
+            screen_x(*turtle, to_x),
+            screen_y(*turtle, to_y),
         );
     }
-    *pos_x = to_x;
-    *pos_y = to_y;
+    turtle.pos_x = to_x;
+    turtle.pos_y = to_y;
 }
 
 // Move to (ToX, ToY). With Wrap on, a line that leaves the window goes
@@ -554,17 +243,7 @@ pub fn draw_to(
 /// Pascal: `procedure MoveTurtle(ToX, ToY: Real);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn move_turtle(
-    pos_x: &mut f64,
-    pos_y: &mut f64,
-    down: bool,
-    wrapping: bool,
-    pen: u16,
-    win_width: i16,
-    win_height: i16,
-    mut to_x: f64,
-    mut to_y: f64,
-) {
+pub fn move_turtle(turtle: &mut TTurtleContext, mut to_x: f64, mut to_y: f64) {
     let mut half_w: f64 = 0.0;
     let mut half_h: f64 = 0.0;
     let mut t: f64 = 0.0;
@@ -573,117 +252,77 @@ pub fn move_turtle(
     let mut dx: f64 = 0.0;
     let mut dy: f64 = 0.0;
     let mut steps: i16 = 0;
-    half_w = f64::from(win_width) / 2.0;
-    half_h = f64::from(win_height) / 2.0;
+    half_w = f64::from(turtle.win_width) / 2.0;
+    half_h = f64::from(turtle.win_height) / 2.0;
     steps = 0;
-    while wrapping && (to_x.abs() > half_w || to_y.abs() > half_h) && steps < 100 {
+    while turtle.wrapping && (to_x.abs() > half_w || to_y.abs() > half_h) && steps < 100 {
         // Where the line first meets the window's edge: a fraction T of
         // the way there.
-        dx = to_x - *pos_x;
-        dy = to_y - *pos_y;
+        dx = to_x - turtle.pos_x;
+        dy = to_y - turtle.pos_y;
         tx = 2.0;
         ty = 2.0;
         if dx > 0.0 {
-            tx = (half_w - *pos_x) / dx;
+            tx = (half_w - turtle.pos_x) / dx;
         } else if dx < 0.0 {
-            tx = (-half_w - *pos_x) / dx;
+            tx = (-half_w - turtle.pos_x) / dx;
         }
         if dy > 0.0 {
-            ty = (half_h - *pos_y) / dy;
+            ty = (half_h - turtle.pos_y) / dy;
         } else if dy < 0.0 {
-            ty = (-half_h - *pos_y) / dy;
+            ty = (-half_h - turtle.pos_y) / dy;
         }
         if tx < ty {
             t = tx;
         } else {
             t = ty;
         }
-        draw_to(pos_x, pos_y, down, pen, win_width, win_height, *pos_x + t * dx, *pos_y + t * dy);
+        draw_to(turtle, turtle.pos_x + t * dx, turtle.pos_y + t * dy);
         // Come back in on the other side.
         if t == tx {
             if dx > 0.0 {
-                *pos_x -= f64::from(win_width);
-                to_x -= f64::from(win_width);
+                turtle.pos_x -= f64::from(turtle.win_width);
+                to_x -= f64::from(turtle.win_width);
             } else {
-                *pos_x += f64::from(win_width);
-                to_x += f64::from(win_width);
+                turtle.pos_x += f64::from(turtle.win_width);
+                to_x += f64::from(turtle.win_width);
             }
         } else if dy > 0.0 {
-            *pos_y -= f64::from(win_height);
-            to_y -= f64::from(win_height);
+            turtle.pos_y -= f64::from(turtle.win_height);
+            to_y -= f64::from(turtle.win_height);
         } else {
-            *pos_y += f64::from(win_height);
-            to_y += f64::from(win_height);
+            turtle.pos_y += f64::from(turtle.win_height);
+            to_y += f64::from(turtle.win_height);
         }
         steps += 1;
     }
-    draw_to(pos_x, pos_y, down, pen, win_width, win_height, to_x, to_y);
+    draw_to(turtle, to_x, to_y);
 }
 
 /// Pascal: `procedure Forwd(Dist: Integer);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn forwd(
-    ready: &mut bool,
-    pos_x: &mut f64,
-    pos_y: &mut f64,
-    dir: f64,
-    down: &mut bool,
-    shown: bool,
-    wrapping: bool,
-    pen: &mut u16,
-    pause: i16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-    dist: i16,
-) {
+pub fn forwd(turtle: &mut TTurtleContext, dist: i16) {
     let mut a: f64 = 0.0;
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    if shown {
-        draw_turtle(*pos_x, *pos_y, dir, *win_width, *win_height);
+    setup(turtle);
+    if turtle.shown {
+        draw_turtle(*turtle);
     }
-    a = dir * ::std::f64::consts::PI / 180.0;
-    move_turtle(
-        pos_x,
-        pos_y,
-        *down,
-        wrapping,
-        *pen,
-        *win_width,
-        *win_height,
-        *pos_x + f64::from(dist) * a.sin(),
-        *pos_y + f64::from(dist) * a.cos(),
-    );
-    if shown {
-        draw_turtle(*pos_x, *pos_y, dir, *win_width, *win_height);
+    a = turtle.dir * ::std::f64::consts::PI / 180.0;
+    move_turtle(turtle, turtle.pos_x + f64::from(dist) * a.sin(), turtle.pos_y + f64::from(dist) * a.cos());
+    if turtle.shown {
+        draw_turtle(*turtle);
     }
-    if pause > 0 {
-        delay(pause);
+    if turtle.pause > 0 {
+        delay(turtle.pause);
     }
 }
 
 /// Pascal: `procedure Back(Dist: Integer);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn back(
-    ready: &mut bool,
-    pos_x: &mut f64,
-    pos_y: &mut f64,
-    dir: f64,
-    down: &mut bool,
-    shown: bool,
-    wrapping: bool,
-    pen: &mut u16,
-    pause: i16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-    dist: i16,
-) {
-    forwd(ready, pos_x, pos_y, dir, down, shown, wrapping, pen, pause, win_left, win_top, win_width, win_height, -dist);
+pub fn back(turtle: &mut TTurtleContext, dist: i16) {
+    forwd(turtle, -dist);
 }
 
 // An angle kept between 0 and 360.
@@ -703,342 +342,181 @@ pub fn normal(mut a: f64) -> f64 {
 /// Pascal: `procedure Turn(Angle: Real);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn turn(
-    ready: &mut bool,
-    pos_x: f64,
-    pos_y: f64,
-    dir: &mut f64,
-    down: &mut bool,
-    shown: bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-    angle: f64,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    if shown {
-        draw_turtle(pos_x, pos_y, *dir, *win_width, *win_height);
+pub fn turn(turtle: &mut TTurtleContext, angle: f64) {
+    setup(turtle);
+    if turtle.shown {
+        draw_turtle(*turtle);
     }
-    *dir = normal(*dir + angle);
-    if shown {
-        draw_turtle(pos_x, pos_y, *dir, *win_width, *win_height);
+    turtle.dir = normal(turtle.dir + angle);
+    if turtle.shown {
+        draw_turtle(*turtle);
     }
 }
 
 /// Pascal: `procedure TurnLeft(Angle: Integer);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn turn_left(
-    ready: &mut bool,
-    pos_x: f64,
-    pos_y: f64,
-    dir: &mut f64,
-    down: &mut bool,
-    shown: bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-    angle: i16,
-) {
-    turn(ready, pos_x, pos_y, dir, down, shown, pen, win_left, win_top, win_width, win_height, f64::from(-angle));
+pub fn turn_left(turtle: &mut TTurtleContext, angle: i16) {
+    turn(turtle, f64::from(-angle));
 }
 
 /// Pascal: `procedure TurnRight(Angle: Integer);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn turn_right(
-    ready: &mut bool,
-    pos_x: f64,
-    pos_y: f64,
-    dir: &mut f64,
-    down: &mut bool,
-    shown: bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-    angle: i16,
-) {
-    turn(ready, pos_x, pos_y, dir, down, shown, pen, win_left, win_top, win_width, win_height, f64::from(angle));
+pub fn turn_right(turtle: &mut TTurtleContext, angle: i16) {
+    turn(turtle, f64::from(angle));
 }
 
 /// Pascal: `procedure SetHeading(Angle: Integer);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn set_heading(
-    ready: &mut bool,
-    pos_x: f64,
-    pos_y: f64,
-    dir: &mut f64,
-    down: &mut bool,
-    shown: bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-    angle: i16,
-) {
-    turn(
-        ready,
-        pos_x,
-        pos_y,
-        dir,
-        down,
-        shown,
-        pen,
-        win_left,
-        win_top,
-        win_width,
-        win_height,
-        normal(f64::from(angle)) - *dir,
-    );
+pub fn set_heading(turtle: &mut TTurtleContext, angle: i16) {
+    turn(turtle, normal(f64::from(angle)) - turtle.dir);
 }
 
 /// Pascal: `function Heading: Integer;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn heading(dir: f64) -> i16 {
+pub fn heading(turtle: TTurtleContext) -> i16 {
     let mut result: i16 = 0;
-    result = (dir.round() as i32 % 360) as i16;
+    result = (turtle.dir.round() as i32 % 360) as i16;
     result
 }
 
 /// Pascal: `procedure SetPosition(X, Y: Integer);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn set_position(
-    ready: &mut bool,
-    pos_x: &mut f64,
-    pos_y: &mut f64,
-    dir: f64,
-    down: &mut bool,
-    shown: bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-    x: i16,
-    y: i16,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    if shown {
-        draw_turtle(*pos_x, *pos_y, dir, *win_width, *win_height);
+pub fn set_position(turtle: &mut TTurtleContext, x: i16, y: i16) {
+    setup(turtle);
+    if turtle.shown {
+        draw_turtle(*turtle);
     }
-    *pos_x = f64::from(x);
-    *pos_y = f64::from(y);
-    if shown {
-        draw_turtle(*pos_x, *pos_y, dir, *win_width, *win_height);
+    turtle.pos_x = f64::from(x);
+    turtle.pos_y = f64::from(y);
+    if turtle.shown {
+        draw_turtle(*turtle);
     }
 }
 
 /// Pascal: `function Xcor: Integer;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn xcor(pos_x: f64) -> i16 {
+pub fn xcor(turtle: TTurtleContext) -> i16 {
     let mut result: i16 = 0;
-    result = pos_x.round() as i32 as i16;
+    result = turtle.pos_x.round() as i32 as i16;
     result
 }
 
 /// Pascal: `function Ycor: Integer;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn ycor(pos_y: f64) -> i16 {
+pub fn ycor(turtle: TTurtleContext) -> i16 {
     let mut result: i16 = 0;
-    result = pos_y.round() as i32 as i16;
+    result = turtle.pos_y.round() as i32 as i16;
     result
 }
 
 /// Pascal: `procedure Home;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn home(
-    ready: &mut bool,
-    pos_x: &mut f64,
-    pos_y: &mut f64,
-    dir: &mut f64,
-    down: &mut bool,
-    shown: bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    if shown {
-        draw_turtle(*pos_x, *pos_y, *dir, *win_width, *win_height);
+pub fn home(turtle: &mut TTurtleContext) {
+    setup(turtle);
+    if turtle.shown {
+        draw_turtle(*turtle);
     }
-    *pos_x = 0.0;
-    *pos_y = 0.0;
-    *dir = f64::from(NORTH);
-    if shown {
-        draw_turtle(*pos_x, *pos_y, *dir, *win_width, *win_height);
+    turtle.pos_x = 0.0;
+    turtle.pos_y = 0.0;
+    turtle.dir = f64::from(NORTH);
+    if turtle.shown {
+        draw_turtle(*turtle);
     }
 }
 
 /// Pascal: `procedure ClearScreen;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn clear_screen(
-    ready: &mut bool,
-    pos_x: &mut f64,
-    pos_y: &mut f64,
-    dir: &mut f64,
-    down: &mut bool,
-    shown: &mut bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
+pub fn clear_screen(turtle: &mut TTurtleContext) {
+    setup(turtle);
     clear_view_port();
-    *shown = false;
-    home(ready, pos_x, pos_y, dir, down, *shown, pen, win_left, win_top, win_width, win_height);
+    turtle.shown = false;
+    home(turtle);
 }
 
 /// Pascal: `procedure PenDown;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn pen_down(
-    ready: &mut bool,
-    down: &mut bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    *down = true;
+pub fn pen_down(turtle: &mut TTurtleContext) {
+    setup(turtle);
+    turtle.down = true;
 }
 
 /// Pascal: `procedure PenUp;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn pen_up(
-    ready: &mut bool,
-    down: &mut bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    *down = false;
+pub fn pen_up(turtle: &mut TTurtleContext) {
+    setup(turtle);
+    turtle.down = false;
 }
 
 /// Pascal: `procedure SetPenColor(Color: Word);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn set_pen_color(
-    ready: &mut bool,
-    down: &mut bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-    color: u16,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    *pen = color;
+pub fn set_pen_color(turtle: &mut TTurtleContext, color: u16) {
+    setup(turtle);
+    turtle.pen = color;
 }
 
 /// Pascal: `procedure ShowTurtle;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn show_turtle(
-    ready: &mut bool,
-    pos_x: f64,
-    pos_y: f64,
-    dir: f64,
-    down: &mut bool,
-    shown: &mut bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    if !*shown {
-        *shown = true;
-        draw_turtle(pos_x, pos_y, dir, *win_width, *win_height);
+pub fn show_turtle(turtle: &mut TTurtleContext) {
+    setup(turtle);
+    if !turtle.shown {
+        turtle.shown = true;
+        draw_turtle(*turtle);
     }
 }
 
 /// Pascal: `procedure HideTurtle;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn hide_turtle(
-    ready: &mut bool,
-    pos_x: f64,
-    pos_y: f64,
-    dir: f64,
-    down: &mut bool,
-    shown: &mut bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    if *shown {
-        draw_turtle(pos_x, pos_y, dir, *win_width, *win_height);
-        *shown = false;
+pub fn hide_turtle(turtle: &mut TTurtleContext) {
+    setup(turtle);
+    if turtle.shown {
+        draw_turtle(*turtle);
+        turtle.shown = false;
     }
 }
 
 /// Pascal: `procedure Wrap;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn wrap(wrapping: &mut bool) {
-    *wrapping = true;
+pub fn wrap(turtle: &mut TTurtleContext) {
+    turtle.wrapping = true;
 }
 
 /// Pascal: `procedure NoWrap;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn no_wrap(wrapping: &mut bool) {
-    *wrapping = false;
+pub fn no_wrap(turtle: &mut TTurtleContext) {
+    turtle.wrapping = false;
 }
 
 /// Pascal: `procedure TurtleDelay(Ms: Integer);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn turtle_delay(pause: &mut i16, ms: i16) {
-    *pause = ms;
+pub fn turtle_delay(turtle: &mut TTurtleContext, ms: i16) {
+    turtle.pause = ms;
 }
 
 /// Pascal: `function TurtleThere: Boolean;`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn turtle_there(
-    ready: &mut bool,
-    pos_x: f64,
-    pos_y: f64,
-    down: &mut bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-) -> bool {
+pub fn turtle_there(turtle: &mut TTurtleContext) -> bool {
     let mut result: bool = false;
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    result = pos_x.abs() <= f64::from(*win_width) / 2.0 && pos_y.abs() <= f64::from(*win_height) / 2.0;
+    setup(turtle);
+    result = turtle.pos_x.abs() <= f64::from(turtle.win_width) / 2.0
+        && turtle.pos_y.abs() <= f64::from(turtle.win_height) / 2.0;
     result
 }
 
@@ -1048,29 +526,13 @@ pub fn turtle_there(
 /// Pascal: `procedure TurtleWindow(X, Y, W, H: Integer);`
 ///
 /// Uses globals, which are passed in as parameters.
-pub fn turtle_window(
-    ready: &mut bool,
-    pos_x: &mut f64,
-    pos_y: &mut f64,
-    dir: &mut f64,
-    down: &mut bool,
-    shown: &mut bool,
-    pen: &mut u16,
-    win_left: &mut i16,
-    win_top: &mut i16,
-    win_width: &mut i16,
-    win_height: &mut i16,
-    x: i16,
-    y: i16,
-    w_: i16,
-    h: i16,
-) {
-    setup(ready, down, pen, win_left, win_top, win_width, win_height);
-    hide_turtle(ready, *pos_x, *pos_y, *dir, down, shown, pen, win_left, win_top, win_width, win_height);
-    *win_left = x - w_ / 2;
-    *win_top = y - h / 2;
-    *win_width = w_;
-    *win_height = h;
-    set_view_port(*win_left, *win_top, *win_left + w_ - 1, *win_top + h - 1, CLIP_ON);
-    home(ready, pos_x, pos_y, dir, down, *shown, pen, win_left, win_top, win_width, win_height);
+pub fn turtle_window(turtle: &mut TTurtleContext, x: i16, y: i16, w_: i16, h: i16) {
+    setup(turtle);
+    hide_turtle(turtle);
+    turtle.win_left = x - w_ / 2;
+    turtle.win_top = y - h / 2;
+    turtle.win_width = w_;
+    turtle.win_height = h;
+    set_view_port(turtle.win_left, turtle.win_top, turtle.win_left + w_ - 1, turtle.win_top + h - 1, CLIP_ON);
+    home(turtle);
 }

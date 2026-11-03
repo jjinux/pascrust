@@ -46,30 +46,37 @@ implementation
 
    uses Crt;
 
+   { All the turtle's state, in one record: PascRust passes a unit's
+     variables to its routines, so one record makes for one argument. }
+   type
+      TTurtleContext = record
+         Ready: Boolean;           { the window has been set up }
+         PosX, PosY: Real;         { where the turtle is, in turtle coordinates }
+         Dir: Real;                { its heading, in degrees from north }
+         Down: Boolean;            { the pen draws }
+         Shown: Boolean;           { the turtle is drawn }
+         Wrapping: Boolean;        { leaving one side comes back on the other }
+         Pen: Word;                { the pen's colour }
+         Pause: Integer;           { milliseconds to wait after each move }
+         WinLeft, WinTop, WinWidth, WinHeight: Integer;
+      end;
+
    var
-      Ready: Boolean;           { the window has been set up }
-      PosX, PosY: Real;         { where the turtle is, in turtle coordinates }
-      Dir: Real;                { its heading, in degrees from north }
-      Down: Boolean;            { the pen draws }
-      Shown: Boolean;           { the turtle is drawn }
-      Wrapping: Boolean;        { leaving one side comes back on the other }
-      Pen: Word;                { the pen's colour }
-      Pause: Integer;           { milliseconds to wait after each move }
-      WinLeft, WinTop, WinWidth, WinHeight: Integer;
+      Turtle: TTurtleContext;
 
    { The whole screen, the first time any routine is called (InitGraph has
      run by then, so GetMaxX knows the screen). }
    procedure Setup;
       begin
-         if not Ready then
+         if not Turtle.Ready then
          begin
-            Ready := True;
-            WinLeft := 0;
-            WinTop := 0;
-            WinWidth := GetMaxX + 1;
-            WinHeight := GetMaxY + 1;
-            Pen := GetMaxColor;
-            Down := True;
+            Turtle.Ready := True;
+            Turtle.WinLeft := 0;
+            Turtle.WinTop := 0;
+            Turtle.WinWidth := GetMaxX + 1;
+            Turtle.WinHeight := GetMaxY + 1;
+            Turtle.Pen := GetMaxColor;
+            Turtle.Down := True;
          end;
       end;
 
@@ -77,12 +84,12 @@ implementation
      the viewport). }
    function ScreenX(X: Real): Integer;
       begin
-         ScreenX := WinWidth div 2 + Round(X);
+         ScreenX := Turtle.WinWidth div 2 + Round(X);
       end;
 
    function ScreenY(Y: Real): Integer;
       begin
-         ScreenY := WinHeight div 2 - Round(Y);
+         ScreenY := Turtle.WinHeight div 2 - Round(Y);
       end;
 
    { Flip a pixel's colour, as XOR mode does for lines. }
@@ -99,13 +106,13 @@ implementation
       var
          A, TipX, TipY, LeftX, LeftY, RightX, RightY: Real;
       begin
-         A := Dir * Pi / 180;
-         TipX := PosX + 10 * Sin(A);
-         TipY := PosY + 10 * Cos(A);
-         LeftX := PosX + 6 * Sin(A - 2.5);
-         LeftY := PosY + 6 * Cos(A - 2.5);
-         RightX := PosX + 6 * Sin(A + 2.5);
-         RightY := PosY + 6 * Cos(A + 2.5);
+         A := Turtle.Dir * Pi / 180;
+         TipX := Turtle.PosX + 10 * Sin(A);
+         TipY := Turtle.PosY + 10 * Cos(A);
+         LeftX := Turtle.PosX + 6 * Sin(A - 2.5);
+         LeftY := Turtle.PosY + 6 * Cos(A - 2.5);
+         RightX := Turtle.PosX + 6 * Sin(A + 2.5);
+         RightY := Turtle.PosY + 6 * Cos(A + 2.5);
          SetWriteMode(XORPut);
          SetColor(GetMaxColor);
          Line(ScreenX(TipX), ScreenY(TipY), ScreenX(LeftX), ScreenY(LeftY));
@@ -120,13 +127,13 @@ implementation
    { Draw from the turtle to (ToX, ToY) if the pen is down, and move there. }
    procedure DrawTo(ToX, ToY: Real);
       begin
-         if Down then
+         if Turtle.Down then
          begin
-            SetColor(Pen);
-            Line(ScreenX(PosX), ScreenY(PosY), ScreenX(ToX), ScreenY(ToY));
+            SetColor(Turtle.Pen);
+            Line(ScreenX(Turtle.PosX), ScreenY(Turtle.PosY), ScreenX(ToX), ScreenY(ToY));
          end;
-         PosX := ToX;
-         PosY := ToY;
+         Turtle.PosX := ToX;
+         Turtle.PosY := ToY;
       end;
 
    { Move to (ToX, ToY). With Wrap on, a line that leaves the window goes
@@ -136,53 +143,53 @@ implementation
          HalfW, HalfH, T, TX, TY, DX, DY: Real;
          Steps: Integer;
       begin
-         HalfW := WinWidth / 2;
-         HalfH := WinHeight / 2;
+         HalfW := Turtle.WinWidth / 2;
+         HalfH := Turtle.WinHeight / 2;
          Steps := 0;
-         while Wrapping and ((Abs(ToX) > HalfW) or (Abs(ToY) > HalfH)) and (Steps < 100) do
+         while Turtle.Wrapping and ((Abs(ToX) > HalfW) or (Abs(ToY) > HalfH)) and (Steps < 100) do
          begin
             { Where the line first meets the window's edge: a fraction T of
               the way there. }
-            DX := ToX - PosX;
-            DY := ToY - PosY;
+            DX := ToX - Turtle.PosX;
+            DY := ToY - Turtle.PosY;
             TX := 2;
             TY := 2;
             if DX > 0 then
-               TX := (HalfW - PosX) / DX
+               TX := (HalfW - Turtle.PosX) / DX
             else if DX < 0 then
-               TX := (-HalfW - PosX) / DX;
+               TX := (-HalfW - Turtle.PosX) / DX;
             if DY > 0 then
-               TY := (HalfH - PosY) / DY
+               TY := (HalfH - Turtle.PosY) / DY
             else if DY < 0 then
-               TY := (-HalfH - PosY) / DY;
+               TY := (-HalfH - Turtle.PosY) / DY;
             if TX < TY then
                T := TX
             else
                T := TY;
-            DrawTo(PosX + T * DX, PosY + T * DY);
+            DrawTo(Turtle.PosX + T * DX, Turtle.PosY + T * DY);
             { Come back in on the other side. }
             if T = TX then
             begin
                if DX > 0 then
                begin
-                  PosX := PosX - WinWidth;
-                  ToX := ToX - WinWidth;
+                  Turtle.PosX := Turtle.PosX - Turtle.WinWidth;
+                  ToX := ToX - Turtle.WinWidth;
                end
                else
                begin
-                  PosX := PosX + WinWidth;
-                  ToX := ToX + WinWidth;
+                  Turtle.PosX := Turtle.PosX + Turtle.WinWidth;
+                  ToX := ToX + Turtle.WinWidth;
                end;
             end
             else if DY > 0 then
             begin
-               PosY := PosY - WinHeight;
-               ToY := ToY - WinHeight;
+               Turtle.PosY := Turtle.PosY - Turtle.WinHeight;
+               ToY := ToY - Turtle.WinHeight;
             end
             else
             begin
-               PosY := PosY + WinHeight;
-               ToY := ToY + WinHeight;
+               Turtle.PosY := Turtle.PosY + Turtle.WinHeight;
+               ToY := ToY + Turtle.WinHeight;
             end;
             Inc(Steps);
          end;
@@ -194,14 +201,14 @@ implementation
          A: Real;
       begin
          Setup;
-         if Shown then
+         if Turtle.Shown then
             DrawTurtle;
-         A := Dir * Pi / 180;
-         MoveTurtle(PosX + Dist * Sin(A), PosY + Dist * Cos(A));
-         if Shown then
+         A := Turtle.Dir * Pi / 180;
+         MoveTurtle(Turtle.PosX + Dist * Sin(A), Turtle.PosY + Dist * Cos(A));
+         if Turtle.Shown then
             DrawTurtle;
-         if Pause > 0 then
-            Delay(Pause);
+         if Turtle.Pause > 0 then
+            Delay(Turtle.Pause);
       end;
 
    procedure Back(Dist: Integer);
@@ -222,10 +229,10 @@ implementation
    procedure Turn(Angle: Real);
       begin
          Setup;
-         if Shown then
+         if Turtle.Shown then
             DrawTurtle;
-         Dir := Normal(Dir + Angle);
-         if Shown then
+         Turtle.Dir := Normal(Turtle.Dir + Angle);
+         if Turtle.Shown then
             DrawTurtle;
       end;
 
@@ -241,44 +248,44 @@ implementation
 
    procedure SetHeading(Angle: Integer);
       begin
-         Turn(Normal(Angle) - Dir);
+         Turn(Normal(Angle) - Turtle.Dir);
       end;
 
    function Heading: Integer;
       begin
-         Heading := Round(Dir) mod 360;
+         Heading := Round(Turtle.Dir) mod 360;
       end;
 
    procedure SetPosition(X, Y: Integer);
       begin
          Setup;
-         if Shown then
+         if Turtle.Shown then
             DrawTurtle;
-         PosX := X;
-         PosY := Y;
-         if Shown then
+         Turtle.PosX := X;
+         Turtle.PosY := Y;
+         if Turtle.Shown then
             DrawTurtle;
       end;
 
    function Xcor: Integer;
       begin
-         Xcor := Round(PosX);
+         Xcor := Round(Turtle.PosX);
       end;
 
    function Ycor: Integer;
       begin
-         Ycor := Round(PosY);
+         Ycor := Round(Turtle.PosY);
       end;
 
    procedure Home;
       begin
          Setup;
-         if Shown then
+         if Turtle.Shown then
             DrawTurtle;
-         PosX := 0;
-         PosY := 0;
-         Dir := North;
-         if Shown then
+         Turtle.PosX := 0;
+         Turtle.PosY := 0;
+         Turtle.Dir := North;
+         if Turtle.Shown then
             DrawTurtle;
       end;
 
@@ -286,34 +293,34 @@ implementation
       begin
          Setup;
          ClearViewPort;
-         Shown := False;
+         Turtle.Shown := False;
          Home;
       end;
 
    procedure PenDown;
       begin
          Setup;
-         Down := True;
+         Turtle.Down := True;
       end;
 
    procedure PenUp;
       begin
          Setup;
-         Down := False;
+         Turtle.Down := False;
       end;
 
    procedure SetPenColor(Color: Word);
       begin
          Setup;
-         Pen := Color;
+         Turtle.Pen := Color;
       end;
 
    procedure ShowTurtle;
       begin
          Setup;
-         if not Shown then
+         if not Turtle.Shown then
          begin
-            Shown := True;
+            Turtle.Shown := True;
             DrawTurtle;
          end;
       end;
@@ -321,32 +328,32 @@ implementation
    procedure HideTurtle;
       begin
          Setup;
-         if Shown then
+         if Turtle.Shown then
          begin
             DrawTurtle;
-            Shown := False;
+            Turtle.Shown := False;
          end;
       end;
 
    procedure Wrap;
       begin
-         Wrapping := True;
+         Turtle.Wrapping := True;
       end;
 
    procedure NoWrap;
       begin
-         Wrapping := False;
+         Turtle.Wrapping := False;
       end;
 
    procedure TurtleDelay(Ms: Integer);
       begin
-         Pause := Ms;
+         Turtle.Pause := Ms;
       end;
 
    function TurtleThere: Boolean;
       begin
          Setup;
-         TurtleThere := (Abs(PosX) <= WinWidth / 2) and (Abs(PosY) <= WinHeight / 2);
+         TurtleThere := (Abs(Turtle.PosX) <= Turtle.WinWidth / 2) and (Abs(Turtle.PosY) <= Turtle.WinHeight / 2);
       end;
 
    { The turtle's window: W by H pixels with its centre at (X, Y) on the
@@ -356,11 +363,11 @@ implementation
       begin
          Setup;
          HideTurtle;
-         WinLeft := X - W div 2;
-         WinTop := Y - H div 2;
-         WinWidth := W;
-         WinHeight := H;
-         SetViewPort(WinLeft, WinTop, WinLeft + W - 1, WinTop + H - 1, ClipOn);
+         Turtle.WinLeft := X - W div 2;
+         Turtle.WinTop := Y - H div 2;
+         Turtle.WinWidth := W;
+         Turtle.WinHeight := H;
+         SetViewPort(Turtle.WinLeft, Turtle.WinTop, Turtle.WinLeft + W - 1, Turtle.WinTop + H - 1, ClipOn);
          Home;
       end;
 

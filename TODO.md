@@ -323,7 +323,7 @@ Last: raw bytes and C strings
 - [x] `Break`/`Continue` inside the statements a `goto` skips or repeats, for a loop around them: label that loop (`break 'while_loop`) instead of refusing.
 - [x] TP-exact binary file layout including 6-byte `Real`, so `examples/database/mark.dat` can be read (step 0 of `notes/untyped_memory.md`).
 - [ ] The per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
-- [ ] Bundled-globals option (`struct Globals` per unit) for programs with very many globals.
+- [ ] Bundled-globals option (`struct Globals` per unit) for programs with very many globals. (By hand, a unit can do it already: `PRTurtle` keeps its state in one record, `TTurtleContext`.)
 - [x] FFI to Rust: `external` routines in a Rust file named by `{$L file.rs}` (the user's choice, as TP linked `.OBJ` files), with crates from `//! cargo:` lines; `tests/run/rust_externals.pas` is the worked example.
 - [ ] Embedding: `pascrust build --lib unit.pas` and `pascrust_runtime::call(...) -> Result`, with a host example that calls `BSTUnit` from Rust.
 - [ ] FFI to C: `external 'C'` → `extern "C"` block with `#[repr(C)]` records, `build.rs` with `cc`.
