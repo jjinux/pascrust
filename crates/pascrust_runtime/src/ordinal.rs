@@ -69,6 +69,12 @@ pub trait Enumerated: Ordinal + 'static {
     }
 }
 
+/// Pascal's `Boolean` is the enumeration `(False, True)`, so `Inc(b)`
+/// works as for any enum.
+impl Enumerated for bool {
+    const VALUES: &'static [Self] = &[false, true];
+}
+
 /// The values from `lo` to `hi` inclusive, for `for x := lo to hi` over an
 /// enum. Returning `impl Iterator` hides the concrete iterator type (a `map`
 /// over a range); `DoubleEndedIterator` lets `downto` call `.rev()` on it.

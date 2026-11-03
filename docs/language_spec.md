@@ -53,7 +53,10 @@ Types
 - `String`, `String[n]`
 - Enumerated types `(Red, Green, Blue)`; subranges `1..10`, `'A'..'Z'`,
   `Red..Blue`, an integer subrange stored in the smallest type that holds
-  its bounds, as in TP (`1..12` is a byte, in `SizeOf` and in files)
+  its bounds, as in TP (`1..12` is a byte, in `SizeOf` and in files).
+  `Succ`, `Pred`, `Inc` and `Dec` past the ends of an enum (or of
+  `Boolean`) are runtime error 201, as if `{$R+}` were on: TP with `{$R-}`
+  stored the ordinal anyway, but a Rust enum can't hold a value outside it
 - `array[lo..hi] of T`, multi-dimensional `array[a..b, c..d]`, nested arrays,
   any ordinal index type (integer, char, enum, subrange); `packed` accepted and
   ignored

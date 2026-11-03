@@ -264,11 +264,11 @@ Last: raw bytes and C strings
 - [ ] Findings of review batch G (076ffea..86ec036), to fix:
   - [ ] A labeled `begin ... goto Main end` (a main loop) gets an unreachable `break 'main` after the `continue` (a warning).
   - [ ] Two labels on one statement (`L1: L2: x`): a `goto L2` is refused as a jump into a statement.
-  - [ ] `Inc(p^.v, p^.n)` (a step read from the heap record being changed): runtime error 204.
-  - [ ] `Inc`/`Dec` on a Boolean doesn't compile.
+  - [x] `Inc(p^.v, p^.n)` (a step read from the heap record being changed): runtime error 204.
+  - [x] `Inc`/`Dec` on a Boolean doesn't compile.
   - [ ] In a method, a bare procedural field called with arguments (`Show(n)`) is refused.
-  - [ ] `Dec(c, 2)` on a Char gives `c -= 2 as u8` (a needless cast).
-  - [ ] Document that `Inc`/`Dec`/`Succ`/`Pred` past the ends of an enum are a range error (a Rust enum can't hold an ordinal outside it; TP with `{$R-}` stored it).
+  - [x] `Dec(c, 2)` on a Char gives `c -= 2 as u8` (a needless cast).
+  - [x] Document that `Inc`/`Dec`/`Succ`/`Pred` past the ends of an enum are a range error (a Rust enum can't hold an ordinal outside it; TP with `{$R-}` stored it).
   - [ ] Question for the user: dead code after an unconditional `goto` or `Exit` gives an `unreachable_code` warning. Leave the statements out of the Rust, or allow the warning there?
   - [ ] Question for the user: label a loop that holds a goto block, so `Break`/`Continue` inside the block work, now or later?
 - [x] Findings of review batch F (3ab3ee4..076ffea), fixed:

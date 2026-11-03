@@ -48,6 +48,7 @@ impl<'a> Codegen<'a> {
         let (target, values): (usize, &[usize]) = match b {
             Insert => (1, &[0, 2]),
             Delete | FillChar => (0, &[1, 2]),
+            Inc | Dec => (0, &[1]),
             Move => (1, &[2]),
             _ => (0, &[]),
         };
@@ -217,8 +218,9 @@ impl<'a> Codegen<'a> {
                 let op = if b == Inc { "+=" } else { "-=" };
                 format!("{place} {op} {amount};")
             }
-            // An enum has no `+=`: `day.inc()`, `day.inc_by(2)`.
-            Inc | Dec if matches!(ty(self, &args[0]).concrete(), Type::Enum(_)) => {
+            // An enum (or a Boolean, the enum `(False, True)`) has no `+=`:
+            // `day.inc()`, `day.inc_by(2)`.
+            Inc | Dec if matches!(ty(self, &args[0]).concrete(), Type::Enum(_) | Type::Bool) => {
                 let place = self.place_receiver(&args[0]);
                 let method = if b == Inc { "inc" } else { "dec" };
                 match args.get(1) {
@@ -229,11 +231,48 @@ impl<'a> Codegen<'a> {
             Inc | Dec => {
                 let target_ty = ty(self, &args[0]);
                 let place = self.place(&args[0]);
-                let amount = match args.get(1) {
-                    Some(n) => self.coerce(n, &target_ty).0,
-                    None => "1".to_string(),
+                // A number step (`2`, `-1`): its value.
+                let mut number = args.get(1).and_then(|n| match &n.kind {
+                    ExprKind::Int(k) => Some(*k),
+                    ExprKind::Unary { op: UnaryOp::Neg, operand } => match operand.kind {
+                        ExprKind::Int(k) => Some(-k),
+                        _ => None,
+                    },
+                    _ => None,
+                });
+                // One that doesn't fit the target wraps, as in TP: in a Byte,
+                // `Inc(b, 300)` adds 44 (the low 8 bits).
+                let bits = match target_ty.concrete() {
+                    Type::Int(IntKind::ShortInt | IntKind::Byte) | Type::Char => 8,
+                    Type::Int(IntKind::Integer | IntKind::Word) => 16,
+                    _ => 32,
                 };
-                let op = if b == Inc { "+=" } else { "-=" };
+                let in_range = |n: i64| match target_ty.concrete() {
+                    Type::Int(kind) => kind.contains(n),
+                    _ => (0..=255).contains(&n),
+                };
+                if let Some(n) = number
+                    && !in_range(n)
+                    && !in_range(-n)
+                {
+                    let mut wrapped = n & ((1_i64 << bits) - 1);
+                    if matches!(target_ty.concrete(), Type::Int(kind) if kind.contains(-1))
+                        && wrapped >= 1 << (bits - 1)
+                    {
+                        wrapped -= 1 << bits; // a signed type's high bit is its sign
+                    }
+                    self.pending
+                        .push(format!("// {n} wraps to {wrapped} in {target_ty} arithmetic, as in Turbo Pascal."));
+                    number = Some(wrapped);
+                }
+                // A negative step goes the other way: `Dec(b, -1)` is `b += 1`.
+                let up = (b == Inc) != number.is_some_and(|n| n < 0);
+                let amount = match (args.get(1), number) {
+                    (Some(_), Some(n)) => n.abs().to_string(),
+                    (Some(n), None) => self.coerce(n, &target_ty).0,
+                    (None, _) => "1".to_string(),
+                };
+                let op = if up { "+=" } else { "-=" };
                 format!("{place} {op} {amount};")
             }
             Hi => {
