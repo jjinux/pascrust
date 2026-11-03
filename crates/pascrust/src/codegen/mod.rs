@@ -35,6 +35,7 @@ pub fn generate(
     map: &SourceMap,
     io_unchecked: &[Span],
     comments: &[crate::lexer::Comment],
+    rust_modules: &[String],
 ) -> Vec<(String, String)> {
     let mut files = Vec::new();
     let mut g = Codegen {
@@ -59,6 +60,7 @@ pub fn generate(
         goto_blocks: Vec::new(),
         loops: Vec::new(),
         io_unchecked,
+        rust_modules,
         self_expr: None,
         comments: comments::Comments::new(map, program, units, comments),
         decl_starts: HashMap::new(),
@@ -135,6 +137,9 @@ struct Codegen<'a> {
     /// The parts of the source compiled with `{$I-}`, where I/O errors go
     /// to `IOResult` instead of stopping the program.
     io_unchecked: &'a [Span],
+    /// The Rust files `{$L sound.rs}` names, as modules (`sound`): where
+    /// the `external` routines are.
+    rust_modules: &'a [String],
     /// While writing a trait's default method (see `object_traits`): how
     /// the body reaches its own object's fields, `self.t_shape()`, since
     /// `self` there is any object descended from it.
@@ -271,6 +276,13 @@ impl<'a> Codegen<'a> {
         self.line("use pascrust_runtime::prelude::*;");
         let others: Vec<&str> =
             self.a.units.iter().map(|u| u.module.as_str()).filter(|&m| Some(m) != current_module).collect();
+        // A unit's `external` routines are in the program's Rust files.
+        if current_module.is_some() {
+            for module in self.rust_modules {
+                self.line("#[allow(unused_imports)]");
+                self.line(format!("use crate::{module};"));
+            }
+        }
         if !others.is_empty() {
             // Every module can see every unit. Pascal is stricter, but sema
             // already checked visibility, and lifted procedures may need to
@@ -337,6 +349,14 @@ impl<'a> Codegen<'a> {
             self.line("// Each Pascal unit becomes a Rust module.");
             for unit in &self.a.units {
                 self.line(format!("mod {};", unit.module));
+            }
+        }
+        if !self.rust_modules.is_empty() {
+            self.blank();
+            self.line("// The Rust files the program links with `{$L file.rs}`: its `external`");
+            self.line("// routines are there.");
+            for module in self.rust_modules {
+                self.line(format!("mod {module};"));
             }
         }
         self.imports(None);
@@ -856,7 +876,25 @@ impl<'a> Codegen<'a> {
                 self.proc_fn(p, body);
                 self.procs(&body.decls);
             }
+            if let Decl::Proc(p) = decl
+                && p.body == ProcBody::External
+            {
+                self.external_comment(p);
+            }
         }
+    }
+
+    /// An `external` routine is a Rust function in a `{$L file.rs}` module:
+    /// nothing to write here but what it must look like there.
+    fn external_comment(&mut self, decl: &ProcDecl) {
+        let pid = self.a.proc_decls[&decl.name.span.start];
+        let info = &self.a.procs[pid];
+        let Some((module, name)) = info.rust_name.split_once("::") else { return };
+        let ret = info.ret.as_ref().map(|t| format!(" -> {}", t.rust())).unwrap_or_default();
+        let params = self.signature_params(pid);
+        self.blank();
+        self.line(format!("// Pascal: `{}`", self.pascal_text(decl.header_span)));
+        self.line(format!("// Written in Rust, in `{module}.rs`: `pub fn {name}({params}){ret}`"));
     }
 
     /// An `impl` block for each object type, holding its methods. Procedures

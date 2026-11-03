@@ -39,6 +39,9 @@ Program structure
 - `const`, `type`, `var` and `label` sections, repeated and in any order
 - `procedure` / `function` declarations, nested to any depth, recursive
 - `forward` declarations
+- `external` routines written in Rust: `{$L sound.rs}` names the Rust
+  file, as TP's `{$L sound.obj}` named an object file; see
+  [Calling Rust](calling_rust.md). An `.OBJ` file can't be linked
 - Compiler directives `{$...}`: `{$I-}`/`{$I+}` switch I/O checking (see
   Files). The others are parsed and ignored, with a warning for ones that
   change semantics (`{$B+}`, `{$R+}`, `{$Q+}`); `{$M}`, `{$N+}` and the

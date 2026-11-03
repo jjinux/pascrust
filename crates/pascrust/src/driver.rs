@@ -21,6 +21,8 @@ pub struct Generated {
     pub features: Vec<String>,
     /// Warnings to show the user, already rendered.
     pub warnings: Vec<String>,
+    /// Crates the linked Rust files use (`rand = "0.8"`), for Cargo.toml.
+    pub dependencies: Vec<String>,
 }
 
 impl Generated {
@@ -124,12 +126,24 @@ fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[Str
     let warnings = warnings.iter().map(|d| map.render(d)).collect();
     let units: Vec<Unit> = loaded.into_iter().map(|(_, unit)| unit).collect();
 
-    let analysis = sema::analyze(&program, &units)
+    let mut analysis = sema::analyze(&program, &units)
         .map_err(|errors| errors.iter().map(|d| map.render(d)).collect::<Vec<_>>().join("\n\n"))?;
+    let mut linked = linked_rust(&directives, dirs).map_err(|d| map.render(&d))?;
+    // A unit `Sound` linking `sound.rs`: the Rust file's module is `sound_rs`.
+    for l in &mut linked {
+        if analysis.units.iter().any(|u| u.module == l.module) {
+            l.module.push_str("_rs");
+        }
+    }
+    link_externals(&mut analysis, &linked, &map).map_err(|d| map.render(&d))?;
     let mut warnings: Vec<String> = warnings;
     warnings.extend(analysis.warnings.iter().map(|d| map.render(d)));
-    let files = codegen::generate(&program, &units, &analysis, &map, &io_unchecked, &comments);
-    let files = files.into_iter().map(|(name, code)| (name, format_rust(&code))).collect();
+    let modules: Vec<String> = linked.iter().map(|l| l.module.clone()).collect();
+    let files = codegen::generate(&program, &units, &analysis, &map, &io_unchecked, &comments, &modules);
+    let mut files: Vec<(String, String)> = files.into_iter().map(|(name, code)| (name, format_rust(&code))).collect();
+    // The linked Rust files go in as they are.
+    files.extend(linked.iter().map(|l| (format!("{}.rs", l.module), l.source.clone())));
+    let dependencies = linked.iter().flat_map(|l| l.dependencies.clone()).collect();
 
     let mut features: Vec<String> = program
         .uses
@@ -142,7 +156,86 @@ fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[Str
         .collect();
     features.sort();
     features.dedup();
-    Ok(Generated { name: package_name(file_name), files, features, warnings })
+    Ok(Generated { name: package_name(file_name), files, features, warnings, dependencies })
+}
+
+/// A Rust file a program links with `{$L sound.rs}`, as TP linked an
+/// `.OBJ` file: its `external` routines are there.
+struct LinkedRust {
+    /// Where the `{$L ...}` is.
+    span: Span,
+    /// Its module in the generated crate: `sound`.
+    module: String,
+    source: String,
+    /// Crates it uses, from its `//! cargo: rand = "0.8"` lines.
+    dependencies: Vec<String>,
+}
+
+/// The `{$L file}` directives: each names a Rust file next to the program
+/// (or in a unit directory). An `.OBJ` file is x86 code for DOS, which
+/// PascRust can't link.
+fn linked_rust(directives: &[parser::Directive], dirs: &[PathBuf]) -> Result<Vec<LinkedRust>, Diagnostic> {
+    let mut linked: Vec<LinkedRust> = Vec::new();
+    for d in directives {
+        let text = d.text.trim();
+        let Some(name) = text.strip_prefix(['L', 'l']).filter(|rest| rest.starts_with(' ')).map(str::trim) else {
+            continue;
+        };
+        let path = Path::new(name);
+        if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("rs")) {
+            return Err(Diagnostic::new(
+                d.span,
+                format!(
+                    "PascRust can't link `{name}`: an object file is code for DOS; write the routines in Rust and link the `.rs` file (`{{$L sound.rs}}`)"
+                ),
+            ));
+        }
+        let file_name = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        let found =
+            dirs.iter().find_map(|dir| find_file(&dir.join(path.parent().unwrap_or(Path::new(""))), &file_name));
+        let Some(found) = found else {
+            return Err(Diagnostic::new(d.span, format!("cannot find the Rust file `{name}`")));
+        };
+        let source = std::fs::read_to_string(&found)
+            .map_err(|e| Diagnostic::new(d.span, format!("cannot read {}: {e}", found.display())))?;
+        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let module = sema::names::snake_case(&stem);
+        if linked.iter().any(|l| l.module == module) {
+            continue;
+        }
+        // `//! cargo: rand = "0.8"` adds a dependency to Cargo.toml.
+        let dependencies = source
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("//! cargo:"))
+            .map(|dep| dep.trim().to_string())
+            .collect();
+        linked.push(LinkedRust { span: d.span, module, source, dependencies });
+    }
+    Ok(linked)
+}
+
+/// Point each `external` routine at its Rust function: in the module of
+/// the last `{$L file.rs}` before it in its file, named in snake case
+/// (`Beep` is `sound::beep`).
+fn link_externals(analysis: &mut sema::Analysis, linked: &[LinkedRust], map: &SourceMap) -> Result<(), Diagnostic> {
+    for &(pid, span) in &analysis.externals.clone() {
+        let file = map.file_index(span.start);
+        let module = linked
+            .iter()
+            .rfind(|l| map.file_index(l.span.start) == file && l.span.start < span.start)
+            .map(|l| l.module.clone());
+        let Some(module) = module else {
+            let name = &analysis.procs[pid].name;
+            return Err(Diagnostic::new(
+                span,
+                format!("`{name}` is `external`, but no `{{$L file.rs}}` before it says which Rust file has it"),
+            ));
+        };
+        let function = sema::names::snake_case(&analysis.procs[pid].name);
+        let function = if sema::names::is_rust_keyword(&function) { format!("r#{function}") } else { function };
+        analysis.procs[pid].rust_name = format!("{module}::{function}");
+    }
+    Ok(())
 }
 
 /// Compiler directives (`{$R+}`, `{$I-}`, ...) are mostly ignored, but the
@@ -330,6 +423,12 @@ pub fn runtime_path() -> PathBuf {
 
 /// The `Cargo.toml` of a generated project.
 pub fn cargo_toml(name: &str, features: &[String]) -> String {
+    cargo_toml_with(name, features, &[])
+}
+
+/// The `Cargo.toml` of a generated project whose linked Rust files use
+/// `dependencies` (`rand = "0.8"`).
+pub fn cargo_toml_with(name: &str, features: &[String], dependencies: &[String]) -> String {
     let runtime = runtime_path();
     let runtime = runtime.canonicalize().unwrap_or(runtime);
     let features = features.iter().map(|f| format!("\"{f}\"")).collect::<Vec<_>>().join(", ");
@@ -346,7 +445,7 @@ edition = "2024"
 
 [dependencies]
 pascrust_runtime = {{ path = "{}", features = [{features}] }}
-
+{}
 # Turbo Pascal integer arithmetic silently wraps around on overflow; Rust's
 # would panic in debug builds. Turning off overflow checks gives TP behaviour.
 [profile.dev]
@@ -355,7 +454,8 @@ overflow-checks = false
 [profile.release]
 overflow-checks = false
 "#,
-        runtime.display()
+        runtime.display(),
+        dependencies.iter().map(|d| format!("{d}\n")).collect::<String>()
     )
 }
 
@@ -377,7 +477,10 @@ pub fn build(dir: &Path, generated: &Generated) -> Result<PathBuf, String> {
 /// Write `generated` as a Cargo project in `dir`.
 pub fn write_project(dir: &Path, generated: &Generated) -> std::io::Result<()> {
     std::fs::create_dir_all(dir.join("src"))?;
-    std::fs::write(dir.join("Cargo.toml"), cargo_toml(&generated.name, &generated.features))?;
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        cargo_toml_with(&generated.name, &generated.features, &generated.dependencies),
+    )?;
     for (name, code) in &generated.files {
         std::fs::write(dir.join("src").join(name), code)?;
     }
@@ -387,6 +490,26 @@ pub fn write_project(dir: &Path, generated: &Generated) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A linked Rust file's `//! cargo:` lines become dependencies in the
+    /// generated Cargo.toml.
+    #[test]
+    fn linked_rust_files_bring_their_crates() {
+        let dir = std::env::temp_dir().join(format!("pascrust_link_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Dice.rs"),
+            "//! cargo: rand = \"0.8\"\n//! cargo:  itoa = \"1\"\npub fn roll() -> i16 { 4 }\n",
+        )
+        .unwrap();
+        let directive = parser::Directive { text: "L dice.rs".to_string(), span: Span::new(0, 0) };
+        let linked = linked_rust(&[directive], std::slice::from_ref(&dir)).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(linked[0].module, "dice");
+        assert_eq!(linked[0].dependencies, ["rand = \"0.8\"", "itoa = \"1\""]);
+        let toml = cargo_toml_with("game", &[], &linked[0].dependencies);
+        assert!(toml.contains("features = [] }\nrand = \"0.8\"\nitoa = \"1\"\n"), "{toml}");
+    }
 
     #[test]
     fn directives_that_change_meaning_give_warnings() {

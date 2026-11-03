@@ -75,6 +75,11 @@ pub fn field_name(name: &str) -> String {
     }
 }
 
+/// True if `name` is a Rust keyword (`type`, `loop`, ...).
+pub fn is_rust_keyword(name: &str) -> bool {
+    KEYWORDS.contains(&name)
+}
+
 /// Rust keywords. A Pascal identifier that is one gets a trailing
 /// underscore.
 const KEYWORDS: &[&str] = &[

@@ -189,6 +189,10 @@ pub struct Analysis {
     pub fill_zero: HashSet<NodeId>,
     /// Calls sema worked out, by the call's id: `SizeOf`, `High`, `Low`.
     pub folded: HashMap<NodeId, ConstVal>,
+    /// `external` routines, written in Rust (`{$L sound.rs}`): each one's
+    /// procedure and where its name is. The driver points `rust_name` at
+    /// the Rust file's module (`sound::beep`).
+    pub externals: Vec<(ProcId, Span)>,
     /// The symbol each `Name` expression refers to.
     pub refs: HashMap<NodeId, SymId>,
     /// The symbol introduced by each declared identifier, keyed by the byte

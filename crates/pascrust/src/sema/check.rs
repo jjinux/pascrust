@@ -747,8 +747,14 @@ impl Checker {
         self.a.proc_decls.insert(d.name.span.start, pid);
 
         let ProcBody::Block(body) = &d.body else {
+            // `procedure Beep(Hz: Word); external;`: written in Rust, in the
+            // file a `{$L sound.rs}` names (the driver finds which).
             if d.body == ProcBody::External {
-                self.error(d.name.span, "`external` procedures are not supported yet");
+                if parent != MAIN {
+                    self.error(d.name.span, "an `external` routine can't be nested in another one");
+                }
+                self.a.procs[pid].has_body = true;
+                self.a.externals.push((pid, d.name.span));
             }
             return;
         };

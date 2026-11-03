@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/link_obj.pas
+---
+link_obj.pas:3:1: error: PascRust can't link `sound.obj`: an object file is code for DOS; write the routines in Rust and link the `.rs` file (`{$L sound.rs}`)
+{$L sound.obj}
+^^^^^^^^^^^^^^

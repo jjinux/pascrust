@@ -1216,12 +1216,16 @@ streams where feasible.
 
 ### Pascal → Rust (calling Rust from Pascal)
 
-Use TP's `external` directive: `procedure Beep(freq: integer); external;` in a
-unit's interface. Codegen emits `use crate::externs::beep;` and a call with
-the normal type mapping (`var` → `&mut`, strings → `&mut PString`). The user
-provides `src/externs.rs` in the generated crate (the driver creates a stub
-with the expected signatures and never overwrites it). The runtime types are
-all public, so Rust can construct `PString`s and `PArray`s.
+Done, as TP linked assembly (the user's choice): `{$L sound.rs}` names a
+Rust file, and `procedure Beep(Hz: Word); external;` is its `pub fn
+beep(hz: u16)`, in the module of the last `{$L}` before it
+(`driver::linked_rust`, `link_externals`, which sets the routine's
+`rust_name` to `sound::beep`, so calls are generated as for any routine,
+with the usual type mapping). The file goes into the generated crate as
+it is, `mod sound;` (a unit's module gets `use crate::sound;`), and its
+`//! cargo: rand = "0.8"` lines become dependencies in `Cargo.toml`.
+Codegen writes the Rust signature each `external` needs as a comment. A
+`{$L file.obj}` is refused. User documentation: `docs/calling_rust.md`.
 
 ### Rust → Pascal (embedding a Pascal engine)
 

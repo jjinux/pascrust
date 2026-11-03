@@ -127,6 +127,9 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 - [Printing](docs/printing.md): where the `Printer` unit's `Lst` output goes.
 - [Timer interrupts](docs/timer_interrupts.md): getting a steady tick in a
   game without the timer interrupt, which PascRust doesn't have.
+- [Calling Rust from Turbo Pascal](docs/calling_rust.md): `external`
+  routines written in Rust, linked with `{$L file.rs}` as TP linked
+  assembly, and crates from crates.io.
 - PascRust's own units, whose names start with `PR`, written in Turbo
   Pascal and translated with the program that uses them:
   [PRJson](docs/pr_json.md), reading and writing JSON, and
