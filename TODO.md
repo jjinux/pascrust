@@ -263,9 +263,9 @@ Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a132173 (batches A-H). Not yet reviewed: `a132173..HEAD`. Keep this range up to date.
 - [ ] Findings of review batch H (86ec036..a132173), to fix:
-  - [ ] A labeled main loop with a forward `goto` out of it (`Main: begin ... goto Finish ... goto Main end; Finish:`) loops forever: the loop is put outside the block.
-  - [ ] `Inc(i, -32768)` on an Integer (a negative step at the type's minimum) gives a literal out of range.
-  - [ ] Constant arithmetic that wraps (`b := 250; Inc(b, 10)`) is rustc's deny-by-default `arithmetic_overflow` error.
+  - [x] A labeled main loop with a forward `goto` out of it (`Main: begin ... goto Finish ... goto Main end; Finish:`) loops forever: the loop is put outside the block.
+  - [x] `Inc(i, -32768)` on an Integer (a negative step at the type's minimum) gives a literal out of range.
+  - [x] Constant arithmetic that wraps (`b := 250; Inc(b, 10)`) is rustc's deny-by-default `arithmetic_overflow` error.
   - [ ] PRJson: a `\u` escape above 32767 overflows an Integer and gives a garbage byte.
   - [ ] PRJson: a string whose escaped form is over 255 characters is written without its closing quote.
   - [ ] PRJson: `1e400` reads as infinity and is written as `+Inf`.

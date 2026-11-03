@@ -267,9 +267,13 @@ impl<'a> Codegen<'a> {
                     number = Some(wrapped);
                 }
                 // A negative step goes the other way: `Dec(b, -1)` is `b += 1`.
-                let up = (b == Inc) != number.is_some_and(|n| n < 0);
+                // (Not if the type can't hold the step turned round:
+                // `Inc(i, -32768)` stays `i += -32768`.)
+                let flip = number.is_some_and(|n| n < 0 && in_range(-n));
+                let up = (b == Inc) != flip;
                 let amount = match (args.get(1), number) {
-                    (Some(_), Some(n)) => n.abs().to_string(),
+                    (Some(_), Some(n)) if flip => (-n).to_string(),
+                    (Some(_), Some(n)) => n.to_string(),
                     (Some(n), None) => self.coerce(n, &target_ty).0,
                     (None, _) => "1".to_string(),
                 };

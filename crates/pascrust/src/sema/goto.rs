@@ -144,8 +144,11 @@ pub fn plan(stmts: &[Stmt]) -> Result<Vec<GotoBlock>, Diagnostic> {
             ));
         }
     }
-    // Outermost first: the earliest start, then the longest.
-    blocks.sort_by_key(|b| (b.lo, std::cmp::Reverse(b.hi)));
+    // Outermost first: the earliest start, then the longest. Of a block and
+    // a loop over the same statements, the block goes outside: its `break`
+    // must leave the loop too, and the loop's `continue` reaches the loop
+    // from inside the block either way.
+    blocks.sort_by_key(|b| (b.lo, std::cmp::Reverse(b.hi), !b.forward));
     Ok(blocks)
 }
 

@@ -112,7 +112,7 @@ pub fn transpile_library(path: &Path, options: &Options) -> Result<Generated, St
          //! error into an `Err`.\n\n\
          // Pascal programs often declare things they never use, or assign a\n\
          // variable before reading it; that's fine, so don't warn about it.\n\
-         #![allow(unused_variables, unused_assignments, dead_code)]\n\n",
+         #![allow(unused_variables, unused_assignments, dead_code, arithmetic_overflow)]\n\n",
         unit.name.name
     );
     for (name, _) in &generated.files[1..] {

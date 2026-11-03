@@ -341,8 +341,11 @@ impl<'a> Codegen<'a> {
         if !program.block.decls.is_empty() || !self.a.units.is_empty() {
             self.blank();
             self.line("// Pascal programs often declare things they never use, or assign a");
-            self.line("// variable before reading it; that's fine, so don't warn about it.");
-            self.line("#![allow(unused_variables, unused_assignments, dead_code)]");
+            self.line("// variable before reading it; that's fine, so don't warn about it. And");
+            self.line("// Turbo Pascal's integer arithmetic wraps around, as this program's does");
+            self.line("// (Cargo.toml turns overflow checks off), so a sum rustc can see wraps");
+            self.line("// (`b := 250; Inc(b, 10)`) is fine too.");
+            self.line("#![allow(unused_variables, unused_assignments, dead_code, arithmetic_overflow)]");
         }
         if !self.a.units.is_empty() {
             self.blank();

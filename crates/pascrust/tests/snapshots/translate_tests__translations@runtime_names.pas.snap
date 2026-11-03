@@ -7,8 +7,11 @@ input_file: tests/translate/runtime_names.pas
 //! Pascal: `program RuntimeNames;`
 
 // Pascal programs often declare things they never use, or assign a
-// variable before reading it; that's fine, so don't warn about it.
-#![allow(unused_variables, unused_assignments, dead_code)]
+// variable before reading it; that's fine, so don't warn about it. And
+// Turbo Pascal's integer arithmetic wraps around, as this program's does
+// (Cargo.toml turns overflow checks off), so a sum rustc can see wraps
+// (`b := 250; Inc(b, 10)`) is fine too.
+#![allow(unused_variables, unused_assignments, dead_code, arithmetic_overflow)]
 
 use pascrust_runtime::prelude::*;
 
