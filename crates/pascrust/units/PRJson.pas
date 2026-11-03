@@ -136,10 +136,13 @@ implementation
          Inc(List^.Count);
       end;
 
+   { (V is freed if Arr isn't an array: it has nowhere else to go.) }
    procedure JsonAdd(Arr, V: PJsonValue);
       begin
          if (Arr <> nil) and (Arr^.Kind = jkArray) and (V <> nil) then
-            Append(Arr, V);
+            Append(Arr, V)
+         else
+            JsonFree(V);
       end;
 
    procedure JsonFree(V: PJsonValue);
@@ -164,7 +167,10 @@ implementation
          Member, Before: PJsonValue;
       begin
          if (Obj = nil) or (Obj^.Kind <> jkObject) or (V = nil) then
+         begin
+            JsonFree(V);
             Exit;
+         end;
          V^.Key := Key;
          Before := nil;
          Member := Obj^.First;
@@ -354,9 +360,10 @@ implementation
       end;
 
    { The value of four hex digits after \u. }
-   function HexDigits: Integer;
+   function HexDigits: LongInt;
       var
-         I, N, D: Integer;
+         I, D: Integer;
+         N: LongInt;
       begin
          N := 0;
          for I := 1 to 4 do
@@ -381,7 +388,7 @@ implementation
       var
          S: string;
          C: Char;
-         Code: Integer;
+         Code: LongInt;
       begin
          S := '';
          NextChar;
@@ -437,7 +444,8 @@ implementation
             NextChar;
          end;
          Val(S, X, Code);
-         if Code <> 0 then
+         { Turbo Pascal's Real goes up to about 1.7E38. }
+         if (Code <> 0) or (Abs(X) > 1.7E38) then
             Fail('a bad number');
          ParseNumber := JsonNewNumber(X);
       end;
@@ -599,32 +607,6 @@ implementation
          NumberText := S;
       end;
 
-   { A string in quotes, with the characters JSON can't have as they are
-     escaped. }
-   function Quoted(const S: string): string;
-      const
-         Hex: string[16] = '0123456789abcdef';
-      var
-         Q: string;
-         I: Integer;
-      begin
-         Q := '"';
-         for I := 1 to Length(S) do
-            case S[I] of
-               '"': Q := Q + '\"';
-               '\': Q := Q + '\\';
-               #8: Q := Q + '\b';
-               #9: Q := Q + '\t';
-               #10: Q := Q + '\n';
-               #12: Q := Q + '\f';
-               #13: Q := Q + '\r';
-               #0..#7, #11, #14..#31: Q := Q + '\u00' + Hex[Ord(S[I]) div 16 + 1] + Hex[Ord(S[I]) mod 16 + 1];
-               else
-                  Q := Q + S[I];
-            end;
-         Quoted := Q + '"';
-      end;
-
    { The writer goes to a file, or to a string for JsonToString. }
    var
       ToString: Boolean;
@@ -641,6 +623,32 @@ implementation
          end
          else
             Write(F, S);
+      end;
+
+   { A string in quotes, with the characters JSON can't have as they are
+     escaped, a piece at a time (escaped, it can be longer than a string
+     holds). }
+   procedure PutQuoted(var F: Text; const S: string);
+      const
+         Hex: string[16] = '0123456789abcdef';
+      var
+         I: Integer;
+      begin
+         Put(F, '"');
+         for I := 1 to Length(S) do
+            case S[I] of
+               '"': Put(F, '\"');
+               '\': Put(F, '\\');
+               #8: Put(F, '\b');
+               #9: Put(F, '\t');
+               #10: Put(F, '\n');
+               #12: Put(F, '\f');
+               #13: Put(F, '\r');
+               #0..#7, #11, #14..#31: Put(F, '\u00' + Hex[Ord(S[I]) div 16 + 1] + Hex[Ord(S[I]) mod 16 + 1]);
+               else
+                  Put(F, S[I]);
+            end;
+         Put(F, '"');
       end;
 
    procedure NewLine(var F: Text; Indent, Depth: Integer);
@@ -672,7 +680,7 @@ implementation
                else
                   Put(F, 'false');
             jkNumber: Put(F, NumberText(V^.Number));
-            jkString: Put(F, Quoted(V^.Str));
+            jkString: PutQuoted(F, V^.Str);
             jkArray, jkObject:
             begin
                if V^.Kind = jkArray then
@@ -685,7 +693,7 @@ implementation
                   NewLine(F, Indent, Depth + 1);
                   if V^.Kind = jkObject then
                   begin
-                     Put(F, Quoted(Member^.Key));
+                     PutQuoted(F, Member^.Key);
                      if Indent > 0 then
                         Put(F, ': ')
                      else

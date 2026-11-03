@@ -17,6 +17,8 @@ second tag: TRUE
 "tab\tquote\" back\\ slash/ Aé"
 {"a":{"b":[[],{}]},"c":[]}
 true
+"A???"
+error: a bad number at character 7
 error: expected a value at the end
 error: expected ':' at character 6
 error: expected a key at character 2
@@ -41,4 +43,5 @@ error: unknown escape \q at character 3
    false,
    null
 ]
+150 quotes: 150
 TRUE cannot open no_such_file.json

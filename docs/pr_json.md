@@ -52,7 +52,7 @@ everything in it.
 | `JsonSet(Obj, Key, V)` | Set an object's member, replacing (and freeing) one it had. |
 | `JsonWrite(F, V, Indent)` | Write `V` to a text file (`Output` too): on one line if `Indent` is 0, else one member a line, indented `Indent` spaces a level. |
 | `JsonSave(FileName, V, Indent)` | `JsonWrite` to a new file. |
-| `JsonToString(V)` | `V` as compact JSON in a string (cut at 255 characters). |
+| `JsonToString(V)` | `V` as compact JSON in a string (cut at 255 characters; `JsonWrite` and `JsonSave` write any length). |
 | `JsonFree(V)` | Free `V` and everything in it. |
 
 ## Limits
@@ -60,6 +60,10 @@ everything in it.
 Turbo Pascal's strings hold 255 characters, so a longer JSON string or
 key is cut to 255 (a whole file can be any size). Characters above 127
 pass through as bytes, so UTF-8 text comes back out as it went in; a
-`\u` escape up to `ÿ` reads as that character, and one above as
-`?`. Numbers are `Real`s; a whole number is written without a point
-(`37`), others without trailing zeros (`0.5`).
+`\u` escape up to `\u00ff` reads as that character, and one above as
+`?`. Numbers are `Real`s, so about 11 significant digits survive
+(`3.14159265358979` comes back as `3.141592654`), and one too big for a
+`Real` (beyond about 1.7e38, as in TP: `1e400`) is an error. A whole number is written without a point
+(`37`), others with up to nine decimals and no trailing zeros (`0.5`; so
+`1e-10` is written as `0`). `JsonAdd` to something that isn't an array,
+or `JsonSet` on something that isn't an object, frees the value.

@@ -24,6 +24,8 @@ for src in "$@"; do
     set -e
     if [ "$code" -ne 0 ]; then
         echo "$code" > "$dir/$name.exitcode"
+    else
+        rm -f "$dir/$name.exitcode"   # from an earlier run that failed
     fi
     echo "$src -> $dir/$name.out (exit $code)"
 done

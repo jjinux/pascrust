@@ -39,7 +39,10 @@ begin
    Show('"tab\tquote\" back\\ slash\/ Aé"');
    Show('{"a": {"b": [[], {}]}, "c": []}');
    Show('  true  ');
+   { \u escapes above 255 (a surrogate pair too) read as '?'. }
+   Show('"' + '\' + 'u0041' + '\' + 'u20ac' + '\' + 'ud83d' + '\' + 'ude00"');
    { Errors. }
+   Show('[1e400]');
    Show('[1, 2,');
    Show('{"a" 1}');
    Show('{a: 1}');
@@ -68,6 +71,19 @@ begin
    WriteLn;
    JsonFree(Doc);
    Assign(F, 'pr_json.json');
+   Erase(F);
+   { A string whose escaped form is longer than 255 characters is written
+     whole, and reads back. }
+   Doc := JsonNewArray;
+   P := JsonNewString('');
+   for I := 1 to 150 do
+      P^.Str := P^.Str + '"';
+   JsonAdd(Doc, P);
+   JsonSave('pr_json.json', Doc, 0);
+   JsonFree(Doc);
+   Doc := JsonLoad('pr_json.json');
+   WriteLn('150 quotes: ', Length(JsonString(JsonItem(Doc, 0))));
+   JsonFree(Doc);
    Erase(F);
    Doc := JsonLoad('no_such_file.json');
    WriteLn(Doc = nil, ' ', JsonError);

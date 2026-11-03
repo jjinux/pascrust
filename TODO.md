@@ -266,9 +266,9 @@ Last: raw bytes and C strings
   - [x] A labeled main loop with a forward `goto` out of it (`Main: begin ... goto Finish ... goto Main end; Finish:`) loops forever: the loop is put outside the block.
   - [x] `Inc(i, -32768)` on an Integer (a negative step at the type's minimum) gives a literal out of range.
   - [x] Constant arithmetic that wraps (`b := 250; Inc(b, 10)`) is rustc's deny-by-default `arithmetic_overflow` error.
-  - [ ] PRJson: a `\u` escape above 32767 overflows an Integer and gives a garbage byte.
-  - [ ] PRJson: a string whose escaped form is over 255 characters is written without its closing quote.
-  - [ ] PRJson: `1e400` reads as infinity and is written as `+Inf`.
+  - [x] PRJson: a `\u` escape above 32767 overflows an Integer and gives a garbage byte.
+  - [x] PRJson: a string whose escaped form is over 255 characters is written without its closing quote.
+  - [x] PRJson: `1e400` reads as infinity and is written as `+Inf`.
   - [ ] Dead code after `if ... then goto A else goto B`, or after a `begin ... goto L end`, still warns.
   - [ ] A routine whose last statement is `Exit` warns (unreachable `result`).
   - [ ] Commented-out dead code loses its indentation.
