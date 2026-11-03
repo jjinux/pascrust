@@ -828,6 +828,13 @@ window meanwhile (§19).
   implementation-only ones are private. `uses A, B` → `use crate::a::*;
   use crate::b::*;`; sema resolves conflicts by Pascal's rule (the later unit
   wins) and emits qualified paths when needed.
+- **PascRust's own units** (`PR...`, the user's naming: units start with
+  `PR`, their types follow TP's `T`/`P` convention inside) that can be
+  written in Turbo Pascal are: `crates/pascrust/units/*.pas`, put into the
+  `pascrust` binary with `include_str!` (`driver::PASCRUST_UNITS`), and
+  loaded like a program's own unit when `uses` finds no file of that name.
+  So they're translated with the program, compile in TP 7 too, and show
+  off the translation. `PRTurtle` (turtle graphics on `Graph`) is one.
 - **`with r do`** → sema rewrites the body, writing each field (or method)
   the record supplies out in full (`r.x`, `pts[i].y`), and checks and emits
   the rewritten statement (`Analysis::with_bodies`). No reference to the

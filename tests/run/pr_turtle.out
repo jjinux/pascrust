@@ -1,0 +1,11 @@
+home: 0 0 0
+square: 0 0 0, 15 15 15 0
+pen up: -50 0
+back: -30 4
+left: 270
+position: -200 -100 0
+wrap: -300 TRUE 4 4
+nowrap: 700 FALSE
+window: 0 30 0 2
+shown: 15 15
+hidden: 0 0

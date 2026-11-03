@@ -44,6 +44,13 @@ impl Generated {
 /// clause must be a `.pas` file next to the program.
 const STANDARD_UNITS: &[&str] = &["system", "crt", "dos", "graph", "printer", "overlay", "strings", "windos"];
 
+/// PascRust's own units, written in Turbo Pascal and translated with the
+/// program that uses them: (name, file name, source). A file of the same
+/// name next to the program wins. (`include_str!` puts the file's text into
+/// the `pascrust` binary when it's compiled.)
+pub const PASCRUST_UNITS: &[(&str, &str, &str)] =
+    &[("prturtle", "PRTurtle.pas", include_str!("../units/PRTurtle.pas"))];
+
 /// Transpile the Pascal program at `path`, together with every unit it uses.
 /// Errors come back already rendered for printing, with file names, line
 /// numbers and carets.
@@ -237,18 +244,23 @@ impl UnitLoader<'_> {
             };
             map.render(&crate::diag::Diagnostic::new(name.span, message))
         };
-        let Some(path) = self.dirs.iter().find_map(|dir| find_file(dir, &format!("{key}.pas"))) else {
-            return Err(not_found(&self.map));
+        let (file_name, source) = match self.dirs.iter().find_map(|dir| find_file(dir, &format!("{key}.pas"))) {
+            Some(path) => {
+                let source = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+                (path.file_name().unwrap().to_string_lossy().into_owned(), source)
+            }
+            None => match PASCRUST_UNITS.iter().find(|(k, ..)| *k == key) {
+                Some((_, file_name, text)) => (file_name.to_string(), text.as_bytes().to_vec()),
+                None => return Err(not_found(&self.map)),
+            },
         };
-        let source = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-        let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
-        let base = self.map.add(file_name, source.clone());
+        let base = self.map.add(file_name.clone(), source.clone());
         let (unit, directives, comments) = parser::parse_file(&source, base).map_err(|d| self.map.render(&d))?;
         self.directives.extend(directives);
         self.comments.extend(comments);
         let unit = match unit {
             SourceFile::Unit(unit) => unit,
-            SourceFile::Program(_) => return Err(format!("{} is a program, not a unit", path.display())),
+            SourceFile::Program(_) => return Err(format!("{file_name} is a program, not a unit")),
         };
         // Depth-first: load what this unit uses before adding the unit
         // itself, which yields dependency order.
