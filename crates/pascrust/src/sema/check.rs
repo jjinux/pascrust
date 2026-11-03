@@ -59,6 +59,9 @@ pub(super) struct Checker {
     /// The procedural place being checked as a value, not called (see
     /// `proc_place`).
     uncalled: Option<NodeId>,
+    /// Inside statements that never run (see `goto::dead`): codegen writes
+    /// them as comments, so what they change doesn't count as changed.
+    in_dead: bool,
     /// For each method body we're inside: the index of its scope in
     /// `scopes` and the method's procedure.
     method_scopes: Vec<(usize, ProcId)>,
@@ -148,6 +151,7 @@ impl Checker {
             used_const_names: HashSet::new(),
             used_type_names: HashSet::new(),
             uncalled: None,
+            in_dead: false,
             declaring_type: false,
             unit_exports: HashMap::new(),
             current_unit: None,
@@ -1501,8 +1505,14 @@ impl Checker {
     // ----- Statements ---------------------------------------------------------
 
     fn stmts(&mut self, stmts: &[Stmt]) {
-        for s in stmts {
+        // Statements after a `goto` or `Exit` never run; codegen writes
+        // them as comments, so they're checked, but their writes don't
+        // make a variable `mut`.
+        for (s, dead) in stmts.iter().zip(super::goto::dead(stmts)) {
+            let saved = self.in_dead;
+            self.in_dead |= dead;
             self.stmt(s);
+            self.in_dead = saved;
         }
     }
 
@@ -2189,7 +2199,7 @@ impl Checker {
         let cur = self.cur();
         let proc = &mut self.a.procs[cur];
         proc.uses.insert(sym);
-        if write {
+        if write && !self.in_dead {
             proc.writes.insert(sym);
             if let Some((_, span)) = self.with_selectors.iter().find(|(syms, _)| syms.contains(&sym)) {
                 let name = self.a.symbols[sym].name.clone();

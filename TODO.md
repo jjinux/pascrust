@@ -270,7 +270,7 @@ Last: raw bytes and C strings
   - [x] In a method, a bare procedural field called with arguments (`Show(n)`) is refused.
   - [x] `Dec(c, 2)` on a Char gives `c -= 2 as u8` (a needless cast).
   - [x] Document that `Inc`/`Dec`/`Succ`/`Pred` past the ends of an enum are a range error (a Rust enum can't hold an ordinal outside it; TP with `{$R-}` stored it).
-  - [ ] Question for the user: dead code after an unconditional `goto` or `Exit` gives an `unreachable_code` warning. Leave the statements out of the Rust, or allow the warning there?
+  - [x] Dead code after an unconditional `goto` or `Exit` gave an `unreachable_code` warning. The user's choice: the Rust keeps it, commented out.
   - [ ] Question for the user: label a loop that holds a goto block, so `Break`/`Continue` inside the block work, now or later?
 - [x] Findings of review batch F (3ab3ee4..076ffea), fixed:
   - [x] A parameterless procedure field or element called as a statement (`H.S;`, `with H do S;`) is called twice: `.get()(..).get()(..)`.

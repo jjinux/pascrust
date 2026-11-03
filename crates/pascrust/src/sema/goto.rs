@@ -67,6 +67,36 @@ fn visit(s: &Stmt, f: &mut impl FnMut(&Stmt)) {
     }
 }
 
+/// Which statements of a list can never run: those after a `goto`,
+/// `Exit`, `Break` or `Continue`, up to the next label (which a `goto` can
+/// reach). Codegen writes them as comments, and sema doesn't check them.
+pub fn dead(stmts: &[Stmt]) -> Vec<bool> {
+    let mut dead = Vec::with_capacity(stmts.len());
+    let mut after_jump = false;
+    for s in stmts {
+        if !labels_of(s).is_empty() {
+            after_jump = false;
+        }
+        dead.push(after_jump);
+        after_jump |= jumps_away(s);
+    }
+    dead
+}
+
+/// True for a statement that always leaves: `goto L`, `Exit`, `Break`,
+/// `Continue` (a label on it doesn't change that).
+fn jumps_away(s: &Stmt) -> bool {
+    match &s.kind {
+        StmtKind::Goto(_) => true,
+        StmtKind::Labeled { body, .. } => jumps_away(body),
+        StmtKind::Call(e) => match &e.kind {
+            ExprKind::Name(id) => matches!(id.key().as_str(), "exit" | "break" | "continue"),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 /// The blocks a statement list needs for the labels in it, outermost
 /// first, or the reason the jumps can't be arranged as blocks.
 pub fn plan(stmts: &[Stmt]) -> Result<Vec<GotoBlock>, Diagnostic> {
@@ -74,7 +104,9 @@ pub fn plan(stmts: &[Stmt]) -> Result<Vec<GotoBlock>, Diagnostic> {
     // (`L1: L2: x` puts two labels on one statement.)
     for (k, label) in stmts.iter().enumerate().flat_map(|(k, s)| labels_of(s).into_iter().map(move |l| (k, l))) {
         let key = label.key();
-        let from: Vec<usize> = (0..stmts.len()).filter(|&i| jumps_to(&stmts[i], &key)).collect();
+        // (A `goto` that never runs needs no block.)
+        let dead = dead(stmts);
+        let from: Vec<usize> = (0..stmts.len()).filter(|&i| !dead[i] && jumps_to(&stmts[i], &key)).collect();
         // Jumps from before the label go forward, past a block that ends
         // at it; jumps from the label on go back, to a loop that starts
         // at it.
@@ -141,8 +173,21 @@ pub fn check(labels: &[Ident], body: &[Stmt], body_span: Span) -> Vec<Diagnostic
         StmtKind::Goto(label) => gotos.push((label.key(), label.name.clone(), label.span)),
         _ => {}
     };
+    // Dead statements are comments in the Rust; their jumps don't count.
+    let mut lists = Vec::new();
+    all_lists(body, &mut lists);
+    let mut dead_spans: Vec<Span> = Vec::new();
+    for list in &lists {
+        for (s, dead) in list.iter().zip(dead(list)) {
+            if dead {
+                dead_spans.push(s.span);
+            }
+        }
+    }
+    let live = |span: Span| !dead_spans.iter().any(|d| d.start <= span.start && span.end <= d.end);
     let whole = Stmt { kind: StmtKind::Compound(body.to_vec()), span: body_span };
     visit(&whole, &mut each);
+    gotos.retain(|(_, _, span)| live(*span));
     for (key, name, span) in &gotos {
         if !marked.contains(key) {
             let message = if declared.contains(key) {
@@ -156,8 +201,6 @@ pub fn check(labels: &[Ident], body: &[Stmt], body_span: Span) -> Vec<Diagnostic
     // Each statement list's blocks; a `goto` that no list's block reaches
     // jumps into a statement it isn't in.
     let mut reached: HashSet<Span> = HashSet::new();
-    let mut lists = Vec::new();
-    all_lists(body, &mut lists);
     for list in lists {
         match plan(list) {
             Ok(blocks) => {

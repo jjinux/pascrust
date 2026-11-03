@@ -1539,11 +1539,12 @@ impl<'a> Codegen<'a> {
     /// range (outermost first; they nest, so each one is either inside the
     /// first or after it).
     fn stmts_in(&mut self, stmts: &[Stmt], range: std::ops::Range<usize>, mut blocks: Vec<GotoBlock>) {
+        let dead = crate::sema::goto::dead(stmts);
         let mut i = range.start;
         while !blocks.is_empty() {
             let block = blocks.remove(0);
             while i < block.lo {
-                self.stmt(&stmts[i]);
+                self.live_or_dead(stmts, i, &dead);
                 i += 1;
             }
             let (inside, after): (Vec<GotoBlock>, Vec<GotoBlock>) =
@@ -1590,8 +1591,31 @@ impl<'a> Codegen<'a> {
             i = block.hi;
         }
         while i < range.end {
-            self.stmt(&stmts[i]);
+            self.live_or_dead(stmts, i, &dead);
             i += 1;
+        }
+    }
+
+    /// Statement `i` of a list, or, if it can never run (after a `goto` or
+    /// `Exit`), its Rust commented out: Rust would warn about code that
+    /// can't be reached.
+    fn live_or_dead(&mut self, stmts: &[Stmt], i: usize, dead: &[bool]) {
+        if !dead[i] {
+            return self.stmt(&stmts[i]);
+        }
+        if i == 0 || !dead[i - 1] {
+            self.line("// Never runs, in the Pascal either:");
+        }
+        // Write it as usual, then comment out what was written. (A teaching
+        // comment it used up is still owed to the live code.)
+        let explained = self.explained.clone();
+        let start = self.out.len();
+        self.stmt(&stmts[i]);
+        let code = self.out.split_off(start);
+        self.explained = explained;
+        for line in code.lines() {
+            let indent = line.len() - line.trim_start().len();
+            self.out.push_str(&format!("{}// {}\n", &line[..indent], &line[indent..]));
         }
     }
 
@@ -1694,10 +1718,15 @@ impl<'a> Codegen<'a> {
             // block, `continue` repeats a loop.
             StmtKind::Goto(label) => {
                 let key = label.key();
-                let (_, name, forward) =
-                    self.goto_blocks.iter().rev().find(|(k, ..)| *k == key).expect("sema checked the jump").clone();
-                let word = if forward { "break" } else { "continue" };
-                self.line(format!("{word} {name};"));
+                match self.goto_blocks.iter().rev().find(|(k, ..)| *k == key).cloned() {
+                    Some((_, name, forward)) => {
+                        let word = if forward { "break" } else { "continue" };
+                        self.line(format!("{word} {name};"));
+                    }
+                    // A `goto` in statements that never run has no block
+                    // (it's commented out with them).
+                    None => self.line(format!("goto {};", label.name)),
+                }
             }
             StmtKind::With { .. } => {
                 // `self.a` is a plain shared reference, so copying it out lets

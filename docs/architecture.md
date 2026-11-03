@@ -877,7 +877,12 @@ window meanwhile (§19).
   jumps into a statement, and is refused too (both link to
   `docs/rust_limits.md`). A plain `break` can't leave a labeled block, so
   `Break`/`Continue` inside a goto block, for a loop around it, are
-  refused for now (they'd need that loop labeled).
+  refused for now (they'd need that loop labeled). Statements after a
+  `goto`, `Exit`, `Break` or `Continue`, up to the next label, never run
+  (`goto::dead`), and Rust warns about code it can't reach, so codegen
+  writes their Rust commented out (the user's choice), under "Never runs,
+  in the Pascal either". Sema still checks them, but what they change
+  doesn't make a variable `mut`.
 - **System variables** (`ExitCode`, `RandSeed`, `FileMode`, and a unit's,
   like Crt's `TextAttr`, listed in `units::unit_vars`) live in the
   runtime, as a getter and a setter (`SymKind::RuntimeVar`): reading is

@@ -480,7 +480,9 @@ Graph unit (BGI, as used in the examples)
   code would no longer read like the Pascal.) Refused, with a link to
   a rewrite: a jump into a statement the `goto` isn't in, and two jumps
   whose blocks would cross. Not yet: `Break` or `Continue` inside the
-  statements a `goto` skips or repeats, for a loop around them
+  statements a `goto` skips or repeats, for a loop around them.
+  Statements that can never run (after a `goto` or `Exit`, before the
+  next label) are kept in the Rust, commented out
 
 ## Tier 3: later, or never
 
