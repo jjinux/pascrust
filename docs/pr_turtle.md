@@ -24,6 +24,10 @@ begin
 end.
 ```
 
+For more, [`examples/pascrust/turtles.pas`](../examples/pascrust/turtles.pas)
+draws a Koch snowflake, a tree and a spiral (`cargo run -p pascrust --
+run examples/pascrust/turtles.pas`).
+
 The unit is written in Turbo Pascal (`crates/pascrust/units/PRTurtle.pas`)
 and comes with PascRust: `uses PRTurtle` finds it unless there's a file of
 that name next to the program. It's translated with the program, like any

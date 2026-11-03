@@ -134,7 +134,7 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
   Pascal and translated with the program that uses them:
   [PRJson](docs/pr_json.md), reading and writing JSON, and
   [PRTurtle](docs/pr_turtle.md), turtle graphics on top of `Graph`, with
-  Turbo Pascal 3.0's turtle routines.
+  Turbo Pascal 3.0's turtle routines ([an example](examples/pascrust/turtles.pas)).
 
 ### What's supported
 
@@ -147,7 +147,10 @@ within a statement list (as Rust's labeled blocks and loops), text and
 typed files with
 `{$I-}`/`IOResult`, `PChar` strings, and the `Crt`, `Dos`, `Graph`,
 `Printer`, `Overlay`, `Strings` and `WinDos` units, plus PascRust's own
-`PRJson` (JSON) and `PRTurtle` (turtle graphics on top of `Graph`). Some things a modern
+`PRJson` (JSON) and `PRTurtle` (turtle graphics on top of `Graph`; see
+[the turtle example](examples/pascrust/turtles.pas)). Turbo Pascal code
+can also call Rust: `external` routines written in Rust, linked with
+`{$L file.rs}` (see [Calling Rust](docs/calling_rust.md)). Some things a modern
 machine doesn't have are faked so old programs still run: `Lst` prints to
 a file or a command (see [Printing](docs/printing.md)), overlays need no `.OVR`
 file, `MemAvail` reports plenty of memory, and interrupt vectors keep the
