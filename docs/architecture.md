@@ -1233,13 +1233,17 @@ Codegen writes the Rust signature each `external` needs as a comment. A
 
 ### Rust → Pascal (embedding a Pascal engine)
 
-`pascrust build --lib unit.pas` emits a library crate whose public API is the
-unit's interface (`pub fn`s over runtime types). The host calls
-`pascrust_runtime::call(|| bstunit::insert(...)) -> Result<T, PascalError>`,
-which catches panics and returns them as an error value. Globals of a unit are
-bundled into a `pub struct` the host owns and passes in, which is the §15.4
-lifting with the host as `main`. This is the "Pascal crust inside Rust"
-configuration from the project's name.
+Done: `pascrust build --lib unit.pas` (`driver::transpile_library`)
+translates a program that only `uses` the unit, then swaps its `main.rs`
+for a `lib.rs` that declares the modules, re-exports the unit's interface
+and `pascrust_runtime`. The host calls `pascrust_runtime::call(|| tree.insert(...))`,
+which catches a runtime error's panic (`catch_unwind`) and returns it as
+`Err(RuntimeError)`. A unit's globals are the host's to own and pass in,
+which is the §15.4 lifting with the host as `main` (simplest with one
+record, as `PRTurtle` does; bundling them automatically is still to do).
+`tests/embed/bst_host.rs` uses the user's `bstunit.pas`
+(`embed_tests.rs`); `docs/embedding.md` is the user guide. This is the
+"Pascal crust inside Rust" configuration from the project's name.
 
 ### C
 

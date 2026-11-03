@@ -98,15 +98,7 @@ pub fn halt(code: i32) {
 /// and any panic is translated into a Turbo Pascal style runtime error message
 /// and exit code.
 pub fn run(program: fn()) {
-    // Silence Rust's default "thread panicked at ..." message for Pascal
-    // runtime errors (we print our own), but keep it for genuine bugs, where
-    // the Rust location is useful for debugging PascRust itself.
-    let default_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        if info.payload().downcast_ref::<RuntimeError>().is_none() {
-            default_hook(info);
-        }
-    }));
+    quiet_runtime_errors();
 
     // Remember where we started: unmapped DOS drives (`A:\`) mean this
     // directory, even after the program uses `ChDir`.
@@ -145,6 +137,53 @@ pub fn run(program: fn()) {
         std::process::exit(err.code);
     }
 }
+
+/// Silence Rust's default "thread panicked at ..." message for Pascal
+/// runtime errors (we report them ourselves), but keep it for genuine bugs,
+/// where the Rust location is useful for debugging PascRust itself. Done
+/// once: `Once` runs its closure the first time only.
+fn quiet_runtime_errors() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let default_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            if info.payload().downcast_ref::<RuntimeError>().is_none() {
+                default_hook(info);
+            }
+        }));
+    });
+}
+
+/// Call Pascal code from a Rust program: a unit built as a library with
+/// `pascrust build --lib unit.pas`. A Pascal runtime error (a range check,
+/// a nil pointer, a missing file, ...) comes back as `Err` instead of
+/// stopping the program:
+///
+/// ```ignore
+/// let found = pascrust_runtime::call(|| tree.search(&mut item))?;
+/// ```
+pub fn call<T>(pascal: impl FnOnce() -> T) -> Result<T, RuntimeError> {
+    quiet_runtime_errors();
+    // `catch_unwind` turns a panic into an `Err` holding its payload.
+    // (`AssertUnwindSafe` says the caller accepts that what the Pascal code
+    // was changing may be left half done, as after a runtime error in TP.)
+    let result = panic::catch_unwind(panic::AssertUnwindSafe(pascal)).map_err(to_runtime_error);
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    result
+}
+
+/// "Runtime error 201: Range check error ...", as `run` prints it.
+impl std::fmt::Display for RuntimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.message.is_empty() {
+            write!(f, "Runtime error {}", self.code)
+        } else {
+            write!(f, "Runtime error {}: {}", self.code, self.message)
+        }
+    }
+}
+
+impl std::error::Error for RuntimeError {}
 
 /// Turn any panic payload into a [`RuntimeError`]. Panics raised by Rust
 /// itself (rather than by [`rte`]) are mapped to the closest Pascal error.

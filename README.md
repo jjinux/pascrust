@@ -130,6 +130,9 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 - [Calling Rust from Turbo Pascal](docs/calling_rust.md): `external`
   routines written in Rust, linked with `{$L file.rs}` as TP linked
   assembly, and crates from crates.io.
+- [Calling Turbo Pascal from Rust](docs/embedding.md): `pascrust build
+  --lib unit.pas` makes a Rust library of a unit, and
+  `pascrust_runtime::call` turns its runtime errors into `Err`s.
 - PascRust's own units, whose names start with `PR`, written in Turbo
   Pascal and translated with the program that uses them:
   [PRJson](docs/pr_json.md), reading and writing JSON, and
@@ -150,7 +153,9 @@ typed files with
 `PRJson` (JSON) and `PRTurtle` (turtle graphics on top of `Graph`; see
 [the turtle example](examples/pascrust/turtles.pas)). Turbo Pascal code
 can also call Rust: `external` routines written in Rust, linked with
-`{$L file.rs}` (see [Calling Rust](docs/calling_rust.md)). Some things a modern
+`{$L file.rs}` (see [Calling Rust](docs/calling_rust.md)); and Rust can
+call Turbo Pascal, through a unit built as a library (see [Calling Turbo
+Pascal from Rust](docs/embedding.md)). Some things a modern
 machine doesn't have are faked so old programs still run: `Lst` prints to
 a file or a command (see [Printing](docs/printing.md)), overlays need no `.OVR`
 file, `MemAvail` reports plenty of memory, and interrupt vectors keep the

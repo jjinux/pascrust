@@ -26,6 +26,9 @@ enum Cmd {
         /// Where to write the Cargo project (default: out/<name>).
         #[arg(short, long)]
         out: Option<PathBuf>,
+        /// Make a Rust library of a unit, for a Rust program to call.
+        #[arg(long)]
+        lib: bool,
     },
     /// Make indentation, spacing and identifier casing consistent. Give a
     /// program and its units together, so names are spelled the same in all.
@@ -69,8 +72,8 @@ fn run(command: Cmd) -> Result<ExitCode, String> {
             print!("{}", generated.combined());
             Ok(ExitCode::SUCCESS)
         }
-        Cmd::Build { file, out } => {
-            let dir = project(&file, out)?;
+        Cmd::Build { file, out, lib } => {
+            let dir = if lib { library(&file, out)? } else { project(&file, out)? };
             cargo(&dir, &["build", "--quiet"], &[])
         }
         Cmd::Fmt { files, check } => fmt(&files, check),
@@ -111,6 +114,15 @@ fn warn(generated: &pascrust::driver::Generated) {
 /// Transpile `file` and write the Cargo project; return its directory.
 fn project(file: &Path, out: Option<PathBuf>) -> Result<PathBuf, String> {
     let generated = pascrust::driver::transpile_file(file)?;
+    warn(&generated);
+    let dir = out.unwrap_or_else(|| Path::new("out").join(&generated.name));
+    pascrust::driver::write_project(&dir, &generated).map_err(|e| format!("cannot write {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
+/// Transpile the unit `file` as a library and write the Cargo project.
+fn library(file: &Path, out: Option<PathBuf>) -> Result<PathBuf, String> {
+    let generated = pascrust::driver::transpile_library(file, &pascrust::driver::Options::default())?;
     warn(&generated);
     let dir = out.unwrap_or_else(|| Path::new("out").join(&generated.name));
     pascrust::driver::write_project(&dir, &generated).map_err(|e| format!("cannot write {}: {e}", dir.display()))?;

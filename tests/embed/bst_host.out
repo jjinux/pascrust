@@ -1,0 +1,15 @@
+insert 50: true
+insert 30: true
+insert 70: true
+insert 60: true
+search 60: true, location 4
+first: 30
+
+ID        Position
+      30  2
+      50  1
+      60  4
+      70  3
+Hit ENTER key to exit
+delete 30: true
+search the other tree: Runtime error 204: Invalid pointer operation: using a disposed record

@@ -325,7 +325,7 @@ Last: raw bytes and C strings
 - [ ] The per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
 - [ ] Bundled-globals option (`struct Globals` per unit) for programs with very many globals. (By hand, a unit can do it already: `PRTurtle` keeps its state in one record, `TTurtleContext`.)
 - [x] FFI to Rust: `external` routines in a Rust file named by `{$L file.rs}` (the user's choice, as TP linked `.OBJ` files), with crates from `//! cargo:` lines; `tests/run/rust_externals.pas` is the worked example.
-- [ ] Embedding: `pascrust build --lib unit.pas` and `pascrust_runtime::call(...) -> Result`, with a host example that calls `BSTUnit` from Rust. (Rust calling back into a Pascal program, through a procedural value passed to an `external` routine, works already: `tests/run/rust_callback.pas`, docs/calling_rust.md.)
+- [x] Embedding: `pascrust build --lib unit.pas` and `pascrust_runtime::call(...) -> Result`, with a host example that calls `BSTUnit` from Rust (`tests/embed/bst_host.rs`, docs/embedding.md). Rust calling back into a Pascal program through a procedural value works too (`tests/run/rust_callback.pas`).
 - [ ] FFI to C: `external 'C'` → `extern "C"` block with `#[repr(C)]` records, `build.rs` with `cc`.
 - [ ] Ideas only, for already-compiled Pascal: Free Pascal `{$mode tp}` C-ABI library, or DOSBox bridge. Not scheduled.
 - [ ] `--integer-width 32` flag if the user wants it.
