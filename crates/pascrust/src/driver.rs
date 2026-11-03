@@ -48,8 +48,10 @@ const STANDARD_UNITS: &[&str] = &["system", "crt", "dos", "graph", "printer", "o
 /// program that uses them: (name, file name, source). A file of the same
 /// name next to the program wins. (`include_str!` puts the file's text into
 /// the `pascrust` binary when it's compiled.)
-pub const PASCRUST_UNITS: &[(&str, &str, &str)] =
-    &[("prturtle", "PRTurtle.pas", include_str!("../units/PRTurtle.pas"))];
+pub const PASCRUST_UNITS: &[(&str, &str, &str)] = &[
+    ("prjson", "PRJson.pas", include_str!("../units/PRJson.pas")),
+    ("prturtle", "PRTurtle.pas", include_str!("../units/PRTurtle.pas")),
+];
 
 /// Transpile the Pascal program at `path`, together with every unit it uses.
 /// Errors come back already rendered for printing, with file names, line

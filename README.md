@@ -127,9 +127,11 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 - [Printing](docs/printing.md): where the `Printer` unit's `Lst` output goes.
 - [Timer interrupts](docs/timer_interrupts.md): getting a steady tick in a
   game without the timer interrupt, which PascRust doesn't have.
-- [PRTurtle](docs/pr_turtle.md): turtle graphics on top of `Graph`, with
-  Turbo Pascal 3.0's turtle routines. It's one of PascRust's own units,
-  whose names start with `PR`.
+- PascRust's own units, whose names start with `PR`, written in Turbo
+  Pascal and translated with the program that uses them:
+  [PRJson](docs/pr_json.md), reading and writing JSON, and
+  [PRTurtle](docs/pr_turtle.md), turtle graphics on top of `Graph`, with
+  Turbo Pascal 3.0's turtle routines.
 
 ### What's supported
 
@@ -142,7 +144,7 @@ within a statement list (as Rust's labeled blocks and loops), text and
 typed files with
 `{$I-}`/`IOResult`, `PChar` strings, and the `Crt`, `Dos`, `Graph`,
 `Printer`, `Overlay`, `Strings` and `WinDos` units, plus PascRust's own
-`PRTurtle` (turtle graphics on top of `Graph`). Some things a modern
+`PRJson` (JSON) and `PRTurtle` (turtle graphics on top of `Graph`). Some things a modern
 machine doesn't have are faked so old programs still run: `Lst` prints to
 a file or a command (see [Printing](docs/printing.md)), overlays need no `.OVR`
 file, `MemAvail` reports plenty of memory, and interrupt vectors keep the

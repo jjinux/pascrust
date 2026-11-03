@@ -1,0 +1,44 @@
+Ann 37 2 TRUE TRUE
+missing: [] 0 TRUE
+second tag: TRUE
+{"name":"Ann","age":37,"tags":["a","b\n"],"ok":true,"none":null,"pi":3.25}
+{
+  "name": "Ann",
+  "age": 37,
+  "tags": [
+    "a",
+    "b\n"
+  ],
+  "ok": true,
+  "none": null,
+  "pi": 3.25
+}
+[-0.25,1000,1.25,0,-7]
+"tab\tquote\" back\\ slash/ Aé"
+{"a":{"b":[[],{}]},"c":[]}
+true
+error: expected a value at the end
+error: expected ':' at character 6
+error: expected a key at character 2
+error: more after the value at character 5
+error: expected a value at the end
+error: unknown escape \q at character 3
+[{"id":1,"half":0.5},{"id":"two","half":1},{"id":3,"half":1.5},false,null]
+5 two 1.5
+[
+   {
+      "id": 1,
+      "half": 0.5
+   },
+   {
+      "id": "two",
+      "half": 1
+   },
+   {
+      "id": 3,
+      "half": 1.5
+   },
+   false,
+   null
+]
+TRUE cannot open no_such_file.json

@@ -468,6 +468,8 @@ Graph unit (BGI, as used in the examples)
   the original programs still draw. `ImageSize` of 64K or more is 0 with
   `GraphResult` `grError`. A buffer too small is runtime error 201.
   `PutImage` is clipped to the viewport (with `ClipOn`)
+- `PRJson`, PascRust's own unit for reading and writing JSON (JSON
+  strings up to 255 characters); see [PRJson](pr_json.md)
 - `PRTurtle`, PascRust's own unit of turtle graphics on top of `Graph`,
   with Graph3's turtle routines (`Forwd`, `TurnRight`, `PenUp`, `Wrap`,
   `TurtleWindow`, ...); see [PRTurtle](pr_turtle.md)

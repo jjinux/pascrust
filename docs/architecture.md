@@ -834,7 +834,10 @@ window meanwhile (§19).
   `pascrust` binary with `include_str!` (`driver::PASCRUST_UNITS`), and
   loaded like a program's own unit when `uses` finds no file of that name.
   So they're translated with the program, compile in TP 7 too, and show
-  off the translation. `PRTurtle` (turtle graphics on `Graph`) is one.
+  off the translation. `PRJson` (JSON, as linked records on the heap) and
+  `PRTurtle` (turtle graphics on `Graph`) are two. `tests/gen_expected.sh`
+  gives `fpc` their directory (`-Fu`), so a test that uses one still gets
+  its expected output from Free Pascal.
 - **`with r do`** → sema rewrites the body, writing each field (or method)
   the record supplies out in full (`r.x`, `pts[i].y`), and checks and emits
   the rewritten statement (`Analysis::with_bodies`). No reference to the
