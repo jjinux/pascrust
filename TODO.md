@@ -163,9 +163,9 @@ chosen so each step is testable with the previous ones.
 
 In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffea..HEAD`:
 
-- [ ] PascRust's own units, named with a `PR` prefix (`PRJson`, `PRTurtle`), as Turbo Pascal's types start with `T`. Settle the type names with the user first: TP's `P` already starts pointer types (`PNode = ^TNode`), so a type `PRValue` could read as a pointer.
+- [ ] PascRust's own units, named with a `PR` prefix (`PRJson`, `PRTurtle`), as Turbo Pascal's types start with `T`. The user's choice (2026-11-02): the units are `PR...`, and their types follow TP's own convention inside them (`TJsonValue`, `PJsonValue = ^TJsonValue`), as `Dos`'s `SearchRec` does.
   - [ ] `PRJson`: read and write JSON from Turbo Pascal.
-  - [ ] `PRTurtle`: turtle graphics on top of `Graph` (`Forwd`, `TurnLeft`, `PenUp`, ...), so a program that used Graph3's turtle can use `Graph` with these instead.
+  - [ ] `PRTurtle`: turtle graphics on top of `Graph`, with Graph3's own routine names (the user's choice: `Forwd`, `Back`, `TurnLeft`, `TurnRight`, `SetHeading`, `Heading`, `SetPosition`, `Xcor`, `Ycor`, `Home`, `PenUp`, `PenDown`, `ShowTurtle`, `HideTurtle`, `Wrap`, `NoWrap`, `SetPenColor`), so a Graph3 turtle program ports by changing its `uses` line and its graphics setup.
 - [ ] Document how Turbo Pascal code can call existing Rust code (and make it work: see the "FFI to Rust" item in Phase 8).
 
 ## Requests from the user, 2026-10-29
@@ -260,7 +260,17 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 076ffea (batches A-F). Not yet reviewed: `076ffea..HEAD`. Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 86ec036 (batches A-G). Not yet reviewed: `86ec036..HEAD`. Keep this range up to date.
+- [ ] Findings of review batch G (076ffea..86ec036), to fix:
+  - [ ] A labeled `begin ... goto Main end` (a main loop) gets an unreachable `break 'main` after the `continue` (a warning).
+  - [ ] Two labels on one statement (`L1: L2: x`): a `goto L2` is refused as a jump into a statement.
+  - [ ] `Inc(p^.v, p^.n)` (a step read from the heap record being changed): runtime error 204.
+  - [ ] `Inc`/`Dec` on a Boolean doesn't compile.
+  - [ ] In a method, a bare procedural field called with arguments (`Show(n)`) is refused.
+  - [ ] `Dec(c, 2)` on a Char gives `c -= 2 as u8` (a needless cast).
+  - [ ] Document that `Inc`/`Dec`/`Succ`/`Pred` past the ends of an enum are a range error (a Rust enum can't hold an ordinal outside it; TP with `{$R-}` stored it).
+  - [ ] Question for the user: dead code after an unconditional `goto` or `Exit` gives an `unreachable_code` warning. Leave the statements out of the Rust, or allow the warning there?
+  - [ ] Question for the user: label a loop that holds a goto block, so `Break`/`Continue` inside the block work, now or later?
 - [x] Findings of review batch F (3ab3ee4..076ffea), fixed:
   - [x] A parameterless procedure field or element called as a statement (`H.S;`, `with H do S;`) is called twice: `.get()(..).get()(..)`.
   - [x] Every unary builtin (`Odd(F)`, `Abs(R.Next)`) refuses a parameterless function value; only `Assigned` should look at the value.
