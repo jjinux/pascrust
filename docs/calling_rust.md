@@ -78,6 +78,55 @@ it goes where Pascal's `Write` goes (the `Crt` screen, a redirected
 file); `println!` works too, but bypasses that. To stop the program with
 a Turbo Pascal runtime error, call `run_error(code)`.
 
+## Rust calling back into Pascal
+
+A Pascal routine can be passed to Rust as a procedural value, and the
+Rust calls it: a sort that asks Pascal how to compare, an event loop
+that calls Pascal handlers.
+
+```pascal
+program Callback;
+{$L sorting.rs}
+type
+   TLess = function(A, B: Integer): Boolean;
+   TList = array[1..6] of Integer;
+
+procedure SortWith(var Items: TList; Less: TLess); external;
+
+function Descending(A, B: Integer): Boolean;
+begin
+   Descending := A > B;
+end;
+...
+   SortWith(Items, Descending);
+```
+
+```rust
+// sorting.rs
+use crate::{TLess, TList};
+
+pub fn sort_with(items: &mut TList, less: TLess) {
+    let less = less.get(); // the Pascal function, as a Rust `fn`
+    for i in 2..=6 {
+        let mut j = i;
+        while j > 1 && less(items[j], items[j - 1]) {
+            let t = items[j];
+            items[j] = items[j - 1];
+            items[j - 1] = t;
+            j -= 1;
+        }
+    }
+}
+```
+
+The program's types are in the crate root, so the Rust file names them
+as `crate::TLess`. A procedural type is a `ProcVar`, and `.get()` gives
+the routine as a plain Rust function pointer. A routine that uses the
+program's global variables takes them as parameters too, so a callback
+is simplest when it uses only its own parameters (`pascrust emit` shows
+the type, `type TLess = ProcVar<fn(i16, i16) -> bool>;`).
+`tests/run/rust_callback.pas` is this example, complete.
+
 ## Crates
 
 A Rust file can use crates from crates.io. List each one on a line of its
