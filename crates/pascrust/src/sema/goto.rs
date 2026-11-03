@@ -68,8 +68,9 @@ fn visit(s: &Stmt, f: &mut impl FnMut(&Stmt)) {
 }
 
 /// Which statements of a list can never run: those after a `goto`,
-/// `Exit`, `Break` or `Continue`, up to the next label (which a `goto` can
-/// reach). Codegen writes them as comments, and sema doesn't check them.
+/// `Exit`, `Break` or `Continue` (or a statement that always does one),
+/// up to the next label (which a `goto` can reach). Codegen writes their
+/// Rust commented out; sema checks them, but their writes don't count.
 pub fn dead(stmts: &[Stmt]) -> Vec<bool> {
     let mut dead = Vec::with_capacity(stmts.len());
     let mut after_jump = false;
@@ -85,15 +86,34 @@ pub fn dead(stmts: &[Stmt]) -> Vec<bool> {
 
 /// True for a statement that always leaves: `goto L`, `Exit`, `Break`,
 /// `Continue` (a label on it doesn't change that).
-fn jumps_away(s: &Stmt) -> bool {
+pub fn jumps_away(s: &Stmt) -> bool {
     match &s.kind {
         StmtKind::Goto(_) => true,
-        StmtKind::Labeled { body, .. } => jumps_away(body),
+        StmtKind::Labeled { body, .. } | StmtKind::With { body, .. } => jumps_away(body),
         StmtKind::Call(e) => match &e.kind {
             ExprKind::Name(id) => matches!(id.key().as_str(), "exit" | "break" | "continue"),
             _ => false,
         },
+        // `begin ...; goto L end`: it never gets to its end.
+        StmtKind::Compound(body) => list_jumps_away(body),
+        // Both ways jump: `if c then goto A else goto B`.
+        StmtKind::If { then_branch, else_branch: Some(else_branch), .. } => {
+            jumps_away(then_branch) && jumps_away(else_branch)
+        }
+        StmtKind::Case { arms, else_body: Some(else_body), .. } => {
+            arms.iter().all(|arm| jumps_away(&arm.body)) && list_jumps_away(else_body)
+        }
+        // A loop's own `Break` ends the loop, not what's around it.
         _ => false,
+    }
+}
+
+/// True if a statement list never gets to its end: its last statement
+/// jumps away, or can't be reached itself.
+fn list_jumps_away(list: &[Stmt]) -> bool {
+    match list.last() {
+        Some(last) => jumps_away(last) || dead(list).last() == Some(&true),
+        None => false,
     }
 }
 

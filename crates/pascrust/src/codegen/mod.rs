@@ -1364,7 +1364,14 @@ impl<'a> Codegen<'a> {
         self.indent += 1;
         self.untyped_guards(pid);
         self.locals(pid);
-        self.stmts(&body.body);
+        // An `Exit` that ends the routine changes nothing, and Rust would warn
+        // that the `result` after its `return result;` can't be reached.
+        let ends_with_exit = body.body.last().is_some_and(|s| match &s.kind {
+            StmtKind::Call(e) => matches!(&e.kind, ExprKind::Name(id) if id.key() == "exit"),
+            _ => false,
+        });
+        let stmts = if ends_with_exit { &body.body[..body.body.len() - 1] } else { &body.body[..] };
+        self.stmts(stmts);
         let end_comment = self.block_end_comments(body.body_span);
         if info.result.is_some() {
             self.line("result");
@@ -1627,7 +1634,8 @@ impl<'a> Codegen<'a> {
             self.stmts_in(stmts, block.lo..block.hi, inside);
             self.goto_blocks.pop();
             // (Not after a `continue` that ends the loop: it would never run.)
-            let repeats = ends_with_goto(&stmts[block.hi - 1], &block.label);
+            // (Nor after any statement that always jumps away.)
+            let repeats = crate::sema::goto::jumps_away(&stmts[block.hi - 1]);
             if !block.forward && !repeats {
                 self.line(format!("break {name};"));
             }
@@ -1658,9 +1666,13 @@ impl<'a> Codegen<'a> {
         self.stmt(&stmts[i]);
         let code = self.out.split_off(start);
         self.explained = explained;
-        for line in code.lines() {
+        // The comment marks go at the statement's own indentation, and the
+        // nesting inside it after them, so rustfmt keeps it.
+        let lines = code.lines().filter(|l| !l.trim().is_empty());
+        let base = lines.clone().map(|l| l.len() - l.trim_start().len()).min().unwrap_or(0);
+        for line in lines {
             let indent = line.len() - line.trim_start().len();
-            self.out.push_str(&format!("{}// {}\n", &line[..indent], &line[indent..]));
+            self.out.push_str(&format!("{}// {}{}\n", &line[..base], " ".repeat(indent - base), line.trim_start()));
         }
     }
 
@@ -2700,17 +2712,6 @@ pub(super) fn root_expr(e: &Expr) -> &Expr {
 /// Then the value is worked out into a `let` first.
 pub(super) fn borrows_while_writing(value: &Expr, target: &Expr) -> bool {
     contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target)))
-}
-
-/// True if the last thing `s` does is `goto label` (looking into a
-/// `begin ... end` and through labels, which codegen writes out flat).
-fn ends_with_goto(s: &Stmt, label: &str) -> bool {
-    match &s.kind {
-        StmtKind::Goto(l) => l.key() == label,
-        StmtKind::Compound(body) => body.last().is_some_and(|s| ends_with_goto(s, label)),
-        StmtKind::Labeled { body, .. } => ends_with_goto(body, label),
-        _ => false,
-    }
 }
 
 /// A label's Rust name: `'done` for `Done`, `'label_10` for `10`.
