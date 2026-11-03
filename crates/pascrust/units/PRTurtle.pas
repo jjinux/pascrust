@@ -105,7 +105,9 @@ implementation
    procedure DrawTurtle;
       var
          A, TipX, TipY, LeftX, LeftY, RightX, RightY: Real;
+         Old: Word;
       begin
+         Old := GetColor;
          A := Turtle.Dir * Pi / 180;
          TipX := Turtle.PosX + 10 * Sin(A);
          TipY := Turtle.PosY + 10 * Cos(A);
@@ -122,15 +124,20 @@ implementation
          FlipPixel(ScreenX(TipX), ScreenY(TipY));
          FlipPixel(ScreenX(LeftX), ScreenY(LeftY));
          FlipPixel(ScreenX(RightX), ScreenY(RightY));
+         SetColor(Old);
       end;
 
    { Draw from the turtle to (ToX, ToY) if the pen is down, and move there. }
    procedure DrawTo(ToX, ToY: Real);
+      var
+         Old: Word;
       begin
          if Turtle.Down then
          begin
+            Old := GetColor;
             SetColor(Turtle.Pen);
             Line(ScreenX(Turtle.PosX), ScreenY(Turtle.PosY), ScreenX(ToX), ScreenY(ToY));
+            SetColor(Old);
          end;
          Turtle.PosX := ToX;
          Turtle.PosY := ToY;
@@ -146,6 +153,31 @@ implementation
          HalfW := Turtle.WinWidth / 2;
          HalfH := Turtle.WinHeight / 2;
          Steps := 0;
+         { A turtle outside the window (it went there with NoWrap) comes
+           back in first, with where it's going. }
+         if Turtle.Wrapping then
+         begin
+            while Turtle.PosX > HalfW do
+            begin
+               Turtle.PosX := Turtle.PosX - Turtle.WinWidth;
+               ToX := ToX - Turtle.WinWidth;
+            end;
+            while Turtle.PosX < -HalfW do
+            begin
+               Turtle.PosX := Turtle.PosX + Turtle.WinWidth;
+               ToX := ToX + Turtle.WinWidth;
+            end;
+            while Turtle.PosY > HalfH do
+            begin
+               Turtle.PosY := Turtle.PosY - Turtle.WinHeight;
+               ToY := ToY - Turtle.WinHeight;
+            end;
+            while Turtle.PosY < -HalfH do
+            begin
+               Turtle.PosY := Turtle.PosY + Turtle.WinHeight;
+               ToY := ToY + Turtle.WinHeight;
+            end;
+         end;
          while Turtle.Wrapping and ((Abs(ToX) > HalfW) or (Abs(ToY) > HalfH)) and (Steps < 100) do
          begin
             { Where the line first meets the window's edge: a fraction T of
@@ -167,8 +199,8 @@ implementation
             else
                T := TY;
             DrawTo(Turtle.PosX + T * DX, Turtle.PosY + T * DY);
-            { Come back in on the other side. }
-            if T = TX then
+            { Come back in on the other side (of an edge it moves across). }
+            if (T = TX) and (DX <> 0) then
             begin
                if DX > 0 then
                begin

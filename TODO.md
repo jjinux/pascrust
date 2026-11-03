@@ -272,7 +272,7 @@ Last: raw bytes and C strings
   - [ ] Dead code after `if ... then goto A else goto B`, or after a `begin ... goto L end`, still warns.
   - [ ] A routine whose last statement is `Exit` warns (unreachable `result`).
   - [ ] Commented-out dead code loses its indentation.
-  - [ ] PRTurtle: `Wrap` with the turtle already outside the window draws a stray line; `Forwd(0)` there runs away.
+  - [x] PRTurtle: `Wrap` with the turtle already outside the window draws a stray line; `Forwd(0)` there runs away.
   - [ ] The `r#` branch in `link_externals` is dead (`snake_case` already escapes keywords); `{$L sub\type.rs}` with a backslash isn't found.
   - [ ] Small: `goto::dead`'s doc comment; `Inc(b, 256)` emits `b += 0`; the comment names `sound_rs.rs` for a renamed module; two `{$L}` files with one name; PRTurtle leaves Graph's colour and write mode changed; PRJson's tiny numbers and `JsonSet`/`JsonAdd` on the wrong kind.
   - Kept as is (decided, open to the user): `Round` rounds half away from zero, as TP documented (FPC rounds half to even); `JsonToString` cuts at 255 characters (documented).

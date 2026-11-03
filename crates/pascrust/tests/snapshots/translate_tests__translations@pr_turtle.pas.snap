@@ -81,6 +81,27 @@ fn pascal_main() {
     no_wrap(&mut turtle);
     forwd(&mut turtle, 1000);
     pwriteln!("nowrap: ", xcor(turtle), " ", turtle_there(&mut turtle));
+    // Wrap from outside the window: the turtle comes back in first, and
+    // draws only from there (x = 60 to 70, pixels 380 to 390).
+    wrap(&mut turtle);
+    set_pen_color(&mut turtle, u16::from(YELLOW));
+    forwd(&mut turtle, 10);
+    pwriteln!(
+        "wrap from outside: ",
+        xcor(turtle),
+        " ",
+        get_pixel(385, 240),
+        " ",
+        get_pixel(100, 240) != u16::from(YELLOW)
+    );
+    set_position(&mut turtle, 1000, 0);
+    forwd(&mut turtle, 0);
+    pwriteln!("forwd(0) outside: ", xcor(turtle));
+    no_wrap(&mut turtle);
+    // Graph's own colour is left as it was.
+    set_color(LIGHT_BLUE);
+    forwd(&mut turtle, 5);
+    pwriteln!("colour: ", get_color());
     // A turtle window: 100 x 100 around (100, 100); home is its centre.
     turtle_window(&mut turtle, 100, 100, 100, 100);
     set_pen_color(&mut turtle, u16::from(GREEN));
@@ -205,6 +226,8 @@ pub fn draw_turtle(turtle: TTurtleContext) {
     let mut left_y: f64 = 0.0;
     let mut right_x: f64 = 0.0;
     let mut right_y: f64 = 0.0;
+    let mut old: u16 = 0;
+    old = get_color();
     a = turtle.dir * ::std::f64::consts::PI / 180.0;
     tip_x = turtle.pos_x + 10.0 * a.sin();
     tip_y = turtle.pos_y + 10.0 * a.cos();
@@ -221,6 +244,7 @@ pub fn draw_turtle(turtle: TTurtleContext) {
     flip_pixel(screen_x(turtle, tip_x), screen_y(turtle, tip_y));
     flip_pixel(screen_x(turtle, left_x), screen_y(turtle, left_y));
     flip_pixel(screen_x(turtle, right_x), screen_y(turtle, right_y));
+    set_color(old);
 }
 
 // Draw from the turtle to (ToX, ToY) if the pen is down, and move there.
@@ -228,7 +252,9 @@ pub fn draw_turtle(turtle: TTurtleContext) {
 ///
 /// Uses globals, which are passed in as parameters.
 pub fn draw_to(turtle: &mut TTurtleContext, to_x: f64, to_y: f64) {
+    let mut old: u16 = 0;
     if turtle.down {
+        old = get_color();
         set_color(turtle.pen);
         line(
             screen_x(*turtle, turtle.pos_x),
@@ -236,6 +262,7 @@ pub fn draw_to(turtle: &mut TTurtleContext, to_x: f64, to_y: f64) {
             screen_x(*turtle, to_x),
             screen_y(*turtle, to_y),
         );
+        set_color(old);
     }
     turtle.pos_x = to_x;
     turtle.pos_y = to_y;
@@ -258,6 +285,26 @@ pub fn move_turtle(turtle: &mut TTurtleContext, mut to_x: f64, mut to_y: f64) {
     half_w = f64::from(turtle.win_width) / 2.0;
     half_h = f64::from(turtle.win_height) / 2.0;
     steps = 0;
+    // A turtle outside the window (it went there with NoWrap) comes
+    // back in first, with where it's going.
+    if turtle.wrapping {
+        while turtle.pos_x > half_w {
+            turtle.pos_x -= f64::from(turtle.win_width);
+            to_x -= f64::from(turtle.win_width);
+        }
+        while turtle.pos_x < -half_w {
+            turtle.pos_x += f64::from(turtle.win_width);
+            to_x += f64::from(turtle.win_width);
+        }
+        while turtle.pos_y > half_h {
+            turtle.pos_y -= f64::from(turtle.win_height);
+            to_y -= f64::from(turtle.win_height);
+        }
+        while turtle.pos_y < -half_h {
+            turtle.pos_y += f64::from(turtle.win_height);
+            to_y += f64::from(turtle.win_height);
+        }
+    }
     while turtle.wrapping && (to_x.abs() > half_w || to_y.abs() > half_h) && steps < 100 {
         // Where the line first meets the window's edge: a fraction T of
         // the way there.
@@ -281,8 +328,8 @@ pub fn move_turtle(turtle: &mut TTurtleContext, mut to_x: f64, mut to_y: f64) {
             t = ty;
         }
         draw_to(turtle, turtle.pos_x + t * dx, turtle.pos_y + t * dy);
-        // Come back in on the other side.
-        if t == tx {
+        // Come back in on the other side (of an edge it moves across).
+        if t == tx && dx != 0.0 {
             if dx > 0.0 {
                 turtle.pos_x -= f64::from(turtle.win_width);
                 to_x -= f64::from(turtle.win_width);

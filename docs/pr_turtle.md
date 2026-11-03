@@ -52,7 +52,7 @@ whole screen until `TurtleWindow` sets another.
 | `PenUp`, `PenDown` | Stop or start drawing as the turtle moves. |
 | `SetPenColor(Color)` | The colour the pen draws with. |
 | `ShowTurtle`, `HideTurtle` | Draw the turtle (a small triangle, in XOR mode) or take it away. |
-| `Wrap`, `NoWrap` | With `Wrap`, a turtle leaving one side of the window comes back on the other; with `NoWrap` (the default), it goes on out of sight. |
+| `Wrap`, `NoWrap` | With `Wrap`, a turtle leaving one side of the window comes back on the other (one already outside comes back in first); with `NoWrap` (the default), it goes on out of sight. |
 | `TurtleThere` | True if the turtle is inside its window. |
 | `TurtleWindow(X, Y, W, H)` | Use a `W` by `H` window centred on screen pixel (`X`, `Y`); it becomes the viewport (lines are clipped to it), and the turtle goes home. |
 | `ClearScreen` | Clear the window and send the turtle home. |
@@ -64,6 +64,8 @@ TP 3's graphics were CGA's: 320×200 in 4 colours or 640×200 in 2, set up
 with `GraphColorMode` or `HiRes`, and with `Plot`, `Draw` and friends
 alongside the turtle. PRTurtle has only the turtle; the rest is `Graph`'s
 (`InitGraph`, `PutPixel`, `Line`, ...), on its 640×480 screen. As in TP 3,
-the turtle is hidden until `ShowTurtle`. Graph3's turtle is documented
+the turtle is hidden until `ShowTurtle`. The turtle leaves `Graph`'s
+colour (`SetColor`) as it was, but its write mode at `NormalPut` (TP has
+no way to ask what it was). Graph3's turtle is documented
 rather than available to compare against, so details such as the
 turtle's shape may differ.

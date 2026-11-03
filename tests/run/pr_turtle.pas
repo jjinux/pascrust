@@ -42,6 +42,20 @@ begin
    NoWrap;
    Forwd(1000);
    WriteLn('nowrap: ', Xcor, ' ', TurtleThere);
+   { Wrap from outside the window: the turtle comes back in first, and
+     draws only from there (x = 60 to 70, pixels 380 to 390). }
+   Wrap;
+   SetPenColor(Yellow);
+   Forwd(10);
+   WriteLn('wrap from outside: ', Xcor, ' ', GetPixel(385, 240), ' ', GetPixel(100, 240) <> Yellow);
+   SetPosition(1000, 0);
+   Forwd(0);
+   WriteLn('forwd(0) outside: ', Xcor);
+   NoWrap;
+   { Graph's own colour is left as it was. }
+   SetColor(LightBlue);
+   Forwd(5);
+   WriteLn('colour: ', GetColor);
    { A turtle window: 100 x 100 around (100, 100); home is its centre. }
    TurtleWindow(100, 100, 100, 100);
    SetPenColor(Green);
