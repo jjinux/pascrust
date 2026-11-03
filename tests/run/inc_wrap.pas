@@ -24,4 +24,6 @@ begin
    b := 250;
    b := b + 10;
    WriteLn(b);
+   Inc(b, 256);
+   WriteLn(b);
 end.

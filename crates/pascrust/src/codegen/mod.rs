@@ -35,7 +35,7 @@ pub fn generate(
     map: &SourceMap,
     io_unchecked: &[Span],
     comments: &[crate::lexer::Comment],
-    rust_modules: &[String],
+    rust_modules: &[(String, String)],
 ) -> Vec<(String, String)> {
     let mut files = Vec::new();
     let mut g = Codegen {
@@ -137,9 +137,9 @@ struct Codegen<'a> {
     /// The parts of the source compiled with `{$I-}`, where I/O errors go
     /// to `IOResult` instead of stopping the program.
     io_unchecked: &'a [Span],
-    /// The Rust files `{$L sound.rs}` names, as modules (`sound`): where
-    /// the `external` routines are.
-    rust_modules: &'a [String],
+    /// The Rust files `{$L sound.rs}` names, as (module, file name):
+    /// where the `external` routines are.
+    rust_modules: &'a [(String, String)],
     /// While writing a trait's default method (see `object_traits`): how
     /// the body reaches its own object's fields, `self.t_shape()`, since
     /// `self` there is any object descended from it.
@@ -278,7 +278,7 @@ impl<'a> Codegen<'a> {
             self.a.units.iter().map(|u| u.module.as_str()).filter(|&m| Some(m) != current_module).collect();
         // A unit's `external` routines are in the program's Rust files.
         if current_module.is_some() {
-            for module in self.rust_modules {
+            for (module, _) in self.rust_modules {
                 self.line("#[allow(unused_imports)]");
                 self.line(format!("use crate::{module};"));
             }
@@ -358,7 +358,7 @@ impl<'a> Codegen<'a> {
             self.blank();
             self.line("// The Rust files the program links with `{$L file.rs}`: its `external`");
             self.line("// routines are there.");
-            for module in self.rust_modules {
+            for (module, _) in self.rust_modules {
                 self.line(format!("mod {module};"));
             }
         }
@@ -893,11 +893,12 @@ impl<'a> Codegen<'a> {
         let pid = self.a.proc_decls[&decl.name.span.start];
         let info = &self.a.procs[pid];
         let Some((module, name)) = info.rust_name.split_once("::") else { return };
+        let file = self.rust_modules.iter().find(|(m, _)| m == module).map_or(module, |(_, file)| file.as_str());
         let ret = info.ret.as_ref().map(|t| format!(" -> {}", t.rust())).unwrap_or_default();
         let params = self.signature_params(pid);
         self.blank();
         self.line(format!("// Pascal: `{}`", self.pascal_text(decl.header_span)));
-        self.line(format!("// Written in Rust, in `{module}.rs`: `pub fn {name}({params}){ret}`"));
+        self.line(format!("// Written in Rust, in `{file}`: `pub fn {name}({params}){ret}`"));
     }
 
     /// An `impl` block for each object type, holding its methods. Procedures

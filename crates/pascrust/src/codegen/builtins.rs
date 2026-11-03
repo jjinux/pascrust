@@ -262,6 +262,14 @@ impl<'a> Codegen<'a> {
                     {
                         wrapped -= 1 << bits; // a signed type's high bit is its sign
                     }
+                    // `Inc(b, 256)` on a Byte adds nothing.
+                    if wrapped == 0 {
+                        let name = if b == Inc { "Inc" } else { "Dec" };
+                        return format!(
+                            "// {name}({}, {n}) changes nothing: {n} wraps to 0 in {target_ty} arithmetic.",
+                            self.pascal_arg(&args[0])
+                        );
+                    }
                     self.pending
                         .push(format!("// {n} wraps to {wrapped} in {target_ty} arithmetic, as in Turbo Pascal."));
                     number = Some(wrapped);

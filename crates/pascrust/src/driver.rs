@@ -181,7 +181,7 @@ fn transpile(source: Vec<u8>, file_name: &str, dirs: &[PathBuf], switches: &[Str
     link_externals(&mut analysis, &linked, &map).map_err(|d| map.render(&d))?;
     let mut warnings: Vec<String> = warnings;
     warnings.extend(analysis.warnings.iter().map(|d| map.render(d)));
-    let modules: Vec<String> = linked.iter().map(|l| l.module.clone()).collect();
+    let modules: Vec<(String, String)> = linked.iter().map(|l| (l.module.clone(), l.file_name.clone())).collect();
     let files = codegen::generate(&program, &units, &analysis, &map, &io_unchecked, &comments, &modules);
     let mut files: Vec<(String, String)> = files.into_iter().map(|(name, code)| (name, format_rust(&code))).collect();
     // The linked Rust files go in as they are.
@@ -209,6 +209,8 @@ struct LinkedRust {
     span: Span,
     /// Its module in the generated crate: `sound`.
     module: String,
+    /// Its file name, as the `{$L}` gives it: `sound.rs`.
+    file_name: String,
     source: String,
     /// Crates it uses, from its `//! cargo: rand = "0.8"` lines.
     dependencies: Vec<String>,
@@ -224,7 +226,9 @@ fn linked_rust(directives: &[parser::Directive], dirs: &[PathBuf]) -> Result<Vec
         let Some(name) = text.strip_prefix(['L', 'l']).filter(|rest| rest.starts_with(' ')).map(str::trim) else {
             continue;
         };
-        let path = Path::new(name);
+        // `{$L rust\sound.rs}`: DOS paths use backslashes.
+        let name = name.replace('\\', "/");
+        let path = Path::new(&name);
         if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("rs")) {
             return Err(Diagnostic::new(
                 d.span,
@@ -243,8 +247,17 @@ fn linked_rust(directives: &[parser::Directive], dirs: &[PathBuf]) -> Result<Vec
             .map_err(|e| Diagnostic::new(d.span, format!("cannot read {}: {e}", found.display())))?;
         let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let module = sema::names::snake_case(&stem);
-        if linked.iter().any(|l| l.module == module) {
-            continue;
+        if let Some(earlier) = linked.iter().find(|l| l.module == module) {
+            if earlier.span.start == d.span.start {
+                continue;
+            }
+            return Err(Diagnostic::new(
+                d.span,
+                format!(
+                    "`{name}` and `{}` would both be the Rust module `{module}`; give one another name",
+                    earlier.file_name
+                ),
+            ));
         }
         // `//! cargo: rand = "0.8"` adds a dependency to Cargo.toml.
         let dependencies = source
@@ -252,7 +265,7 @@ fn linked_rust(directives: &[parser::Directive], dirs: &[PathBuf]) -> Result<Vec
             .filter_map(|line| line.trim().strip_prefix("//! cargo:"))
             .map(|dep| dep.trim().to_string())
             .collect();
-        linked.push(LinkedRust { span: d.span, module, source, dependencies });
+        linked.push(LinkedRust { span: d.span, module, file_name, source, dependencies });
     }
     Ok(linked)
 }
@@ -274,8 +287,8 @@ fn link_externals(analysis: &mut sema::Analysis, linked: &[LinkedRust], map: &So
                 format!("`{name}` is `external`, but no `{{$L file.rs}}` before it says which Rust file has it"),
             ));
         };
+        // (`snake_case` gives a Rust keyword a trailing underscore: `loop_`.)
         let function = sema::names::snake_case(&analysis.procs[pid].name);
-        let function = if sema::names::is_rust_keyword(&function) { format!("r#{function}") } else { function };
         analysis.procs[pid].rust_name = format!("{module}::{function}");
     }
     Ok(())

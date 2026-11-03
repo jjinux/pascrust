@@ -39,8 +39,10 @@ pub fn twice(n: i16) -> i16 {
   directory). It becomes a module of the generated crate, `sound`, as it
   is. A program or unit can link several.
 - Each `external` routine is the Rust function of the same name in snake
-  case (`DoubleIt` is `double_it`), in the file of the last `{$L}`
+  case (`DoubleIt` is `double_it`; a name that's a Rust keyword gets a
+  trailing underscore, `Loop` is `loop_`), in the file of the last `{$L}`
   before it. It must be `pub`.
+- A path in `{$L}` can use DOS's backslashes (`{$L rust\sound.rs}`).
 - The arguments are in PascRust's usual types (below). The generated
   code says what each function must look like:
 

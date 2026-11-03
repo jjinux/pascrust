@@ -42,6 +42,8 @@ fn pascal_main() {
     b = 250;
     b = (i16::from(b) + 10) as u8;
     pwriteln!(i16::from(b));
+    // Inc(b, 256) changes nothing: 256 wraps to 0 in Byte arithmetic.
+    pwriteln!(i16::from(b));
 }
 
 fn main() {

@@ -262,7 +262,7 @@ Graph, the rest
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a132173 (batches A-H). Not yet reviewed: `a132173..HEAD`. Keep this range up to date.
-- [ ] Findings of review batch H (86ec036..a132173), to fix:
+- [x] Findings of review batch H (86ec036..a132173), fixed:
   - [x] A labeled main loop with a forward `goto` out of it (`Main: begin ... goto Finish ... goto Main end; Finish:`) loops forever: the loop is put outside the block.
   - [x] `Inc(i, -32768)` on an Integer (a negative step at the type's minimum) gives a literal out of range.
   - [x] Constant arithmetic that wraps (`b := 250; Inc(b, 10)`) is rustc's deny-by-default `arithmetic_overflow` error.
@@ -273,8 +273,8 @@ Last: raw bytes and C strings
   - [x] A routine whose last statement is `Exit` warns (unreachable `result`).
   - [x] Commented-out dead code loses its indentation.
   - [x] PRTurtle: `Wrap` with the turtle already outside the window draws a stray line; `Forwd(0)` there runs away.
-  - [ ] The `r#` branch in `link_externals` is dead (`snake_case` already escapes keywords); `{$L sub\type.rs}` with a backslash isn't found.
-  - [ ] Small: `goto::dead`'s doc comment; `Inc(b, 256)` emits `b += 0`; the comment names `sound_rs.rs` for a renamed module; two `{$L}` files with one name; PRTurtle leaves Graph's colour and write mode changed; PRJson's tiny numbers and `JsonSet`/`JsonAdd` on the wrong kind.
+  - [x] The `r#` branch in `link_externals` is dead (`snake_case` already escapes keywords); `{$L sub\type.rs}` with a backslash isn't found.
+  - [x] Small: `goto::dead`'s doc comment; `Inc(b, 256)` emits `b += 0`; the comment names `sound_rs.rs` for a renamed module; two `{$L}` files with one name; PRTurtle leaves Graph's colour and write mode changed; PRJson's tiny numbers and `JsonSet`/`JsonAdd` on the wrong kind.
   - Kept as is (decided, open to the user): `Round` rounds half away from zero, as TP documented (FPC rounds half to even); `JsonToString` cuts at 255 characters (documented).
 - [x] Findings of review batch G (076ffea..86ec036), fixed:
   - [x] A labeled `begin ... goto Main end` (a main loop) gets an unreachable `break 'main` after the `continue` (a warning).
