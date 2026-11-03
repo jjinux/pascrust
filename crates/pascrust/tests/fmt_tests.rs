@@ -14,6 +14,11 @@ fn examples() -> Vec<PathBuf> {
     while let Some(dir) = dirs.pop() {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
+            // PascRust's own examples are formatted on their own (see
+            // `test_programs`), so they don't change how the user's are.
+            if path.ends_with("pascrust") {
+                continue;
+            }
             if path.is_dir() {
                 dirs.push(path);
             } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pas")) {
@@ -25,14 +30,15 @@ fn examples() -> Vec<PathBuf> {
     files
 }
 
-/// The test programs (`tests/run`, `tests/translate`, `tests/errors`) and
-/// PascRust's own units.
+/// The test programs (`tests/run`, `tests/translate`, `tests/errors`),
+/// PascRust's own units, and its own examples (`examples/pascrust`).
 fn test_programs() -> Vec<PathBuf> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests");
     let mut files = Vec::new();
     // (PascRust's own units, in `crates/pascrust/units`, too.)
     let units = Path::new(env!("CARGO_MANIFEST_DIR")).join("units");
-    for dir in ["run", "translate", "errors"].map(|d| root.join(d)).into_iter().chain([units]) {
+    let own_examples = root.join("../examples/pascrust");
+    for dir in ["run", "translate", "errors"].map(|d| root.join(d)).into_iter().chain([units, own_examples]) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
             if path.extension().is_some_and(|e| e == "pas") {

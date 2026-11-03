@@ -166,7 +166,7 @@ In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffe
 - [ ] PascRust's own units, named with a `PR` prefix (`PRJson`, `PRTurtle`), as Turbo Pascal's types start with `T`. The user's choice (2026-11-02): the units are `PR...`, and their types follow TP's own convention inside them (`TJsonValue`, `PJsonValue = ^TJsonValue`), as `Dos`'s `SearchRec` does.
   - [x] `PRJson`: read and write JSON from Turbo Pascal (written in Pascal, the user's choice; JSON strings up to 255 characters).
   - [x] `PRTurtle`: turtle graphics on top of `Graph`, with Graph3's own routine names (the user's choice: `Forwd`, `Back`, `TurnLeft`, `TurnRight`, `SetHeading`, `Heading`, `SetPosition`, `Xcor`, `Ycor`, `Home`, `PenUp`, `PenDown`, `ShowTurtle`, `HideTurtle`, `Wrap`, `NoWrap`, `SetPenColor`), so a Graph3 turtle program ports by changing its `uses` line and its graphics setup.
-    - [ ] An example of an interesting turtle graphics program in `examples/` (the user's request, 2026-11-02): something that's fun to watch draw, such as a recursive tree or a Koch snowflake.
+    - [x] An example of an interesting turtle graphics program in `examples/` (`examples/pascrust/turtles.pas`: a Koch snowflake, a tree, a spiral) (the user's request, 2026-11-02): something that's fun to watch draw, such as a recursive tree or a Koch snowflake.
 - [ ] Document how Turbo Pascal code can call existing Rust code (and make it work: see the "FFI to Rust" item in Phase 8).
 
 ## Requests from the user, 2026-10-29

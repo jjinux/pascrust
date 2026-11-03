@@ -186,6 +186,13 @@ cargo run -p pascrust -- run examples/clock/tester.pas   # A clock whose hands r
 PASCRUST_DRIVE_A=examples cargo run -p pascrust -- run examples/tictac/tictac.pas
 ```
 
+`examples/pascrust/` holds examples written for PascRust:
+
+```sh
+# Turtle graphics with PRTurtle: a Koch snowflake, a tree and a spiral
+cargo run -p pascrust -- run examples/pascrust/turtles.pas
+```
+
 The environment variable goes before `cargo`, so it applies to the whole
 command (and to the program it runs).
 

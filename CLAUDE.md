@@ -35,6 +35,7 @@ feature, a command, an option or a limitation, update `README.md`,
 - `tests/translate/*.pas`: snapshot tests of the generated Rust.
 - `tests/errors/*.pas`: programs that must be rejected; snapshots of the messages.
 - `examples/`: the user's own Turbo Pascal programs from the 90s, the acceptance test.
+  `examples/pascrust/` holds PascRust's own examples (formatted on their own).
 
 ## Commands
 
@@ -45,7 +46,7 @@ PASCRUST_TEST=hello cargo test --test run_tests   # one execution test
 INSTA_UPDATE=always cargo test --test translate_tests   # accept new snapshots, then review the git diff
 cargo run -p pascrust -- emit file.pas       # print generated Rust
 cargo run -p pascrust -- run file.pas        # transpile, build and run (project goes in out/)
-cargo run -p pascrust -- fmt examples/*.pas examples/*/*.pas   # keep the examples formatted (checked by fmt_tests)
+cargo run -p pascrust -- fmt $(find examples -name '*.pas' -not -path '*/pascrust/*')   # the user's examples, together (checked by fmt_tests)
 cargo run -p pascrust -- fmt tests/run/foo.pas  # format each new test program on its own (checked by fmt_tests)
 tests/gen_expected.sh tests/run/foo.pas      # expected output from Free Pascal (fpc -Mtp)
 cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
