@@ -272,7 +272,8 @@ Last: raw bytes and C strings
   - [ ] A labeled `Break` (`L: Break`) isn't seen: the loop is taken as endless and what follows is commented out (wrong output).
   - [ ] `{$I-}` I/O in Pascal code called outside `call` prints "Runtime error 2" although the Pascal handles it.
   - [ ] The `with` comment still appears when the rewrite only copies the pointer (`with p^ do p := q`); that copy deserves its own comment.
-  - [ ] A declared label no `goto` targets, after an endless loop, makes the next statement live (a warning).
+  - [x] A declared label no `goto` targets, after an endless loop, makes the next statement live (a warning). The user (2026-11-04): accept it, it's rare.
+  - Decided (the user): a runtime error in Pascal code called outside `call` stays a Rust panic (exit 101); `call` gives TP's code.
   - [ ] A program whose only runtime uses are dead gets an unused-import warning for the prelude.
   - [ ] docs/architecture.md doesn't mention endless loops in the dead-code rules.
 - [x] Findings of review batch J (bc55d07..1fc2d9b), fixed (the user's decisions: always a context; code after an endless loop is dead; the innermost `call` gets a `Halt`; `tpc` keeps the file-name check):
