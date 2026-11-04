@@ -15,8 +15,12 @@ use std::panic;
 #[derive(Debug, Clone)]
 pub struct RuntimeError {
     /// The Turbo Pascal error number, e.g. 201 for "Range check error".
+    /// After `Halt`, its exit code.
     pub code: i32,
     pub message: String,
+    /// True if the Pascal code called `Halt` (inside [`call`]), rather than
+    /// failing.
+    pub halted: bool,
 }
 
 /// Raise Pascal runtime error `code`. Never returns.
@@ -27,7 +31,7 @@ pub struct RuntimeError {
 pub fn rte(code: i32, message: impl Into<String>) -> ! {
     // `panic_any` panics with an arbitrary value instead of a string, so
     // `run` can downcast the payload and recover the error code.
-    panic::panic_any(RuntimeError { code, message: message.into() })
+    panic::panic_any(RuntimeError { code, message: message.into(), halted: false })
 }
 
 /// Pascal `RunError(code)`: stop with runtime error `code`, as if the
@@ -85,10 +89,21 @@ pub fn io_result() -> i16 {
 /// Pascal programs sometimes have statements after a `Halt`, and with `!`
 /// Rust would warn that they're unreachable.
 pub fn halt(code: i32) {
+    // Inside `call`, a Rust program called this Pascal code: `Halt` comes
+    // back to it as an `Err`, rather than ending its process.
+    if CALL_DEPTH.get() > 0 {
+        crate::io::flush_stdout();
+        panic::panic_any(RuntimeError { code, message: "Halt".to_string(), halted: true });
+    }
     #[cfg(feature = "graph")]
     crate::graph::save_if_requested();
     crate::io::shutdown();
     std::process::exit(code)
+}
+
+thread_local! {
+    /// How many [`call`]s this thread is inside.
+    static CALL_DEPTH: Cell<u32> = const { Cell::new(0) };
 }
 
 /// Run a translated Pascal program. Generated `main` functions call this.
@@ -147,8 +162,17 @@ fn quiet_runtime_errors() {
     ONCE.call_once(|| {
         let default_hook = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
-            if info.payload().downcast_ref::<RuntimeError>().is_none() {
-                default_hook(info);
+            match info.payload().downcast_ref::<RuntimeError>() {
+                None => default_hook(info),
+                // `run` (on its "pascal" thread) and `call` report it; outside
+                // them (Pascal code a Rust program called directly), say what
+                // happened before the panic stops the program.
+                Some(err) => {
+                    let in_run = std::thread::current().name() == Some("pascal");
+                    if !in_run && CALL_DEPTH.get() == 0 {
+                        eprintln!("{err}");
+                    }
+                }
             }
         }));
     });
@@ -164,18 +188,29 @@ fn quiet_runtime_errors() {
 /// ```
 pub fn call<T>(pascal: impl FnOnce() -> T) -> Result<T, RuntimeError> {
     quiet_runtime_errors();
+    CALL_DEPTH.set(CALL_DEPTH.get() + 1);
     // `catch_unwind` turns a panic into an `Err` holding its payload.
     // (`AssertUnwindSafe` says the caller accepts that what the Pascal code
     // was changing may be left half done, as after a runtime error in TP.)
     let result = panic::catch_unwind(panic::AssertUnwindSafe(pascal)).map_err(to_runtime_error);
-    let _ = std::io::Write::flush(&mut std::io::stdout());
+    CALL_DEPTH.set(CALL_DEPTH.get() - 1);
+    crate::io::flush_stdout();
     result
+}
+
+/// For a Rust program done with the Pascal code it called: put the
+/// terminal back if `Crt` changed it, and finish printing (`Lst`). A
+/// Pascal program does this when it ends.
+pub fn shutdown() {
+    crate::io::shutdown();
 }
 
 /// "Runtime error 201: Range check error ...", as `run` prints it.
 impl std::fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.message.is_empty() {
+        if self.halted {
+            write!(f, "Halt({})", self.code)
+        } else if self.message.is_empty() {
             write!(f, "Runtime error {}", self.code)
         } else {
             write!(f, "Runtime error {}: {}", self.code, self.message)
@@ -212,7 +247,7 @@ fn to_runtime_error(payload: Box<dyn Any + Send>) -> RuntimeError {
     } else {
         255
     };
-    RuntimeError { code, message }
+    RuntimeError { code, message, halted: false }
 }
 
 #[cfg(test)]
@@ -230,5 +265,28 @@ mod tests {
         assert_eq!(io_result(), 0);
         // A range check isn't an I/O error: it still stops the program.
         assert!(panic::catch_unwind(|| io_unchecked::<()>(|| rte(201, "Range check error"))).is_err());
+    }
+}
+
+#[cfg(test)]
+mod call_tests {
+    use super::*;
+
+    #[test]
+    fn call_gives_back_a_value_or_the_runtime_error() {
+        assert_eq!(call(|| 6 * 7).unwrap(), 42);
+        let err = call(|| -> i16 { rte(201, "Range check error") }).unwrap_err();
+        assert_eq!(
+            (err.code, err.halted, err.to_string().as_str()),
+            (201, false, "Runtime error 201: Range check error")
+        );
+        // After an error, calling again works.
+        assert_eq!(call(|| 1).unwrap(), 1);
+    }
+
+    #[test]
+    fn halt_inside_call_comes_back_as_an_err() {
+        let err = call(|| halt(3)).unwrap_err();
+        assert_eq!((err.code, err.halted, err.to_string().as_str()), (3, true, "Halt(3)"));
     }
 }

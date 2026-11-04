@@ -113,6 +113,20 @@ fn build_dir(name: &str) -> PathBuf {
 fn compile(args: &Args) -> Result<(), String> {
     let file = args.file.as_ref().ok_or(USAGE)?;
     let source = source_path(file).ok_or_else(|| format!("{}: file not found", file.display()))?;
+    // TPC compiled a unit to a .TPU file; here a unit is compiled with the
+    // program that uses it, so `tpc` checks it and says so.
+    if driver::is_unit(&source) {
+        let (generated, name) = driver::transpile_unit(&source, &args.options)?;
+        for warning in &generated.warnings {
+            eprintln!("{warning}\n");
+        }
+        println!(
+            "{}: the unit {name} compiles. PascRust has no .TPU files: a unit is compiled with the program that uses it (`tpc program.pas`), or as a Rust library with `pascrust build --lib {}`.",
+            source.display(),
+            source.display()
+        );
+        return Ok(());
+    }
     let generated = driver::transpile_file_with(&source, &args.options)?;
     for warning in &generated.warnings {
         eprintln!("{warning}\n");

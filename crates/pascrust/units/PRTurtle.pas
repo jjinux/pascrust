@@ -393,6 +393,9 @@ implementation
      goes home. }
    procedure TurtleWindow(X, Y, W, H: Integer);
       begin
+         { (A window with no width or height is no window: kept as it was.) }
+         if (W <= 0) or (H <= 0) then
+            Exit;
          Setup;
          HideTurtle;
          Turtle.WinLeft := X - W div 2;

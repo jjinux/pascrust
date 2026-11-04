@@ -107,6 +107,13 @@ fn pascal_main() {
     set_pen_color(&mut turtle, u16::from(GREEN));
     forwd(&mut turtle, 30);
     pwriteln!("window: ", xcor(turtle), " ", ycor(turtle), " ", get_pixel(0, 50), " ", get_pixel(50, 20));
+    // A window with no width or height is ignored (Wrap would loop
+    // forever in it).
+    turtle_window(&mut turtle, 100, 100, 0, 0);
+    wrap(&mut turtle);
+    forwd(&mut turtle, 1);
+    no_wrap(&mut turtle);
+    pwriteln!("empty window: ", xcor(turtle), " ", ycor(turtle));
     // The turtle itself, a triangle with its tip 10 pixels ahead (50, 40)
     // and its back edge 5 behind (50, 55): shown, it's drawn (in XOR);
     // hidden, it's gone.
@@ -577,6 +584,10 @@ pub fn turtle_there(turtle: &mut TTurtleContext) -> bool {
 ///
 /// Uses globals, which are passed in as parameters.
 pub fn turtle_window(turtle: &mut TTurtleContext, x: i16, y: i16, w_: i16, h: i16) {
+    // (A window with no width or height is no window: kept as it was.)
+    if w_ <= 0 || h <= 0 {
+        return;
+    }
     setup(turtle);
     hide_turtle(turtle);
     turtle.win_left = x - w_ / 2;

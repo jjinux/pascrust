@@ -10,5 +10,6 @@ wrap from outside: 70 14 TRUE
 forwd(0) outside: -280
 colour: 9
 window: 0 30 0 2
+empty window: 0 31
 shown: 15 15
 hidden: 0 0

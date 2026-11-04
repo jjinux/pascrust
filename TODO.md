@@ -264,19 +264,19 @@ Last: raw bytes and C strings
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to bc55d07 (batches A-I). Not yet reviewed: `bc55d07..HEAD`. Keep this range up to date.
 - [ ] Findings of review batch I (a132173..bc55d07), to fix:
   - [x] A `goto` out of a goto loop nested in another goto loop (`Main:` ... `Inner:` ... `goto Finish` ... `goto Main`; `Finish:`) loops forever: the block isn't widened past the outer loop.
-  - [ ] `--lib` on a unit that uses Graph hangs in `InitGraph` (the window needs `run`'s main thread). The user's decision (2026-11-03): refuse it; a program that uses Graph should be a Pascal program that calls out to Rust.
+  - [x] `--lib` on a unit that uses Graph hangs in `InitGraph` (the window needs `run`'s main thread). The user's decision (2026-11-03): refuse it; a program that uses Graph should be a Pascal program that calls out to Rust.
   - [ ] `--lib`: `use counter::*` in the host is ambiguous (the crate and its module have one name); the unit's own module should be private, re-exported.
-  - [ ] `--lib`: no public way to shut the runtime down (Crt's raw terminal, a `|command` printer).
-  - [ ] Two units linking the same Rust file is an error since bc55d07; only different files with one module name should be.
-  - [ ] A runtime error outside `call`, after a `call`, kills the host without a message (the hook stays installed).
-  - [ ] `Halt` inside `call` exits the host. Decided: `call` returns it as an `Err` instead.
+  - [x] `--lib`: no public way to shut the runtime down (Crt's raw terminal, a `|command` printer).
+  - [x] Two units linking the same Rust file is an error since bc55d07; only different files with one module name should be.
+  - [x] A runtime error outside `call`, after a `call`, kills the host without a message (the hook stays installed).
+  - [x] `Halt` inside `call` exits the host. Decided: `call` returns it as an `Err` instead.
   - [x] `Exit` or `Break` as the last statement of a `repeat` body: the `if cond { break; }` after it is unreachable (a warning).
   - [x] A labeled final `Exit` (`Fin: Exit;`) still warns; a dropped final `Exit` loses its comment.
-  - [ ] `--lib` with a file not named after its unit: the error quotes the made-up program's `uses` line.
+  - [x] `--lib` with a file not named after its unit: the error quotes the made-up program's `uses` line.
   - [ ] `--lib`: an interface `external` isn't re-exported; a unit's variables are parameters the host must own. The user's decision (2026-11-03): bundle a unit's variables into one generated record for `--lib` now.
-  - [ ] PRTurtle: `Wrap` in a zero-size `TurtleWindow` hangs.
+  - [x] PRTurtle: `Wrap` in a zero-size `TurtleWindow` hangs.
   - [x] `while True do` gives rustc's `while_true` warning: it should be `loop`.
-  - [ ] `tpc unit.pas`: decided, check the unit compiles and say how units are used (the program that uses it, or `pascrust build --lib`), naming `tpc`.
+  - [x] `tpc unit.pas`: decided, check the unit compiles and say how units are used (the program that uses it, or `pascrust build --lib`), naming `tpc`.
   - [ ] Small: `with r do goto L` emits the `with` comment for nothing.
 - [x] Findings of review batch H (86ec036..a132173), fixed:
   - [x] A labeled main loop with a forward `goto` out of it (`Main: begin ... goto Finish ... goto Main end; Finish:`) loops forever: the loop is put outside the block.

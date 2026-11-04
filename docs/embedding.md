@@ -74,8 +74,29 @@ match call(|| other.search(&mut item, &mut found)) {
 ```
 
 Pascal code called without `call` still works, but a runtime error then
-panics the Rust program. What the Pascal code was changing when the error
-came may be left half done, as it would have been in Turbo Pascal.
+stops the Rust program (with Turbo Pascal's message). What the Pascal code
+was changing when the error came may be left half done, as it would have
+been in Turbo Pascal.
+
+`Halt` in the Pascal code doesn't end the Rust program either: inside
+`call` it comes back as an `Err` whose `halted` is true and whose `code`
+is `Halt`'s exit code.
+
+When the Rust program is done with the Pascal code, it can call
+`pascrust_runtime::shutdown()`, which does what the end of a Pascal
+program does: puts the terminal back if the unit used `Crt`, and finishes
+`Lst` output to a printer command.
+
+## What can't be a library
+
+- A unit that uses `Graph` (itself or through another unit): `Graph`'s
+  window needs the main thread, which only a Pascal program's runtime
+  has. Make it a Pascal program that calls Rust instead, with
+  [`{$L file.rs}`](calling_rust.md).
+- A unit must be in a file named after it (`bstunit.pas` for `BSTUnit`),
+  as in Turbo Pascal, since that's how `uses` finds units.
+
+`tpc unit.pas` checks that a unit compiles, and says how to use it.
 
 ## Units with variables
 

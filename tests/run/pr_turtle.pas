@@ -61,6 +61,13 @@ begin
    SetPenColor(Green);
    Forwd(30);
    WriteLn('window: ', Xcor, ' ', Ycor, ' ', GetPixel(0, 50), ' ', GetPixel(50, 20));
+   { A window with no width or height is ignored (Wrap would loop
+     forever in it). }
+   TurtleWindow(100, 100, 0, 0);
+   Wrap;
+   Forwd(1);
+   NoWrap;
+   WriteLn('empty window: ', Xcor, ' ', Ycor);
    { The turtle itself, a triangle with its tip 10 pixels ahead (50, 40)
      and its back edge 5 behind (50, 55): shown, it's drawn (in XOR);
      hidden, it's gone. }

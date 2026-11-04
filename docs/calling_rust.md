@@ -54,7 +54,8 @@ pub fn twice(n: i16) -> i16 {
   so `pascrust emit beeper.pas` is the quickest way to see the signature
   to write.
 - A unit's routines can be in Rust too: put the `{$L}` and the
-  `external` declarations in its `implementation` part.
+  `external` declarations in its `implementation` part. Two units can
+  link the same file; it's one module.
 - An `external` routine can't be nested in another routine, and doesn't
   see the program's global variables: pass what it needs.
 

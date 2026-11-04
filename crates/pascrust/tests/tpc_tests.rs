@@ -27,3 +27,20 @@ fn tpc_compiles_next_to_the_source_with_switches() {
     assert!(output.status.success(), "{:?}", output.status);
     assert_eq!(String::from_utf8_lossy(&output.stdout), "IOResult = 2\n");
 }
+
+/// TPC compiled a unit to a .TPU file; `tpc` checks one compiles and says
+/// how PascRust uses units.
+#[test]
+fn tpc_checks_a_unit() {
+    let tmp = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("tpc_unit");
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("Tally.pas"),
+        "unit Tally;\ninterface\nfunction Twice(N: Integer): Integer;\nimplementation\nfunction Twice(N: Integer): Integer;\nbegin\n  Twice := N * 2;\nend;\nend.\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_tpc")).arg("TALLY").current_dir(&tmp).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("the unit Tally compiles") && text.contains("pascrust build --lib"), "{text}");
+}

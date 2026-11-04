@@ -31,4 +31,4 @@ pub mod string;
 pub mod system;
 pub mod variants;
 
-pub use run::{RuntimeError, call, halt, rte, run};
+pub use run::{RuntimeError, call, halt, rte, run, shutdown};
