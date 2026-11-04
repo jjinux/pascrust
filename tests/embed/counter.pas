@@ -1,0 +1,71 @@
+{ A unit with variables, built with `pascrust build --lib` and used from
+  tests/embed/counter_host.rs: its variables (and Helper's) are fields of
+  the generated CounterContext. }
+unit Counter;
+interface
+   uses Helper;
+   type
+      TBumper = procedure(N: Integer);
+      TTally = object
+         Total: Integer;
+         procedure Add(N: Integer);
+      end;
+   var
+      Count: Integer;
+      Hook: TBumper;
+      Log: string;
+   procedure Bump(N: Integer);
+   function Current: Integer;
+   procedure Swap(var A, B: Integer);
+   procedure New(N: Integer);
+   function Pure(X: Integer): Integer;
+   procedure CallHook(N: Integer);
+   procedure TickTwice;
+implementation
+   const
+      Secret: Integer = 7;
+   var
+      Internal: Integer;
+   procedure Bump(N: Integer);
+      begin
+         Count := Count + N + Internal;
+         HelperCount := HelperCount + 1;
+      end;
+   function Current: Integer;
+      begin
+         Current := Count;
+      end;
+   procedure Swap(var A, B: Integer);
+      var T: Integer;
+      begin
+         T := A; A := B; B := T;
+         Log := Log + 's';
+      end;
+   procedure New(N: Integer);
+      begin
+         Count := N;
+      end;
+   function Pure(X: Integer): Integer;
+      begin
+         Pure := X * 2;
+      end;
+   procedure TTally.Add(N: Integer);
+      begin
+         Total := Total + N;
+         Count := Count + N;
+      end;
+   procedure CallHook(N: Integer);
+      begin
+         Hook(N);
+      end;
+   procedure TickTwice;
+      begin
+         Tick;
+         Tick;
+      end;
+begin
+   Internal := Secret;
+   Hook := Bump;
+   HelperCount := 100;
+   Log := '';
+end.

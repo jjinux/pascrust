@@ -265,7 +265,7 @@ Last: raw bytes and C strings
 - [ ] Findings of review batch I (a132173..bc55d07), to fix:
   - [x] A `goto` out of a goto loop nested in another goto loop (`Main:` ... `Inner:` ... `goto Finish` ... `goto Main`; `Finish:`) loops forever: the block isn't widened past the outer loop.
   - [x] `--lib` on a unit that uses Graph hangs in `InitGraph` (the window needs `run`'s main thread). The user's decision (2026-11-03): refuse it; a program that uses Graph should be a Pascal program that calls out to Rust.
-  - [ ] `--lib`: `use counter::*` in the host is ambiguous (the crate and its module have one name); the unit's own module should be private, re-exported.
+  - [x] `--lib`: `use counter::*` in the host is ambiguous (the crate and its module have one name); the unit's own module should be private, re-exported.
   - [x] `--lib`: no public way to shut the runtime down (Crt's raw terminal, a `|command` printer).
   - [x] Two units linking the same Rust file is an error since bc55d07; only different files with one module name should be.
   - [x] A runtime error outside `call`, after a `call`, kills the host without a message (the hook stays installed).
@@ -273,7 +273,7 @@ Last: raw bytes and C strings
   - [x] `Exit` or `Break` as the last statement of a `repeat` body: the `if cond { break; }` after it is unreachable (a warning).
   - [x] A labeled final `Exit` (`Fin: Exit;`) still warns; a dropped final `Exit` loses its comment.
   - [x] `--lib` with a file not named after its unit: the error quotes the made-up program's `uses` line.
-  - [ ] `--lib`: an interface `external` isn't re-exported; a unit's variables are parameters the host must own. The user's decision (2026-11-03): bundle a unit's variables into one generated record for `--lib` now.
+  - [x] `--lib`: an interface `external` isn't re-exported; a unit's variables are parameters the host must own. The user's decision (2026-11-03): bundle a unit's variables into one generated record for `--lib` now.
   - [x] PRTurtle: `Wrap` in a zero-size `TurtleWindow` hangs.
   - [x] `while True do` gives rustc's `while_true` warning: it should be `loop`.
   - [x] `tpc unit.pas`: decided, check the unit compiles and say how units are used (the program that uses it, or `pascrust build --lib`), naming `tpc`.

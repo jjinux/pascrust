@@ -116,7 +116,7 @@ fn compile(args: &Args) -> Result<(), String> {
     // TPC compiled a unit to a .TPU file; here a unit is compiled with the
     // program that uses it, so `tpc` checks it and says so.
     if driver::is_unit(&source) {
-        let (generated, name) = driver::transpile_unit(&source, &args.options)?;
+        let (generated, name) = driver::transpile_unit(&source, &args.options, false)?;
         for warning in &generated.warnings {
             eprintln!("{warning}\n");
         }

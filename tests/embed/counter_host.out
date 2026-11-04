@@ -1,0 +1,8 @@
+after init: helper_count 100, internal 7
+bump 5: current 12, helper_count 101
+swap: 2 1, log s
+new: 40
+pure: 42
+hook: 49
+tick twice: helper_count 104, helper's count 2
+tally: 3, count 52

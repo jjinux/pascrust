@@ -100,10 +100,41 @@ program does: puts the terminal back if the unit used `Crt`, and finishes
 
 ## Units with variables
 
-A unit's global variables are passed to its routines as parameters
-(PascRust has no global state), so the Rust program owns them and passes
-them in. That's simplest when the unit keeps its state in one record, as
-PascRust's own `PRTurtle` does (`Turtle: TTurtleContext`); or, like
-`BSTUnit`, in an object the program creates. A unit with an
-initialization part has a function for it (`pascrust emit` shows its
-name), which the program calls first.
+PascRust has no global state: a unit's variables are passed to its
+routines as parameters. So for a library, the variables of the unit and
+of the units it uses become the fields of one struct, named after the unit
+(`CounterContext` for `Counter`), and the unit's interface routines are its
+methods, with the fields passed in:
+
+```rust
+use counter::pascrust_runtime::{RuntimeError, call};
+use counter::CounterContext;
+
+fn main() -> Result<(), RuntimeError> {
+    // `new` sets the variables up and runs the units' initialization
+    // parts, which are Pascal code, so it goes through `call` too.
+    let mut c = call(CounterContext::new)?;
+    call(|| c.bump(5))?;
+    println!("{}", c.current());
+    Ok(())
+}
+```
+
+- Every interface routine is a method (`&self` if it changes no unit
+  variable), so a Pascal change in which variables a routine uses doesn't
+  change the Rust API. A Pascal `New` is `new_2`: `new` makes the struct.
+- The fields are public, named as in the generated code: when two units
+  both have a `Count`, the second is `count_2` (each field's comment says
+  which unit it's from). Typed constants are fields too.
+- A unit with no variables (like `BSTUnit`) has no context: its routines
+  are plain functions.
+- The routines of the units it uses aren't methods (in Pascal, a program
+  using `Counter` doesn't see `Helper`'s routines). Like the methods of an
+  object type, or a procedural value, they take the unit variables they
+  use as parameters: `tally.add(&mut c.count_2, 3)`. `pascrust emit`
+  shows a routine's parameters.
+- A method borrows the whole context, so `c.swap(&mut c.count_2, &mut x)`
+  is a Rust borrow error; call the function instead,
+  `counter::swap(&mut c.log, &mut c.count_2, &mut x)`.
+
+`tests/embed/counter_host.rs` shows all of this, with `tests/embed/counter.pas`.

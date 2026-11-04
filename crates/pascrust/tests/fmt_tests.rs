@@ -30,7 +30,8 @@ fn examples() -> Vec<PathBuf> {
     files
 }
 
-/// The test programs (`tests/run`, `tests/translate`, `tests/errors`),
+/// The test programs (`tests/run`, `tests/translate`, `tests/errors`,
+/// `tests/embed`),
 /// PascRust's own units, and its own examples (`examples/pascrust`).
 fn test_programs() -> Vec<PathBuf> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests");
@@ -38,7 +39,7 @@ fn test_programs() -> Vec<PathBuf> {
     // (PascRust's own units, in `crates/pascrust/units`, too.)
     let units = Path::new(env!("CARGO_MANIFEST_DIR")).join("units");
     let own_examples = root.join("../examples/pascrust");
-    for dir in ["run", "translate", "errors"].map(|d| root.join(d)).into_iter().chain([units, own_examples]) {
+    for dir in ["run", "translate", "errors", "embed"].map(|d| root.join(d)).into_iter().chain([units, own_examples]) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
             if path.extension().is_some_and(|e| e == "pas") {

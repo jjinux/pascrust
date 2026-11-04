@@ -1238,9 +1238,17 @@ translates a program that only `uses` the unit, then swaps its `main.rs`
 for a `lib.rs` that declares the modules, re-exports the unit's interface
 and `pascrust_runtime`. The host calls `pascrust_runtime::call(|| tree.insert(...))`,
 which catches a runtime error's panic (`catch_unwind`) and returns it as
-`Err(RuntimeError)`. A unit's globals are the host's to own and pass in,
-which is the §15.4 lifting with the host as `main` (simplest with one
-record, as `PRTurtle` does; bundling them automatically is still to do).
+`Err(RuntimeError)`. A unit's globals are the host's to own, which is
+the §15.4 lifting with the host as `main`: codegen's `library` writes
+`lib.rs` (the unit's own module private and re-exported, the units it uses
+public, interface `external`s re-exported) and, when there are variables,
+a `CounterContext` struct holding all of `pascal_main`'s locals, whose
+`new()` is `pascal_main` without its body (`locals(MAIN)` and the init
+calls) and whose methods are the unit's interface routines with the
+captures passed as fields (designed with Fable; the user chose the name
+and that every interface routine is a method). A general "bundled
+globals" mode was considered and left: one bundle would make Rust see two
+borrows where lifting passes separate variables.
 `tests/embed/bst_host.rs` uses the user's `bstunit.pas`
 (`embed_tests.rs`); `docs/embedding.md` is the user guide. This is the
 "Pascal crust inside Rust" configuration from the project's name.
