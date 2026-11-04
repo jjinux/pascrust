@@ -265,7 +265,15 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to bc55d07 (batches A-I). Not yet reviewed: `bc55d07..HEAD`. Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 1fc2d9b (batches A-J). Not yet reviewed: `1fc2d9b..HEAD`. Keep this range up to date.
+- [ ] Findings of review batch J (bc55d07..1fc2d9b), to fix:
+  - [ ] `--lib`: an interface routine that assigns to a value parameter (`mut n`) makes a `lib.rs` that doesn't compile.
+  - [ ] `Halt` inside a `{$I-}` I/O statement inside `call` is taken for an I/O error (`IOResult = n`), and the Pascal code goes on.
+  - [ ] A runtime error outside `call` is reported only if a `call` or `run` came first (the hook is installed there).
+  - [ ] `--lib`: a unit with no variables never runs its initialization parts (no context, no `new()`).
+  - [ ] `while True do` with no way out but `Exit`: the trailing `result` and the statements after it are unreachable (warnings).
+  - [ ] A `repeat` body ending in dead code after a `Break`/`Exit` still gets the unreachable `until` test.
+  - [ ] Small: `library_method`'s unused `captures`; docs/embedding.md on errors outside `call` and on `Halt` in nested `call`s.
 - [ ] Findings of review batch I (a132173..bc55d07), to fix:
   - [x] A `goto` out of a goto loop nested in another goto loop (`Main:` ... `Inner:` ... `goto Finish` ... `goto Main`; `Finish:`) loops forever: the block isn't widened past the outer loop.
   - [x] `--lib` on a unit that uses Graph hangs in `InitGraph` (the window needs `run`'s main thread). The user's decision (2026-11-03): refuse it; a program that uses Graph should be a Pascal program that calls out to Rust.
