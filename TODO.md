@@ -265,7 +265,16 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 1fc2d9b (batches A-J). Not yet reviewed: `1fc2d9b..HEAD`. Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 6b96dc9 (batches A-K). Not yet reviewed: `6b96dc9..HEAD`. Keep this range up to date.
+- [ ] Findings of review batch K (1fc2d9b..6b96dc9), to fix:
+  - [ ] A function ending in `repeat ... until False` doesn't compile (`if false { break; }` makes the loop `()`); `repeat ... until False` should just be `loop`.
+  - [ ] A `goto` counts as leaving a `while True` loop, so the Rust after it is unreachable (warnings): only a `Break` leaves it.
+  - [ ] A labeled `Break` (`L: Break`) isn't seen: the loop is taken as endless and what follows is commented out (wrong output).
+  - [ ] `{$I-}` I/O in Pascal code called outside `call` prints "Runtime error 2" although the Pascal handles it.
+  - [ ] The `with` comment still appears when the rewrite only copies the pointer (`with p^ do p := q`); that copy deserves its own comment.
+  - [ ] A declared label no `goto` targets, after an endless loop, makes the next statement live (a warning).
+  - [ ] A program whose only runtime uses are dead gets an unused-import warning for the prelude.
+  - [ ] docs/architecture.md doesn't mention endless loops in the dead-code rules.
 - [x] Findings of review batch J (bc55d07..1fc2d9b), fixed (the user's decisions: always a context; code after an endless loop is dead; the innermost `call` gets a `Halt`; `tpc` keeps the file-name check):
   - [x] `--lib`: an interface routine that assigns to a value parameter (`mut n`) makes a `lib.rs` that doesn't compile.
   - [x] `Halt` inside a `{$I-}` I/O statement inside `call` is taken for an I/O error (`IOResult = n`), and the Pascal code goes on.
