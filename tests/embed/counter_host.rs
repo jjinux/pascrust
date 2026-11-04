@@ -35,5 +35,8 @@ fn main() -> Result<(), RuntimeError> {
     let mut tally = TTally::default();
     call(|| tally.add(&mut c.count_2, 3))?;
     println!("tally: {}, count {}", tally.total, c.count_2);
+    // A routine that changes its own value parameter.
+    call(|| c.add_times(10, 3))?;
+    println!("add times: {}", c.current());
     Ok(())
 }

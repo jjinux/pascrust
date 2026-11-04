@@ -103,14 +103,42 @@ pub fn jumps_away(s: &Stmt) -> bool {
         StmtKind::Case { arms, else_body: Some(else_body), .. } => {
             arms.iter().all(|arm| jumps_away(&arm.body)) && list_jumps_away(else_body)
         }
+        // `while True do` (or `repeat ... until False`) that no `Break` or
+        // `goto` leaves: only `Exit` or `Halt` ends it.
+        StmtKind::While { cond, body } => is_word(cond, "true") && !leaves(body),
+        StmtKind::Repeat { body, cond } => is_word(cond, "false") && !body.iter().any(leaves),
         // A loop's own `Break` ends the loop, not what's around it.
         _ => false,
     }
 }
 
+/// True if `e` is the name `word` (`True`, `False`).
+fn is_word(e: &Expr, word: &str) -> bool {
+    matches!(&e.kind, ExprKind::Name(id) if id.key() == word)
+}
+
+/// True if `s` may leave the loop it's in: a `Break` for it (not one of a
+/// loop inside it), or any `goto`.
+fn leaves(s: &Stmt) -> bool {
+    match &s.kind {
+        StmtKind::Goto(_) => true,
+        StmtKind::Call(e) => is_word(e, "break"),
+        StmtKind::While { body, .. } | StmtKind::For { body, .. } => contains_goto(body),
+        StmtKind::Repeat { body, .. } => body.iter().any(contains_goto),
+        _ => statement_lists(s).iter().any(|list| list.iter().any(leaves)),
+    }
+}
+
+/// True if there's a `goto` anywhere in `s`.
+fn contains_goto(s: &Stmt) -> bool {
+    let mut found = false;
+    visit(s, &mut |s| found |= matches!(s.kind, StmtKind::Goto(_)));
+    found
+}
+
 /// True if a statement list never gets to its end: its last statement
 /// jumps away, or can't be reached itself.
-fn list_jumps_away(list: &[Stmt]) -> bool {
+pub fn list_jumps_away(list: &[Stmt]) -> bool {
     match list.last() {
         Some(last) => jumps_away(last) || dead(list).last() == Some(&true),
         None => false,

@@ -29,6 +29,8 @@ pub struct RuntimeError {
 /// function diverges, so `let x: i16 = if ok { 1 } else { rte(201, "...") };`
 /// type-checks.
 pub fn rte(code: i32, message: impl Into<String>) -> ! {
+    // Pascal code a Rust program calls without `call` gets the message too.
+    quiet_runtime_errors();
     // `panic_any` panics with an arbitrary value instead of a string, so
     // `run` can downcast the payload and recover the error code.
     panic::panic_any(RuntimeError { code, message: message.into(), halted: false })
@@ -64,7 +66,8 @@ pub fn io_unchecked<R: Default>(f: impl FnOnce() -> R) -> R {
     match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
         Ok(value) => value,
         Err(payload) => {
-            let code = payload.downcast_ref::<RuntimeError>().map(|error| error.code);
+            // (Not `Halt` inside a `call`, which ends what `call` runs.)
+            let code = payload.downcast_ref::<RuntimeError>().filter(|error| !error.halted).map(|error| error.code);
             match code {
                 Some(code) if code < 200 => {
                     IO_RESULT.set(code as i16);
@@ -282,6 +285,16 @@ mod call_tests {
         );
         // After an error, calling again works.
         assert_eq!(call(|| 1).unwrap(), 1);
+    }
+
+    #[test]
+    fn halt_in_unchecked_io_inside_call_is_still_halt() {
+        let err = call(|| {
+            io_unchecked(|| halt(1));
+            halt(2)
+        })
+        .unwrap_err();
+        assert_eq!((err.code, err.halted), (1, true));
     }
 
     #[test]

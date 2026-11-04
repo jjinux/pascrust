@@ -400,9 +400,9 @@ impl<'a> Codegen<'a> {
         self.line("pub use pascrust_runtime;");
         let vars: Vec<SymId> =
             self.a.procs[MAIN].locals.iter().copied().filter(|v| !self.a.elided_vars.contains(v)).collect();
-        if !vars.is_empty() {
-            self.library_context(unit, &main_module, &vars);
-        }
+        // (Always, even with no variables: `new()` runs the units'
+        // initialization parts.)
+        self.library_context(unit, &main_module, &vars);
     }
 
     /// The struct holding a library's unit variables, `new()`, and a method
@@ -430,6 +430,10 @@ impl<'a> Codegen<'a> {
         self.line(format!("/// The variables of unit `{}` and of the units it uses: what a Pascal", unit.name.name));
         self.line("/// program would have as globals. Its methods are the unit's interface");
         self.line("/// routines, with the variables passed in.");
+        if vars.is_empty() {
+            self.line("/// (These units have none: it's there so `new` runs their initialization");
+            self.line("/// parts, and every library starts the same way.)");
+        }
         self.line(format!("pub struct {name} {{"));
         for &sym in vars {
             let (pascal, ty) = (&self.a.sym(sym).name, &self.a.var(sym).ty);
@@ -483,7 +487,12 @@ impl<'a> Codegen<'a> {
     fn library_method(&mut self, main_module: &str, decl: &ProcDecl, pid: ProcId) {
         let info = &self.a.procs[pid];
         let parts = self.signature_parts(pid);
-        let (captures, params) = parts.split_at(info.captures.len());
+        // (A value parameter the routine changes is `mut n` there; the method
+        // just passes it on.)
+        let params: Vec<(String, String)> = parts[info.captures.len()..]
+            .iter()
+            .map(|(name, ty)| (name.strip_prefix("mut ").unwrap_or(name).to_string(), ty.clone()))
+            .collect();
         let mut args: Vec<String> = info
             .captures
             .iter()
@@ -497,7 +506,6 @@ impl<'a> Codegen<'a> {
                 }
             })
             .collect();
-        let _ = captures;
         args.extend(params.iter().map(|(name, _)| name.clone()));
         let receiver = if info.captures.iter().any(|c| c.mode == CaptureMode::RefMut) { "&mut self" } else { "&self" };
         let mut sig = vec![receiver.to_string()];
@@ -1557,17 +1565,13 @@ impl<'a> Codegen<'a> {
         self.locals(pid);
         // An `Exit` that ends the routine changes nothing, and Rust would warn
         // that the `result` after its `return result;` can't be reached. A bare
-        // one is left out (its comments kept); after a labeled one (`Fin:
-        // Exit;`, a `goto` target), there's no `result` to write.
+        // one is left out (its comments kept).
         let is_exit = |s: &Stmt| matches!(&s.kind, StmtKind::Call(e) if matches!(&e.kind, ExprKind::Name(id) if id.key() == "exit"));
         let last = body.body.last();
         let bare_exit = last.is_some_and(is_exit);
-        let labeled_exit = last.is_some_and(|s| match &s.kind {
-            StmtKind::Labeled { body, .. } => {
-                is_exit(body) || matches!(&body.kind, StmtKind::Labeled { .. }) && crate::sema::goto::jumps_away(body)
-            }
-            _ => false,
-        });
+        // A body that never gets to its end (a labeled `Exit`, a `while True`
+        // only `Exit` leaves) has no `result` to give after it.
+        let never_ends = !bare_exit && crate::sema::goto::list_jumps_away(&body.body);
         if bare_exit {
             self.stmts(&body.body[..body.body.len() - 1]);
             let exit = &body.body[body.body.len() - 1];
@@ -1579,7 +1583,7 @@ impl<'a> Codegen<'a> {
             self.stmts(&body.body);
         }
         let end_comment = self.block_end_comments(body.body_span);
-        if info.result.is_some() && !labeled_exit {
+        if info.result.is_some() && !never_ends {
             self.line("result");
         }
         self.indent -= 1;
@@ -2080,7 +2084,7 @@ impl<'a> Codegen<'a> {
         }
         // A body that always leaves (`Break`, `Exit`, a `goto` out) never gets
         // to the `until` test, and Rust would warn about it.
-        if body_block.is_none() && body.last().is_some_and(crate::sema::goto::jumps_away) {
+        if body_block.is_none() && crate::sema::goto::list_jumps_away(body) {
             self.indent -= 1;
             self.line("}");
             self.leading_comments(cond.span.start);

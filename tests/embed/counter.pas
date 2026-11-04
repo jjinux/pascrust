@@ -21,6 +21,7 @@ interface
    function Pure(X: Integer): Integer;
    procedure CallHook(N: Integer);
    procedure TickTwice;
+   procedure AddTimes(N, Times: Integer);
 implementation
    const
       Secret: Integer = 7;
@@ -62,6 +63,15 @@ implementation
       begin
          Tick;
          Tick;
+      end;
+   { A value parameter the routine changes (`Times`). }
+   procedure AddTimes(N, Times: Integer);
+      begin
+         while Times > 0 do
+         begin
+            Count := Count + N;
+            Times := Times - 1;
+         end;
       end;
 begin
    Internal := Secret;

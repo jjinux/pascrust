@@ -80,7 +80,9 @@ been in Turbo Pascal.
 
 `Halt` in the Pascal code doesn't end the Rust program either: inside
 `call` it comes back as an `Err` whose `halted` is true and whose `code`
-is `Halt`'s exit code.
+is `Halt`'s exit code. With `call`s inside each other (Pascal calls Rust,
+which `call`s Pascal), the innermost one gets it, and the Rust code
+around it decides what happens next.
 
 When the Rust program is done with the Pascal code, it can call
 `pascrust_runtime::shutdown()`, which does what the end of a Pascal
@@ -126,8 +128,10 @@ fn main() -> Result<(), RuntimeError> {
 - The fields are public, named as in the generated code: when two units
   both have a `Count`, the second is `count_2` (each field's comment says
   which unit it's from). Typed constants are fields too.
-- A unit with no variables (like `BSTUnit`) has no context: its routines
-  are plain functions.
+- Every library has a context, even one whose units have no variables
+  (`BstUnitContext {}` for `BSTUnit`): its `new()` runs the units'
+  initialization parts, so a Rust program always starts with
+  `call(XContext::new)`.
 - The routines of the units it uses aren't methods (in Pascal, a program
   using `Counter` doesn't see `Helper`'s routines). Like the methods of an
   object type, or a procedural value, they take the unit variables they

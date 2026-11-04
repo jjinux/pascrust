@@ -99,4 +99,9 @@ impl CounterContext {
     pub fn tick_twice(&mut self) {
         counter::tick_twice(&mut self.helper_count, &mut self.count)
     }
+
+    /// Pascal: `procedure AddTimes(N, Times: Integer);`
+    pub fn add_times(&mut self, n: i16, times: i16) {
+        counter::add_times(&mut self.count_2, n, times)
+    }
 }

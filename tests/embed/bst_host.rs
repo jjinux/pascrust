@@ -3,9 +3,13 @@
 //! `pascrust build --lib examples/database/bstunit.pas`.
 
 use bstunit::pascrust_runtime::{RuntimeError, call};
-use bstunit::{Bst, PeopleKey};
+use bstunit::{Bst, BstUnitContext, PeopleKey};
 
 fn main() -> Result<(), RuntimeError> {
+    // Every library starts with its context, which runs the units'
+    // initialization parts (BSTUnit has neither variables nor any).
+    let _unit = call(BstUnitContext::new)?;
+
     // A Pascal object is a Rust struct; `Create` is a method like any other.
     let mut tree = Bst::default();
     call(|| tree.create())?;
