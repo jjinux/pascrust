@@ -159,6 +159,10 @@ chosen so each step is testable with the previous ones.
 - [ ] Evaluation order where a function has side effects (the user: follow Free Pascal). Done: `Write(F, G)` writes F before running G; `n := n + Bump` reads `n` first. Not yet, and worth asking whether to chase: on aarch64 Free Pascal calls the function first for reals, strings and sets (`t := t + Ext` where `Ext` changes `t` gives `ayz`, PascRust `az`), and works out an assignment's target index before the right side (now done: such an index goes into a `let` first). These are Free Pascal code-generator details, and may differ on x86.
 - [x] Rename the project to "PascRust" wherever a friendly name fits: the README, the other docs, `Cargo.toml` descriptions, the GitHub repo description, CLI help text and messages, comments and generated-code headers. The directory, the crates, the binary (`pascrust`), the repo name and other identifiers stay `pascrust`.
 
+## Requests from the user, 2026-11-03
+
+- [ ] A Rust project that embeds Pascal code: how does its `cargo build` know to run PascRust on the Pascal? (The user's question.) Likely answer: a `build.rs` build script, with PascRust as a build dependency, that translates the unit into Cargo's `OUT_DIR` (`cargo:rerun-if-changed=unit.pas` so a change in the Pascal is noticed) and an `include!` of it; a helper such as `pascrust::build::library("unit.pas")` would make that `build.rs` two lines. Document it in docs/embedding.md, and test it with the BSTUnit host.
+
 ## Requests from the user, 2026-11-02
 
 In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffea..HEAD`:
