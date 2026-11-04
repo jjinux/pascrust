@@ -144,7 +144,11 @@ pub fn plan(stmts: &[Stmt]) -> Result<Vec<GotoBlock>, Diagnostic> {
     loop {
         let crossing = (0..blocks.len()).flat_map(|a| (0..blocks.len()).map(move |b| (a, b))).find(|&(a, b)| {
             let (x, y) = (&blocks[a], &blocks[b]);
-            x.lo < y.lo && y.lo < x.hi && x.hi < y.hi
+            // (A block that ends where a loop does, inside it, must leave
+            // the loop too: its label comes after the loop. So it counts as
+            // crossing, and starts earlier.)
+            let ends_with_loop = !x.forward && y.forward && x.lo < y.lo && x.hi == y.hi;
+            x.lo < y.lo && y.lo < x.hi && x.hi < y.hi || ends_with_loop
         });
         let Some((a, b)) = crossing else { break };
         if blocks[b].forward {

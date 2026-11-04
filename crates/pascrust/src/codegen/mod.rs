@@ -1366,15 +1366,30 @@ impl<'a> Codegen<'a> {
         self.untyped_guards(pid);
         self.locals(pid);
         // An `Exit` that ends the routine changes nothing, and Rust would warn
-        // that the `result` after its `return result;` can't be reached.
-        let ends_with_exit = body.body.last().is_some_and(|s| match &s.kind {
-            StmtKind::Call(e) => matches!(&e.kind, ExprKind::Name(id) if id.key() == "exit"),
+        // that the `result` after its `return result;` can't be reached. A bare
+        // one is left out (its comments kept); after a labeled one (`Fin:
+        // Exit;`, a `goto` target), there's no `result` to write.
+        let is_exit = |s: &Stmt| matches!(&s.kind, StmtKind::Call(e) if matches!(&e.kind, ExprKind::Name(id) if id.key() == "exit"));
+        let last = body.body.last();
+        let bare_exit = last.is_some_and(is_exit);
+        let labeled_exit = last.is_some_and(|s| match &s.kind {
+            StmtKind::Labeled { body, .. } => {
+                is_exit(body) || matches!(&body.kind, StmtKind::Labeled { .. }) && crate::sema::goto::jumps_away(body)
+            }
             _ => false,
         });
-        let stmts = if ends_with_exit { &body.body[..body.body.len() - 1] } else { &body.body[..] };
-        self.stmts(stmts);
+        if bare_exit {
+            self.stmts(&body.body[..body.body.len() - 1]);
+            let exit = &body.body[body.body.len() - 1];
+            self.leading_comments(exit.span.start);
+            if let Some(comment) = self.comments.take_trailing(exit.span.start) {
+                self.line(comment);
+            }
+        } else {
+            self.stmts(&body.body);
+        }
         let end_comment = self.block_end_comments(body.body_span);
-        if info.result.is_some() {
+        if info.result.is_some() && !labeled_exit {
             self.line("result");
         }
         self.indent -= 1;
@@ -1757,9 +1772,12 @@ impl<'a> Codegen<'a> {
             StmtKind::While { cond, body } => {
                 let cond = self.condition(cond);
                 let labels = self.goto_loop_labels(body, "while_loop");
-                match labels.as_ref().and_then(|l| l.loop_label.as_ref()) {
-                    Some(label) => self.line(format!("{label}: while {cond} {{")),
-                    None => self.line(format!("while {cond} {{")),
+                let label = labels.as_ref().and_then(|l| l.loop_label.as_ref()).map(|l| format!("{l}: "));
+                // `while True do` is Rust's `loop` (it warns about `while true`).
+                if cond == "true" {
+                    self.line(format!("{}loop {{", label.unwrap_or_default()));
+                } else {
+                    self.line(format!("{}while {cond} {{", label.unwrap_or_default()));
                 }
                 self.loops.push(labels);
                 self.block_body(body);
@@ -1869,6 +1887,15 @@ impl<'a> Codegen<'a> {
         if body_block.is_some() {
             self.indent -= 1;
             self.line("}");
+        }
+        // A body that always leaves (`Break`, `Exit`, a `goto` out) never gets
+        // to the `until` test, and Rust would warn about it.
+        if body_block.is_none() && body.last().is_some_and(crate::sema::goto::jumps_away) {
+            self.indent -= 1;
+            self.line("}");
+            self.leading_comments(cond.span.start);
+            self.trailing_comment(cond.span.start);
+            return;
         }
         let at = cond.span.start;
         self.leading_comments(at);
