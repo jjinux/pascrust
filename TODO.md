@@ -274,7 +274,7 @@ Last: raw bytes and C strings
   - [x] `while True do` with no way out but `Exit`: the trailing `result` and the statements after it are unreachable (warnings).
   - [x] A `repeat` body ending in dead code after a `Break`/`Exit` still gets the unreachable `until` test.
   - [x] Small: `library_method`'s unused `captures`; docs/embedding.md on errors outside `call` and on `Halt` in nested `call`s.
-- [ ] Findings of review batch I (a132173..bc55d07), to fix:
+- [x] Findings of review batch I (a132173..bc55d07), fixed:
   - [x] A `goto` out of a goto loop nested in another goto loop (`Main:` ... `Inner:` ... `goto Finish` ... `goto Main`; `Finish:`) loops forever: the block isn't widened past the outer loop.
   - [x] `--lib` on a unit that uses Graph hangs in `InitGraph` (the window needs `run`'s main thread). The user's decision (2026-11-03): refuse it; a program that uses Graph should be a Pascal program that calls out to Rust.
   - [x] `--lib`: `use counter::*` in the host is ambiguous (the crate and its module have one name); the unit's own module should be private, re-exported.
@@ -289,7 +289,7 @@ Last: raw bytes and C strings
   - [x] PRTurtle: `Wrap` in a zero-size `TurtleWindow` hangs.
   - [x] `while True do` gives rustc's `while_true` warning: it should be `loop`.
   - [x] `tpc unit.pas`: decided, check the unit compiles and say how units are used (the program that uses it, or `pascrust build --lib`), naming `tpc`.
-  - [ ] Small: `with r do goto L` emits the `with` comment for nothing.
+  - [x] Small: `with r do goto L` emits the `with` comment for nothing.
 - [x] Findings of review batch H (86ec036..a132173), fixed:
   - [x] A labeled main loop with a forward `goto` out of it (`Main: begin ... goto Finish ... goto Main end; Finish:`) loops forever: the loop is put outside the block.
   - [x] `Inc(i, -32768)` on an Integer (a negative step at the type's minimum) gives a literal out of range.

@@ -2003,14 +2003,16 @@ impl<'a> Codegen<'a> {
                     None => self.line(format!("goto {};", label.name)),
                 }
             }
-            StmtKind::With { .. } => {
+            StmtKind::With { body, .. } => {
                 // `self.a` is a plain shared reference, so copying it out lets
                 // us borrow the rewritten body while `self` is borrowed mutably.
                 let a = self.a;
-                if self.first_time("with") {
+                let rewritten = &a.with_bodies[&s.span.start];
+                // (Nothing to say when the body uses no field: `with r do goto L`.)
+                if rewritten != &**body && self.first_time("with") {
                     self.line("// Pascal `with`: Rust has no equivalent, so each field is written out in full.");
                 }
-                self.stmt(&a.with_bodies[&s.span.start]);
+                self.stmt(rewritten);
             }
         }
     }
