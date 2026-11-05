@@ -137,7 +137,11 @@ impl<'a> Codegen<'a> {
             // needs parentheses before `<`); other calls bind tightly.
             ExprKind::Call { callee, args } => match self.value_cast(callee, args) {
                 Some(code) => code,
-                None => (self.call(callee, args), prec::POSTFIX),
+                None => {
+                    let code = self.call(callee, args);
+                    let precedence = self.call_precedence(callee, args, &code);
+                    (code, precedence)
+                }
             },
             ExprKind::Unary { op, operand } => {
                 let ty = self.a.type_of(e.id).clone();
@@ -1184,6 +1188,29 @@ impl<'a> Codegen<'a> {
             SymKind::Var(_) | SymKind::Const { .. } | SymKind::RuntimeVar { .. } | SymKind::StdText { .. } => {
                 self.expr(callee).0
             }
+        }
+    }
+
+    /// How tightly a call's Rust binds. Most are calls, but a standard
+    /// function can be an expression (`Succ(i)` is `i + 1`, `Odd(n)` is
+    /// `n % 2 != 0`, `Ord(c)` may be `c as i16`), and `Succ(i) * 2` needs
+    /// parentheses around it.
+    fn call_precedence(&self, callee: &Expr, args: &[Expr], code: &str) -> u8 {
+        let builtin = self.a.refs.get(&callee.id).and_then(|&sym| match self.a.sym(sym).kind {
+            SymKind::Builtin(b) => Some(b),
+            _ => None,
+        });
+        // `x as u8` at the end, outside any brackets.
+        let ends_with_cast =
+            code.rsplit_once(" as ").is_some_and(|(_, ty)| ty.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+        match builtin {
+            Some(Builtin::Odd) => prec::CMP,
+            Some(Builtin::Succ | Builtin::Pred) if !matches!(self.a.type_of(args[0].id).concrete(), Type::Enum(_)) => {
+                prec::ADD
+            }
+            Some(Builtin::Concat) if args.len() > 1 => prec::ADD,
+            Some(_) if ends_with_cast => prec::AS,
+            _ => prec::POSTFIX,
         }
     }
 

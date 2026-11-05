@@ -60,7 +60,7 @@ fn count_odd(k: &mut i16) -> i16 {
     loop {
         'repeat_body: {
             *k += 1;
-            if !*k % 2 != 0 {
+            if !(*k % 2 != 0) {
                 break 'repeat_body;
             }
             if *k > 6 {
