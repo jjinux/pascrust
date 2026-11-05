@@ -45,5 +45,8 @@ fn main() -> Result<(), RuntimeError> {
     // Turbo Pascal's arithmetic wraps around (overflow checks are off for
     // the library in this program's Cargo.toml).
     println!("next after 32767: {}", c.next(32767));
+
+    // An `external` routine, written in Rust (counter_rust.rs).
+    println!("tally twice: {}", c.tally_twice(tally));
     Ok(())
 }

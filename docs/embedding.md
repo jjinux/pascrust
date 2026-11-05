@@ -53,9 +53,14 @@ use pascrust_runtime::{RuntimeError, call};
   since nobody edits generated code.
 - Turn on the runtime features the units need (`features = ["crt"]` for
   `Crt`, `["dos"]` for `Dos` or `WinDos`); if one is missing, the program
-  doesn't compile, with a message saying which. A Rust file the unit
+  doesn't compile, and among the errors is one saying which feature. A Rust file the unit
   links that uses crates (`//! cargo:` lines) needs them in
   `[dependencies]` too; the build says so.
+- A unit in another directory than the units it uses: say where to find
+  them with `pascrust::build::library_with(path, &Options { unit_dirs:
+  vec![...], ..Default::default() })` (`pascrust::driver::Options`).
+- A Rust file the unit links with `{$L}` names the unit's types as
+  `super::TList` (see [Calling Rust](calling_rust.md)).
 - The Rust program needs edition 2018 or later. Two libraries that both
   use one unit each get their own copy of it.
 - For hacking on PascRust itself, `path` dependencies on a checkout work
@@ -75,7 +80,9 @@ with the Rust program's settings instead, and a debug build checks: then
   library).
 
 If checks are on, the library's context says so on stderr the first time
-it's made.
+it's made. (That check, and `call`'s turning a runtime error into an
+`Err`, need Rust's default `panic = "unwind"`; with `panic = "abort"`
+there's no check, and a runtime error ends the program.)
 
 ## With `pascrust build --lib`
 

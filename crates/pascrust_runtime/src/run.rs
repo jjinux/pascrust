@@ -124,6 +124,10 @@ thread_local! {
 /// an addition compiled in the library (`i16::MAX + 1`), and says so on
 /// stderr if it panicked.
 pub fn warn_unless_wrapping(probe: fn() -> i16) {
+    // With `panic = "abort"` a panic can't be caught, so there's no asking.
+    if cfg!(panic = "abort") {
+        return;
+    }
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         quiet_runtime_errors();

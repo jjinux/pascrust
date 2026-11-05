@@ -1,6 +1,6 @@
 //! The Rust half of rust_callback.pas: a sort that calls back into Pascal.
 
-use crate::{TLess, TList};
+use super::{TLess, TList};
 
 /// An insertion sort that asks Pascal which of two items comes first.
 pub fn sort_with(items: &mut TList, less: TLess) {

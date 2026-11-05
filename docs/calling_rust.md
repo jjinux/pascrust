@@ -72,7 +72,7 @@ examples/pascrust/calls_rust.pas`.
 | `Boolean` | `bool` |
 | `Char` | `u8` (a byte, as in TP) |
 | `string`, `string[n]` | `PString` (`pascrust_runtime::PString`) |
-| an enum, record or object of the program | its Rust type, `crate::TPoint` |
+| an enum, record or object of the program | its Rust type, `super::TPoint` |
 | `array[1..10] of T` | `PArray<T, 1, 10>` |
 | `^T` | `Ptr<T>` |
 | a `var` parameter | `&mut T` |
@@ -110,7 +110,7 @@ end;
 
 ```rust
 // sorting.rs
-use crate::{TLess, TList};
+use super::{TLess, TList};
 
 pub fn sort_with(items: &mut TList, less: TLess) {
     let less = less.get(); // the Pascal function, as a Rust `fn`
@@ -126,8 +126,10 @@ pub fn sort_with(items: &mut TList, less: TLess) {
 }
 ```
 
-The program's types are in the crate root, so the Rust file names them
-as `crate::TLess`. A procedural type is a `ProcVar`, and `.get()` gives
+The Rust file is a module next to the Pascal code's, so it names the
+program's (or the unit's) types as `super::TLess`, which works for a
+program, for `pascrust build --lib` and inside `include_library!` alike
+(`crate::TLess` works only for a program). A procedural type is a `ProcVar`, and `.get()` gives
 the routine as a plain Rust function pointer. A routine that uses the
 program's global variables takes them as parameters too, so a callback
 is simplest when it uses only its own parameters (`pascrust emit` shows

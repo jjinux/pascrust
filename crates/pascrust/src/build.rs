@@ -87,11 +87,22 @@ pub fn library_with(path: impl AsRef<Path>, options: &Options) -> Result<(), Err
 fn single_file(files: &[(String, String)]) -> String {
     let (_, lib) = &files[0];
     let mut out = String::new();
-    for line in lib.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("#![") {
-            continue;
+    // The comment just above `#![allow(...)]` explains it; both go (the
+    // macro's module has the `#[allow]`s).
+    let lines: Vec<&str> = lib.lines().collect();
+    let mut skip = vec![false; lines.len()];
+    for (i, line) in lines.iter().enumerate() {
+        if line.trim().starts_with("#![") {
+            skip[i] = true;
+            let mut j = i;
+            while j > 0 && lines[j - 1].trim().starts_with("//") && !lines[j - 1].trim().starts_with("//!") {
+                j -= 1;
+                skip[j] = true;
+            }
         }
+    }
+    for (line, _) in lines.iter().zip(&skip).filter(|(_, skip)| !**skip) {
+        let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("//!") {
             out.push_str(&format!("//{rest}\n"));
             continue;
@@ -131,7 +142,7 @@ mod tests {
         let files = vec![
             (
                 "lib.rs".to_string(),
-                "//! Generated.\n#![allow(dead_code)]\nmod counter;\npub mod helper;\npub use counter::*;\n"
+                "//! Generated.\n// Why the allow is there.\n#![allow(dead_code)]\nmod counter;\npub mod helper;\npub use counter::*;\n"
                     .to_string(),
             ),
             ("counter.rs".to_string(), "//! Counter.\npub fn bump() {}\n".to_string()),

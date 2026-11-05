@@ -3,7 +3,7 @@
 //! usual types (Integer is `i16`, a string `PString`, a `var` parameter
 //! `&mut`); `pascrust emit calls_rust.pas` shows the signatures.
 
-use crate::{TLess, TNumbers};
+use super::{TLess, TNumbers};
 use pascrust_runtime::prelude::*;
 
 /// An environment variable, or '' if it isn't set.

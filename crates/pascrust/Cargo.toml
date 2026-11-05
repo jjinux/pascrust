@@ -23,6 +23,11 @@ required-features = ["cli"]
 name = "tpc"
 required-features = ["cli"]
 
+# It runs the `tpc` binary.
+[[test]]
+name = "tpc_tests"
+required-features = ["cli"]
+
 [dependencies]
 clap = { version = "4", features = ["derive"], optional = true }
 

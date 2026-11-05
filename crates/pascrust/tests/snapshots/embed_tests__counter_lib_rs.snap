@@ -14,10 +14,12 @@ expression: "generated.files[0].1"
 // Each Pascal unit is a module; the units it uses are public, since the
 // unit's interface may name their types.
 mod counter;
+pub mod counter_rust;
 pub mod helper;
 
 // The unit's interface (and the runtime, with `PString`, `call` and the rest).
 pub use counter::*;
+pub use counter_rust::tally_twice;
 pub use pascrust_runtime;
 
 #[allow(unused_imports)]
@@ -114,5 +116,10 @@ impl CounterContext {
     /// Pascal: `function Next(N: Integer): Integer;`
     pub fn next(&self, n: i16) -> i16 {
         counter::next(n)
+    }
+
+    /// Pascal: `function TallyTwice(T: TTally): Integer;`
+    pub fn tally_twice(&self, t: TTally) -> i16 {
+        counter_rust::tally_twice(t)
     }
 }

@@ -63,3 +63,48 @@ fn a_crt_unit_checks_for_the_crt_feature() {
     let generated = pascrust::driver::transpile_library(&scratch.join("screen.pas"), &Default::default()).unwrap();
     assert!(generated.files[0].1.contains("pascrust_runtime::FEATURE_CRT"), "{}", generated.files[0].1);
 }
+
+/// `tests/embed/counter.pas` through a build script: a unit with variables,
+/// a unit it uses, and a linked Rust file that names its types `super::`.
+/// The program is `counter_host.rs`, with `include_library!` in front.
+#[test]
+fn a_build_script_with_used_units_and_linked_rust() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("build_rs_counter");
+    std::fs::create_dir_all(scratch.join("src")).unwrap();
+    let crates = root.join("crates");
+    std::fs::write(
+        scratch.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"counter_build\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n\
+             [dependencies]\npascrust_runtime = {{ path = \"{}\" }}\n\n\
+             [build-dependencies]\npascrust = {{ path = \"{}\", default-features = false }}\n\n\
+             [profile.dev]\noverflow-checks = false\n",
+            crates.join("pascrust_runtime").display(),
+            crates.join("pascrust").display()
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        scratch.join("build.rs"),
+        format!(
+            "fn main() {{\n    pascrust::build::library({:?}).unwrap();\n}}\n",
+            root.join("tests/embed/counter.pas")
+        ),
+    )
+    .unwrap();
+    // (Its `//!` header can't follow the macro, so it's plain comments here.)
+    let host = std::fs::read_to_string(root.join("tests/embed/counter_host.rs")).unwrap().replace("//!", "//");
+    std::fs::write(scratch.join("src/main.rs"), format!("pascrust_runtime::include_library!(counter);\n\n{host}"))
+        .unwrap();
+    let output = Command::new("cargo")
+        .args(["run", "--quiet", "--manifest-path"])
+        .arg(scratch.join("Cargo.toml"))
+        .env("CARGO_TARGET_DIR", Path::new(env!("CARGO_TARGET_TMPDIR")).join("embed/target"))
+        .env("RUSTFLAGS", "-D warnings")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "the program failed:\n{}", String::from_utf8_lossy(&output.stderr));
+    let expected = std::fs::read_to_string(root.join("tests/embed/counter_host.out")).unwrap();
+    assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+}

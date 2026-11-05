@@ -24,7 +24,10 @@ interface
    procedure AddTimes(N, Times: Integer);
    function Probe: Integer;
    function Next(N: Integer): Integer;
+   function TallyTwice(T: TTally): Integer;
 implementation
+   {$L counter_rust.rs}
+   function TallyTwice(T: TTally): Integer; external;
    const
       Secret: Integer = 7;
    var
