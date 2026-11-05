@@ -143,6 +143,19 @@ impl<'a> Codegen<'a> {
                     (code, precedence)
                 }
             },
+            // `not Odd(n)` is `n % 2 == 0`, as a person would write it.
+            ExprKind::Unary { op: UnaryOp::Not, operand }
+                if let ExprKind::Call { callee, args } = &operand.kind
+                    && args.len() == 1
+                    && self
+                        .a
+                        .refs
+                        .get(&callee.id)
+                        .is_some_and(|&s| matches!(self.a.sym(s).kind, SymKind::Builtin(Builtin::Odd))) =>
+            {
+                let t = self.a.type_of(args[0].id).concrete();
+                (format!("{} % 2 == 0", paren(self.coerce(&args[0], &t), prec::MUL)), prec::CMP)
+            }
             ExprKind::Unary { op, operand } => {
                 let ty = self.a.type_of(e.id).clone();
                 let inner = paren(self.coerce(operand, &ty), prec::UNARY);
@@ -707,8 +720,10 @@ impl<'a> Codegen<'a> {
             let rust_op = if op == BinaryOp::Shl { "<<" } else { ">>" };
             // `x as i16 << y` would parse `<` as the start of generic
             // arguments, so a cast on the left of `<<` gets parentheses.
-            let left_min = if left.1 == prec::AS { prec::UNARY } else { prec::SHIFT };
-            (format!("{} {rust_op} {}", paren(left, left_min), paren(right, prec::SHIFT + 1)), prec::SHIFT)
+            let left_min = if left.1 == prec::AS { prec::UNARY } else { prec::AS };
+            // (Arithmetic on either side gets parentheses, as a person writes
+            // it: `(i + 1) << 1`, though Rust wouldn't need them.)
+            (format!("{} {rust_op} {}", paren(left, left_min), paren(right, prec::AS)), prec::SHIFT)
         } else {
             // Shifting by the type's width or more shifts every bit out in
             // Turbo Pascal (`x shl 16` is 0), but Rust's `<<` rejects it (or
@@ -1205,7 +1220,9 @@ impl<'a> Codegen<'a> {
             code.rsplit_once(" as ").is_some_and(|(_, ty)| ty.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
         match builtin {
             Some(Builtin::Odd) => prec::CMP,
-            Some(Builtin::Succ | Builtin::Pred) if !matches!(self.a.type_of(args[0].id).concrete(), Type::Enum(_)) => {
+            Some(Builtin::Succ | Builtin::Pred)
+                if !matches!(self.a.type_of(args[0].id).concrete(), Type::Enum(_) | Type::Bool) =>
+            {
                 prec::ADD
             }
             Some(Builtin::Concat) if args.len() > 1 => prec::ADD,
@@ -1227,6 +1244,36 @@ impl<'a> Codegen<'a> {
             return None;
         }
         let ty = ty.clone();
+        // `Word(-1)`, `Char(66)`: a number converted is worked out here
+        // (65535, `b'B'`), keeping its low bits as TP did; Rust won't apply
+        // `-` to a `u16`, and `66 as u8` reads worse than the character.
+        let number = match &args[0].kind {
+            ExprKind::Int(n) => Some(*n),
+            ExprKind::Unary { op: UnaryOp::Neg, operand } => match operand.kind {
+                ExprKind::Int(n) => Some(-n),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(n) = number {
+            match ty.concrete() {
+                Type::Char => return Some((char_literal(n as u8), prec::ATOM)),
+                Type::Int(kind) => {
+                    let bits = match kind {
+                        IntKind::ShortInt | IntKind::Byte => 8,
+                        IntKind::Integer | IntKind::Word => 16,
+                        IntKind::LongInt => 32,
+                    };
+                    let mut value = n & ((1_i64 << bits) - 1);
+                    if kind.contains(-1) && value >= 1 << (bits - 1) {
+                        value -= 1 << bits; // a signed type's high bit is its sign
+                    }
+                    let precedence = if value < 0 { prec::UNARY } else { prec::ATOM };
+                    return Some((format!("{value}_{}", kind.rust()), precedence));
+                }
+                _ => {}
+            }
+        }
         let code = self.coerce(&args[0], &from.concrete());
         Some(cast(code, &from.concrete(), &ty))
     }

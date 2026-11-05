@@ -37,7 +37,7 @@ fn pascal_main() {
     pwriteln!(
         ((i16::from(c) + 1) as u8) < b'C',
         " ",
-        i16::from((i * 300 >> 8) as u8) * 2,
+        i16::from(((i * 300) >> 8) as u8) * 2,
         " ",
         i16::from(i as u8) * 2,
         " ",

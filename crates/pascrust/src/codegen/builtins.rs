@@ -205,7 +205,8 @@ impl<'a> Codegen<'a> {
             }
             Succ | Pred => {
                 let t = ty(self, &args[0]).concrete();
-                if let Type::Enum(_) = t {
+                // (A Boolean is the enum `(False, True)`.)
+                if let Type::Enum(_) | Type::Bool = t {
                     let method = if b == Succ { "succ" } else { "pred" };
                     return format!("{}.{method}()", self.postfix(&args[0], &t));
                 }
@@ -290,7 +291,7 @@ impl<'a> Codegen<'a> {
             }
             Hi => {
                 let t = ty(self, &args[0]).concrete();
-                format!("({} >> 8) as u8", paren(self.coerce(&args[0], &t), prec::SHIFT + 1))
+                format!("({} >> 8) as u8", paren(self.coerce(&args[0], &t), prec::AS))
             }
             Swap => {
                 // The type it works in, as sema chose it (a Byte as a Word,

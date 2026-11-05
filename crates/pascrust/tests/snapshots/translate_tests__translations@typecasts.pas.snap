@@ -47,7 +47,7 @@ fn pascal_main() {
     i = 2;
     b = i != 0;
     c = Color::from_ord(i - 1);
-    pwriteln!(b, " ", 0 != 0, " ", c as i16, " ", Color::Blue as i16, " ", 65 as u8, " ", i16::from(b'a'));
+    pwriteln!(b, " ", 0 != 0, " ", c as i16, " ", Color::Blue as i16, " ", b'A', " ", i16::from(b'a'));
 }
 
 fn main() {

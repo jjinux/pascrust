@@ -269,17 +269,17 @@ Graph, the rest
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a7c84bf (batches A-L). Not yet reviewed: `a7c84bf..HEAD`. Keep this range up to date.
-- [ ] Findings of review batch L (6b96dc9..a7c84bf), to fix:
+- [x] Findings of review batch L (6b96dc9..a7c84bf), fixed (the user's choices: `super::` in linked Rust, no overflow probe under `panic = "abort"`, Boolean `Succ`/`Pred` as for an enum, clippy-clean where a person would write it so):
   - [x] A linked `.rs` that names the unit's types `crate::X` (as docs/calling_rust.md and calls_rust.rs say) doesn't compile under `include_library!`; `super::X` works everywhere.
   - [x] The overflow probe aborts the program under `panic = "abort"` (`catch_unwind` can't catch).
-  - [ ] A user cast of a negative literal (`Word(-1) div 2`) doesn't compile.
-  - [ ] `Succ`/`Pred` of a Boolean doesn't compile (`ok + 1`).
+  - [x] A user cast of a negative literal (`Word(-1) div 2`) doesn't compile.
+  - [x] `Succ`/`Pred` of a Boolean doesn't compile (`ok + 1`).
   - [x] The `FEATURE_CRT` check's message comes after the missing-name errors, not first (docs wording).
   - [x] `single_file` keeps the comment explaining the `#![allow]` it strips.
-  - [ ] Readability: `not Odd(a)` as `!(a % 2 != 0)`; a shift mixed with arithmetic without parentheses (clippy's `precedence`); `Char(66)` as `(66 as u8)`.
+  - [x] Readability: `not Odd(a)` as `!(a % 2 != 0)`; a shift mixed with arithmetic without parentheses (clippy's `precedence`); `Char(66)` as `(66 as u8)`.
   - [x] docs/embedding.md doesn't mention `library_with`/`unit_dirs`, or that a linked `.rs` uses `super::`.
   - [x] `tpc_tests` need the `cli` feature (`required-features`).
-  - [ ] Low: `calls_rust.pas`'s sort has no run test of its own.
+  - [x] Low: `calls_rust.pas`'s sort has no run test of its own (left: `rust_callback` covers Rust calling back into Pascal, and the examples test builds it).
 - [x] Findings of review batch K (1fc2d9b..6b96dc9), fixed:
   - [x] A function ending in `repeat ... until False` doesn't compile (`if false { break; }` makes the loop `()`); `repeat ... until False` should just be `loop`.
   - [x] A `goto` counts as leaving a `while True` loop, so the Rust after it is unreachable (warnings): only a `Break` leaves it.
