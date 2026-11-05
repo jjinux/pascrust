@@ -13,6 +13,7 @@ input_file: tests/translate/goto_dead_jumps.pas
 // (`b := 250; Inc(b, 10)`) is fine too.
 #![allow(unused_variables, unused_assignments, dead_code, arithmetic_overflow)]
 
+#[allow(unused_imports)]
 use pascrust_runtime::prelude::*;
 
 // Dead code after statements that always jump away: an if whose two

@@ -898,7 +898,14 @@ window meanwhile (§19).
   (`goto::dead`), and Rust warns about code it can't reach, so codegen
   writes their Rust commented out (the user's choice), under "Never runs,
   in the Pascal either". Sema still checks them, but what they change
-  doesn't make a variable `mut`.
+  doesn't make a variable `mut`. A statement "jumps away"
+  (`goto::jumps_away`) if it never falls through: a `goto`, `Exit`,
+  `Break`, `Continue`; a `begin ... end`, `if`/`else` or `case`/`else`
+  all of whose ways jump; and `while True do` or `repeat ... until False`
+  that no `Break` of its own leaves (a `goto` out is a `break` of a block
+  around the loop, so the loop itself still never ends). `repeat ... until
+  False` is a plain `loop`, and a function whose body never gets to its
+  end has no trailing `result`.
 - **System variables** (`ExitCode`, `RandSeed`, `FileMode`, and a unit's,
   like Crt's `TextAttr`, listed in `units::unit_vars`) live in the
   runtime, as a getter and a setter (`SymKind::RuntimeVar`): reading is

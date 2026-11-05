@@ -38,5 +38,8 @@ fn main() -> Result<(), RuntimeError> {
     // A routine that changes its own value parameter.
     call(|| c.add_times(10, 3))?;
     println!("add times: {}", c.current());
+    // Called directly, without `call`: the Pascal handles its own I/O
+    // error (`{$I-}`), so nothing is printed.
+    println!("probe: {}", c.probe());
     Ok(())
 }

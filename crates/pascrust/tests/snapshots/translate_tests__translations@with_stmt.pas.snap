@@ -92,6 +92,8 @@ fn pascal_main() {
     head = Ptr::nil();
     for i in 1_i16..=3 {
         p = Ptr::alloc();
+        // TP finds a `with` record once, before the body runs: the pointer is
+        // copied first, so the body means that record even if it changes the pointer.
         node = p.clone();
         node.get_mut().value = i * 10;
         node.get_mut().next = head.clone();

@@ -290,8 +290,9 @@ impl<'a> Codegen<'a> {
     /// `use` lines shared by every generated file.
     fn imports(&mut self, current_module: Option<&str>) {
         self.blank();
-        // A small unit may use nothing from the runtime.
-        if current_module.is_some() {
+        // A small unit may use nothing from the runtime, nor a program whose
+        // only uses of it are commented out as dead code.
+        if current_module.is_some() || self.a.has_dead_code {
             self.line("#[allow(unused_imports)]");
         }
         self.line("use pascrust_runtime::prelude::*;");
@@ -2008,8 +2009,18 @@ impl<'a> Codegen<'a> {
                 // us borrow the rewritten body while `self` is borrowed mutably.
                 let a = self.a;
                 let rewritten = &a.with_bodies[&s.span.start];
+                // Sema puts the pointer copies (`with p^ do`) and the body in a
+                // `begin ... end` the size of the whole `with`.
+                let (copies, rewritten_body) = match &rewritten.kind {
+                    StmtKind::Compound(stmts) if rewritten.span == s.span => (stmts.len() - 1, stmts.last().unwrap()),
+                    _ => (0, rewritten),
+                };
+                if copies > 0 && self.first_time("with_pointer") {
+                    self.line("// TP finds a `with` record once, before the body runs: the pointer is");
+                    self.line("// copied first, so the body means that record even if it changes the pointer.");
+                }
                 // (Nothing to say when the body uses no field: `with r do goto L`.)
-                if rewritten != &**body && self.first_time("with") {
+                if rewritten_body != &**body && self.first_time("with") {
                     self.line("// Pascal `with`: Rust has no equivalent, so each field is written out in full.");
                 }
                 self.stmt(rewritten);
@@ -2085,8 +2096,10 @@ impl<'a> Codegen<'a> {
             self.line("}");
         }
         // A body that always leaves (`Break`, `Exit`, a `goto` out) never gets
-        // to the `until` test, and Rust would warn about it.
-        if body_block.is_none() && crate::sema::goto::list_jumps_away(body) {
+        // to the `until` test, and Rust would warn about it; `until False`
+        // has no test to write (only `Break` or `Exit` ends the loop).
+        let endless = crate::sema::goto::is_word(cond, "false");
+        if endless || body_block.is_none() && crate::sema::goto::list_jumps_away(body) {
             self.indent -= 1;
             self.line("}");
             self.leading_comments(cond.span.start);

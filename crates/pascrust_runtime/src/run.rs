@@ -63,7 +63,10 @@ pub fn io_unchecked<R: Default>(f: impl FnOnce() -> R) -> R {
     // that nothing is left half-changed when it does. That holds here: a
     // failed I/O call leaves its file in a consistent state (a failed
     // `Reset` has closed the file first, as TP's does).
-    match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
+    UNCHECKED_DEPTH.set(UNCHECKED_DEPTH.get() + 1);
+    let result = panic::catch_unwind(panic::AssertUnwindSafe(f));
+    UNCHECKED_DEPTH.set(UNCHECKED_DEPTH.get() - 1);
+    match result {
         Ok(value) => value,
         Err(payload) => {
             // (Not `Halt` inside a `call`, which ends what `call` runs.)
@@ -107,6 +110,9 @@ pub fn halt(code: i32) {
 thread_local! {
     /// How many [`call`]s this thread is inside.
     static CALL_DEPTH: Cell<u32> = const { Cell::new(0) };
+    /// How many [`io_unchecked`]s: an I/O error there is for `IOResult`,
+    /// not a message.
+    static UNCHECKED_DEPTH: Cell<u32> = const { Cell::new(0) };
 }
 
 /// Run a translated Pascal program. Generated `main` functions call this.
@@ -172,7 +178,9 @@ fn quiet_runtime_errors() {
                 // happened before the panic stops the program.
                 Some(err) => {
                     let in_run = std::thread::current().name() == Some("pascal");
-                    if !in_run && CALL_DEPTH.get() == 0 {
+                    // (An I/O error under `{$I-}` is for `IOResult`.)
+                    let for_io_result = UNCHECKED_DEPTH.get() > 0 && err.code < 200 && !err.halted;
+                    if !in_run && CALL_DEPTH.get() == 0 && !for_io_result {
                         eprintln!("{err}");
                     }
                 }

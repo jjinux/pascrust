@@ -1517,6 +1517,7 @@ impl Checker {
         for (s, dead) in stmts.iter().zip(super::goto::dead(stmts)) {
             let saved = self.in_dead;
             self.in_dead |= dead;
+            self.a.has_dead_code |= dead;
             self.stmt(s);
             self.in_dead = saved;
         }

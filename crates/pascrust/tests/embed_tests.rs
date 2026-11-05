@@ -62,6 +62,9 @@ fn run_host(unit: &str, crate_name: &str, host: &str) {
         .output()
         .unwrap();
     assert!(output.status.success(), "{host} failed:\n{}", String::from_utf8_lossy(&output.stderr));
+    // No runtime error reached stderr (one the Pascal handles stays quiet).
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("Runtime error"), "{host} printed:\n{stderr}");
     let expected = std::fs::read_to_string(root.join(format!("tests/embed/{host}.out"))).unwrap();
     assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
 }

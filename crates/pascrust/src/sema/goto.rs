@@ -113,27 +113,21 @@ pub fn jumps_away(s: &Stmt) -> bool {
 }
 
 /// True if `e` is the name `word` (`True`, `False`).
-fn is_word(e: &Expr, word: &str) -> bool {
+pub fn is_word(e: &Expr, word: &str) -> bool {
     matches!(&e.kind, ExprKind::Name(id) if id.key() == word)
 }
 
 /// True if `s` may leave the loop it's in: a `Break` for it (not one of a
-/// loop inside it), or any `goto`.
+/// loop inside it). (A `goto` out of it is a `break` of a block around
+/// the loop, or a `continue` of one; the loop itself still never ends,
+/// and the label the `goto` lands on starts live code again.)
 fn leaves(s: &Stmt) -> bool {
     match &s.kind {
-        StmtKind::Goto(_) => true,
         StmtKind::Call(e) => is_word(e, "break"),
-        StmtKind::While { body, .. } | StmtKind::For { body, .. } => contains_goto(body),
-        StmtKind::Repeat { body, .. } => body.iter().any(contains_goto),
+        StmtKind::Labeled { body, .. } => leaves(body),
+        StmtKind::While { .. } | StmtKind::For { .. } | StmtKind::Repeat { .. } => false,
         _ => statement_lists(s).iter().any(|list| list.iter().any(leaves)),
     }
-}
-
-/// True if there's a `goto` anywhere in `s`.
-fn contains_goto(s: &Stmt) -> bool {
-    let mut found = false;
-    visit(s, &mut |s| found |= matches!(s.kind, StmtKind::Goto(_)));
-    found
 }
 
 /// True if a statement list never gets to its end: its last statement

@@ -7,3 +7,4 @@ hook: 49
 tick twice: helper_count 104, helper's count 2
 tally: 3, count 52
 add times: 82
+probe: 2

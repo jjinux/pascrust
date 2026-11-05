@@ -104,4 +104,9 @@ impl CounterContext {
     pub fn add_times(&mut self, n: i16, times: i16) {
         counter::add_times(&mut self.count_2, n, times)
     }
+
+    /// Pascal: `function Probe: Integer;`
+    pub fn probe(&self) -> i16 {
+        counter::probe()
+    }
 }

@@ -13,6 +13,7 @@ input_file: tests/translate/endless_loops.pas
 // (`b := 250; Inc(b, 10)`) is fine too.
 #![allow(unused_variables, unused_assignments, dead_code, arithmetic_overflow)]
 
+#[allow(unused_imports)]
 use pascrust_runtime::prelude::*;
 
 // Loops only Exit leaves (while True, repeat ... until False): what follows
@@ -45,9 +46,6 @@ fn spin(k: &mut i16) {
         *k += 1;
         if *k > 2 {
             return;
-        }
-        if false {
-            break;
         }
     }
     // Never runs, in the Pascal either:

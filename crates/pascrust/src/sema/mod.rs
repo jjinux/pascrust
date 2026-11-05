@@ -228,6 +228,9 @@ pub struct Analysis {
     /// `with r do x := 1` → `r.x := 1`. Sema checks, and codegen emits, the
     /// rewritten statement.
     pub with_bodies: HashMap<usize, crate::ast::Stmt>,
+    /// True if some statement can never run (codegen comments it out, so
+    /// the runtime's prelude may be left unused).
+    pub has_dead_code: bool,
     /// Methods declared `virtual`.
     pub virtuals: HashSet<ProcId>,
     /// Methods declared `constructor` or `destructor`.

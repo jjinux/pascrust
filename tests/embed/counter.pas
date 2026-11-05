@@ -22,6 +22,7 @@ interface
    procedure CallHook(N: Integer);
    procedure TickTwice;
    procedure AddTimes(N, Times: Integer);
+   function Probe: Integer;
 implementation
    const
       Secret: Integer = 7;
@@ -72,6 +73,17 @@ implementation
             Count := Count + N;
             Times := Times - 1;
          end;
+      end;
+   { An I/O error under $I-, handled by the Pascal code itself. }
+   function Probe: Integer;
+      var
+         F: Text;
+      begin
+         Assign(F, 'no_such_file.txt');
+         {$I-}
+         Reset(F);
+         {$I+}
+         Probe := IOResult;
       end;
 begin
    Internal := Secret;
