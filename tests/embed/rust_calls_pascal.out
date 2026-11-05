@@ -1,0 +1,7 @@
+insert 1997: true
+insert 1984: true
+insert 2026: true
+insert 1990: true
+search 1990: true, at record 4
+smallest: 1984
+after deleting 1984, smallest: 1990

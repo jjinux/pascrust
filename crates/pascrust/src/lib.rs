@@ -7,6 +7,8 @@
 //! ```
 
 pub mod ast;
+// For a Rust program's build.rs: translate Pascal while Cargo builds.
+pub mod build;
 pub mod codegen;
 pub mod diag;
 pub mod driver;

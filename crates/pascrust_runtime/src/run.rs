@@ -113,6 +113,31 @@ thread_local! {
     /// How many [`io_unchecked`]s: an I/O error there is for `IOResult`,
     /// not a message.
     static UNCHECKED_DEPTH: Cell<u32> = const { Cell::new(0) };
+    /// True while [`warn_unless_wrapping`] tries an overflow on purpose.
+    static PROBING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Turbo Pascal's integer arithmetic wraps around (32767 + 1 is -32768).
+/// A Pascal program's own Cargo.toml turns Rust's overflow checks off, but
+/// a library is built with the Rust program's settings, where a debug
+/// build has them on. A library's context calls this once with `probe`,
+/// an addition compiled in the library (`i16::MAX + 1`), and says so on
+/// stderr if it panicked.
+pub fn warn_unless_wrapping(probe: fn() -> i16) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        quiet_runtime_errors();
+        PROBING.set(true);
+        let checked = panic::catch_unwind(probe).is_err();
+        PROBING.set(false);
+        if checked {
+            eprintln!(
+                "[PascRust] Rust's overflow checks are on for the Pascal code, so arithmetic Turbo Pascal \
+                 wraps around (32767 + 1) will stop with a runtime error instead. Turn them off for it in \
+                 your Cargo.toml (`overflow-checks = false`; see docs/embedding.md in PascRust)."
+            );
+        }
+    });
 }
 
 /// Run a translated Pascal program. Generated `main` functions call this.
@@ -172,6 +197,8 @@ fn quiet_runtime_errors() {
         let default_hook = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
             match info.payload().downcast_ref::<RuntimeError>() {
+                // (`warn_unless_wrapping` overflows on purpose.)
+                None if PROBING.get() => {}
                 None => default_hook(info),
                 // `run` (on its "pascal" thread) and `call` report it; outside
                 // them (Pascal code a Rust program called directly), say what

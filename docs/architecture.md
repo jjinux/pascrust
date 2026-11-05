@@ -1256,7 +1256,22 @@ captures passed as fields (designed with Fable; the user chose the name
 and that every interface routine is a method). A general "bundled
 globals" mode was considered and left: one bundle would make Rust see two
 borrows where lifting passes separate variables.
-`tests/embed/bst_host.rs` uses the user's `bstunit.pas`
+A Rust project can also run PascRust from its `build.rs`
+(`pascrust::build::library`, designed in `notes/build_rs.md` and reviewed
+by Fable): the library's files become one file in `OUT_DIR`, each module
+inline (`include!` can't take `mod x;` or a leading `//!`/`#![...]`),
+brought in by the runtime's `include_library!`, which allows the lints of
+generated code. Inside the user's crate the units are nested, so a
+library's modules name each other `super::helper` (`Codegen::root`;
+`crate::` at a crate's root is the same). The build script prints
+`cargo:rerun-if-changed` for `Generated::sources`, every file the driver
+read; `lib.rs` checks the runtime features it needs at compile time
+(`FEATURE_CRT`), since a Rust program chooses those; and a context's
+`new()` probes once whether Cargo's overflow checks are on for the
+generated code (`warn_unless_wrapping`), since a library is built with
+the program's profile. `pascrust` as a build dependency leaves out the
+command-line tools (the `cli` feature). `examples/pascrust/rust_calls_pascal`
+is the example (`build_rs_tests.rs`). `tests/embed/bst_host.rs` uses the user's `bstunit.pas`
 (`embed_tests.rs`); `docs/embedding.md` is the user guide. This is the
 "Pascal crust inside Rust" configuration from the project's name.
 

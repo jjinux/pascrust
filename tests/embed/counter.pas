@@ -23,6 +23,7 @@ interface
    procedure TickTwice;
    procedure AddTimes(N, Times: Integer);
    function Probe: Integer;
+   function Next(N: Integer): Integer;
 implementation
    const
       Secret: Integer = 7;
@@ -84,6 +85,11 @@ implementation
          Reset(F);
          {$I+}
          Probe := IOResult;
+      end;
+   { Integer arithmetic wraps around, as in TP: Next(32767) is -32768. }
+   function Next(N: Integer): Integer;
+      begin
+         Next := N + 1;
       end;
 begin
    Internal := Secret;

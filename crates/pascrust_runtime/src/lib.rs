@@ -31,4 +31,39 @@ pub mod string;
 pub mod system;
 pub mod variants;
 
+pub use run::warn_unless_wrapping;
 pub use run::{RuntimeError, call, halt, rte, run, shutdown};
+
+/// Whether this runtime was built with the `Crt` unit (the `crt` feature).
+/// A library from `pascrust::build` checks it at compile time, so a Rust
+/// program that forgot the feature gets a clear message.
+pub const FEATURE_CRT: bool = cfg!(feature = "crt");
+
+/// Whether this runtime was built with the `Dos` unit (the `dos` feature).
+pub const FEATURE_DOS: bool = cfg!(feature = "dos");
+
+/// Bring in a Pascal unit translated by `pascrust::build::library` in the
+/// program's `build.rs`: `pascrust_runtime::include_library!(bstunit);` is
+/// the module `bstunit`, from the file the build script wrote into Cargo's
+/// `OUT_DIR`.
+///
+/// Its lints are allowed, since nobody edits generated code. (`env!` and
+/// `concat!` expand where the macro is used, so `OUT_DIR` is the Rust
+/// program's own.)
+#[macro_export]
+macro_rules! include_library {
+    ($name:ident) => {
+        #[allow(
+            unused_imports,
+            unused_variables,
+            unused_assignments,
+            dead_code,
+            arithmetic_overflow,
+            missing_docs,
+            clippy::all
+        )]
+        pub mod $name {
+            include!(concat!(env!("OUT_DIR"), "/", stringify!($name), ".rs"));
+        }
+    };
+}

@@ -41,5 +41,9 @@ fn main() -> Result<(), RuntimeError> {
     // Called directly, without `call`: the Pascal handles its own I/O
     // error (`{$I-}`), so nothing is printed.
     println!("probe: {}", c.probe());
+
+    // Turbo Pascal's arithmetic wraps around (overflow checks are off for
+    // the library in this program's Cargo.toml).
+    println!("next after 32767: {}", c.next(32767));
     Ok(())
 }

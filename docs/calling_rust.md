@@ -31,7 +31,11 @@ pub fn twice(n: i16) -> i16 {
 }
 ```
 
-`pascrust run beeper.pas` prints `beep at 440 Hz` and `42`.
+`pascrust run beeper.pas` prints `beep at 440 Hz` and `42`. For a fuller
+example, `examples/pascrust/calls_rust.pas` (with `calls_rust.rs`) uses
+Rust for an environment variable, word counting and primes, and has Rust
+sort with a Pascal function: `cargo run -p pascrust -- run
+examples/pascrust/calls_rust.pas`.
 
 ## How it works
 

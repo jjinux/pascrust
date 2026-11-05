@@ -8,13 +8,15 @@ use std::process::{Command, Stdio};
 
 #[test]
 fn a_rust_program_calls_a_pascal_unit() {
-    run_host("examples/database/bstunit.pas", "bstunit", "bst_host");
+    // (Overflow checks on: PascRust warns once.)
+    run_host("examples/database/bstunit.pas", "bstunit", "bst_host", false);
 }
 
 /// A unit with variables: they're the fields of `CounterContext`.
 #[test]
 fn a_rust_program_owns_a_units_variables() {
-    run_host("tests/embed/counter.pas", "counter", "counter_host");
+    // (Overflow checks off for the library, so its arithmetic wraps.)
+    run_host("tests/embed/counter.pas", "counter", "counter_host", true);
 }
 
 /// The `lib.rs` that `--lib` writes for it, as a snapshot (review the diff
@@ -32,8 +34,10 @@ fn the_libraries_lib_rs() {
 
 /// Build the unit at `unit` as the library `crate_name`, then the Rust
 /// program `tests/embed/<host>.rs` that uses it, and check its output
-/// against `tests/embed/<host>.out`.
-fn run_host(unit: &str, crate_name: &str, host: &str) {
+/// against `tests/embed/<host>.out`. With `wrapping`, the program's
+/// Cargo.toml turns overflow checks off for the library, as
+/// docs/embedding.md says to; without, PascRust must warn.
+fn run_host(unit: &str, crate_name: &str, host: &str, wrapping: bool) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("embed");
     let generated =
@@ -45,10 +49,13 @@ fn run_host(unit: &str, crate_name: &str, host: &str) {
     let dir = scratch.join(host);
     std::fs::create_dir_all(dir.join("src")).unwrap();
     std::fs::copy(root.join(format!("tests/embed/{host}.rs")), dir.join("src/main.rs")).unwrap();
-    let toml = format!(
+    let mut toml = format!(
         "[package]\nname = \"{host}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n\n\
          [dependencies]\n{crate_name} = {{ path = \"../{crate_name}\" }}\n"
     );
+    if wrapping {
+        toml.push_str(&format!("\n[profile.dev.package.{crate_name}]\noverflow-checks = false\n"));
+    }
     std::fs::write(dir.join("Cargo.toml"), toml).unwrap();
 
     // The library must build without warnings, as generated programs do.
@@ -65,6 +72,7 @@ fn run_host(unit: &str, crate_name: &str, host: &str) {
     // No runtime error reached stderr (one the Pascal handles stays quiet).
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.contains("Runtime error"), "{host} printed:\n{stderr}");
+    assert_eq!(stderr.contains("overflow checks are on"), !wrapping, "{host} printed:\n{stderr}");
     let expected = std::fs::read_to_string(root.join(format!("tests/embed/{host}.out"))).unwrap();
     assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
 }

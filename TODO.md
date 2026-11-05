@@ -161,9 +161,9 @@ chosen so each step is testable with the previous ones.
 
 ## Requests from the user, 2026-11-03
 
-- [ ] A Rust project that embeds Pascal code: how does its `cargo build` know to run PascRust on the Pascal? (The user's question.) Likely answer: a `build.rs` build script, with PascRust as a build dependency, that translates the unit into Cargo's `OUT_DIR` (`cargo:rerun-if-changed=unit.pas` so a change in the Pascal is noticed) and an `include!` of it; a helper such as `pascrust::build::library("unit.pas")` would make that `build.rs` two lines. Document it in docs/embedding.md, and test it with the BSTUnit host.
+- [x] A Rust project that embeds Pascal code: how does its `cargo build` know to run PascRust on the Pascal? Done: `pascrust::build::library` in its `build.rs` and `pascrust_runtime::include_library!` (`examples/pascrust/rust_calls_pascal`, docs/embedding.md). (The user's question.) Likely answer: a `build.rs` build script, with PascRust as a build dependency, that translates the unit into Cargo's `OUT_DIR` (`cargo:rerun-if-changed=unit.pas` so a change in the Pascal is noticed) and an `include!` of it; a helper such as `pascrust::build::library("unit.pas")` would make that `build.rs` two lines. Document it in docs/embedding.md, and test it with the BSTUnit host.
 
-- [ ] Overflow (decided with the user, 2026-11-04): integer arithmetic keeps wrapping, as TP's default `{$Q-}` did; forbidding it would break correct programs (hashes, checksums, random number generators, `Byte` sums TP cut to fit). A library gets wrap-around only if the Rust program turns overflow checks off, so the docs give the `Cargo.toml` line and the runtime warns once when checks are on (part of the `build.rs` plan, `notes/build_rs.md`).
+- [x] Overflow (decided with the user, 2026-11-04): integer arithmetic keeps wrapping, as TP's default `{$Q-}` did; forbidding it would break correct programs (hashes, checksums, random number generators, `Byte` sums TP cut to fit). A library gets wrap-around only if the Rust program turns overflow checks off, so the docs give the `Cargo.toml` line and the runtime warns once when checks are on (part of the `build.rs` plan, `notes/build_rs.md`).
 - [ ] Later, if a program needs it: `{$Q+}` turns overflow into runtime error 215, as in TP (today it's a warning that it isn't supported).
 
 ## Requests from the user, 2026-11-02

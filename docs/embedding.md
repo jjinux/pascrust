@@ -1,9 +1,83 @@
 # Calling Turbo Pascal from Rust
 
-`pascrust build --lib unit.pas` turns a Turbo Pascal unit (and the units
-it uses) into a Rust library crate, so a Rust program can call it. (The
-other way round, Turbo Pascal calling Rust, is in [Calling
+A Rust program can use a Turbo Pascal unit (and the units it uses). The
+easy way is to let `cargo build` translate it, with a build script; the
+other is to make a library crate of it once, with `pascrust build --lib`.
+(The other way round, Turbo Pascal calling Rust, is in [Calling
 Rust](calling_rust.md).)
+
+## With a build script
+
+`examples/pascrust/rust_calls_pascal` is a whole Rust project that uses
+the user's `examples/database/bstunit.pas`, a binary search tree written
+in 1997 (`cargo run --manifest-path examples/pascrust/rust_calls_pascal/Cargo.toml`).
+It needs three things:
+
+```toml
+# Cargo.toml
+[dependencies]
+pascrust_runtime = { git = "https://github.com/jjinux/pascrust", rev = "..." }
+
+[build-dependencies]
+# The same `rev` as the runtime. Without the default features, it's just
+# the translator, without the command-line tools.
+pascrust = { git = "https://github.com/jjinux/pascrust", rev = "...", default-features = false }
+
+# Turbo Pascal's integer arithmetic wraps around (32767 + 1 is -32768);
+# Rust's stops with an error in a debug build unless this is off.
+[profile.dev]
+overflow-checks = false
+```
+
+```rust
+// build.rs
+fn main() {
+    pascrust::build::library("pascal/bstunit.pas").unwrap();
+}
+```
+
+```rust
+// src/main.rs
+pascrust_runtime::include_library!(bstunit);
+
+use bstunit::{Bst, BstUnitContext, PeopleKey};
+use pascrust_runtime::{RuntimeError, call};
+```
+
+- `pascrust::build::library` translates the unit into one file in Cargo's
+  `OUT_DIR`, and tells Cargo to run it again when the unit, a unit it
+  uses, or a Rust file it links (`{$L}`) changes. A Pascal error stops
+  the build with PascRust's message; warnings show as Cargo's.
+- `include_library!(bstunit)` is the module `bstunit`, named after the
+  file (lowercased: `BSTUnit.pas` is `bstunit`). Lints are allowed in it,
+  since nobody edits generated code.
+- Turn on the runtime features the units need (`features = ["crt"]` for
+  `Crt`, `["dos"]` for `Dos` or `WinDos`); if one is missing, the program
+  doesn't compile, with a message saying which. A Rust file the unit
+  links that uses crates (`//! cargo:` lines) needs them in
+  `[dependencies]` too; the build says so.
+- The Rust program needs edition 2018 or later. Two libraries that both
+  use one unit each get their own copy of it.
+- For hacking on PascRust itself, `path` dependencies on a checkout work
+  too, as in the example.
+
+## Overflow checks
+
+A Pascal program's own Cargo.toml turns Rust's overflow checks off, so
+its arithmetic wraps around as in Turbo Pascal. A library is compiled
+with the Rust program's settings instead, and a debug build checks: then
+`X + 1` at 32767 is a runtime error (255) instead of -32768. So:
+
+- with a build script, the Pascal is part of the program's crate:
+  `[profile.dev] overflow-checks = false` (all of the program);
+- with `pascrust build --lib`, it's its own crate:
+  `[profile.dev.package.bstunit] overflow-checks = false` (just the
+  library).
+
+If checks are on, the library's context says so on stderr the first time
+it's made.
+
+## With `pascrust build --lib`
 
 Here the unit is `examples/database/bstunit.pas`, a binary search tree
 written in 1997:

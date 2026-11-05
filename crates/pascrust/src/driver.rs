@@ -23,6 +23,10 @@ pub struct Generated {
     pub warnings: Vec<String>,
     /// Crates the linked Rust files use (`rand = "0.8"`), for Cargo.toml.
     pub dependencies: Vec<String>,
+    /// Every file the translation read: the units (as found on disk) and
+    /// the linked Rust files (and the program, from [`transpile_file`]),
+    /// for a `build.rs` to watch.
+    pub sources: Vec<PathBuf>,
 }
 
 impl Generated {
@@ -81,7 +85,9 @@ pub fn transpile_file_with(path: &Path, options: &Options) -> Result<Generated, 
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let mut dirs = vec![parent.to_path_buf()];
     dirs.extend(options.unit_dirs.iter().cloned());
-    transpile(source, &file_name, &dirs, &options.switches, None)
+    let mut generated = transpile(source, &file_name, &dirs, &options.switches, None)?;
+    generated.sources.insert(0, path.to_path_buf());
+    Ok(generated)
 }
 
 /// Transpile the unit at `path`, with the units it uses, as a Rust library
@@ -171,11 +177,12 @@ fn transpile(
         }
     };
 
-    let mut loader = UnitLoader { dirs, map, loaded: Vec::new(), visiting: Vec::new(), directives, comments };
+    let mut loader =
+        UnitLoader { dirs, map, loaded: Vec::new(), visiting: Vec::new(), directives, comments, sources: Vec::new() };
     for name in &program.uses {
         loader.load(name)?;
     }
-    let UnitLoader { map, loaded, directives, comments, .. } = loader;
+    let UnitLoader { map, loaded, directives, comments, sources, .. } = loader;
     // Command-line switches act like directives at the start of each file.
     // (Their warnings, if any, are given once, at the start of the program.)
     let at_start = |file: usize| {
@@ -206,22 +213,6 @@ fn transpile(
     let mut warnings: Vec<String> = warnings;
     warnings.extend(analysis.warnings.iter().map(|d| map.render(d)));
     let modules: Vec<(String, String)> = linked.iter().map(|l| (l.module.clone(), l.file_name.clone())).collect();
-    let library = library.and_then(|key| units.iter().find(|u| u.name.key() == key));
-    let files = codegen::generate(&codegen::Input {
-        program: &program,
-        units: &units,
-        analysis: &analysis,
-        map: &map,
-        io_unchecked: &io_unchecked,
-        comments: &comments,
-        rust_modules: &modules,
-        library,
-    });
-    let mut files: Vec<(String, String)> = files.into_iter().map(|(name, code)| (name, format_rust(&code))).collect();
-    // The linked Rust files go in as they are.
-    files.extend(linked.iter().map(|l| (format!("{}.rs", l.module), l.source.clone())));
-    let dependencies = linked.iter().flat_map(|l| l.dependencies.clone()).collect();
-
     let mut features: Vec<String> = program
         .uses
         .iter()
@@ -233,7 +224,26 @@ fn transpile(
         .collect();
     features.sort();
     features.dedup();
-    Ok(Generated { name: package_name(file_name), files, features, warnings, dependencies })
+    let library = library.and_then(|key| units.iter().find(|u| u.name.key() == key));
+    let files = codegen::generate(&codegen::Input {
+        program: &program,
+        units: &units,
+        analysis: &analysis,
+        map: &map,
+        io_unchecked: &io_unchecked,
+        comments: &comments,
+        rust_modules: &modules,
+        features: &features,
+        library,
+    });
+    let mut files: Vec<(String, String)> = files.into_iter().map(|(name, code)| (name, format_rust(&code))).collect();
+    // The linked Rust files go in as they are.
+    files.extend(linked.iter().map(|l| (format!("{}.rs", l.module), l.source.clone())));
+    let dependencies = linked.iter().flat_map(|l| l.dependencies.clone()).collect();
+
+    let mut sources = sources;
+    sources.extend(linked.iter().map(|l| l.path.clone()));
+    Ok(Generated { name: package_name(file_name), files, features, warnings, dependencies, sources })
 }
 
 /// A Rust file a program links with `{$L sound.rs}`, as TP linked an
@@ -409,6 +419,8 @@ struct UnitLoader<'a> {
     directives: Vec<parser::Directive>,
     /// The comments of every file loaded so far, for codegen.
     comments: Vec<crate::lexer::Comment>,
+    /// The files of the units loaded from disk (not PascRust's own).
+    sources: Vec<PathBuf>,
 }
 
 impl UnitLoader<'_> {
@@ -438,6 +450,7 @@ impl UnitLoader<'_> {
         let (file_name, source) = match self.dirs.iter().find_map(|dir| find_file(dir, &format!("{key}.pas"))) {
             Some(path) => {
                 let source = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+                self.sources.push(path.clone());
                 (path.file_name().unwrap().to_string_lossy().into_owned(), source)
             }
             None => match PASCRUST_UNITS.iter().find(|(k, ..)| *k == key) {

@@ -38,6 +38,8 @@ pub struct Input<'a> {
     pub comments: &'a [crate::lexer::Comment],
     /// The Rust files `{$L file.rs}` links, as (module, file name).
     pub rust_modules: &'a [(String, String)],
+    /// The runtime features the units need (`crt`, `dos`).
+    pub features: &'a [String],
     /// For `pascrust build --lib`: the unit to write `lib.rs` for, in place
     /// of the program's `main.rs`.
     pub library: Option<&'a Unit>,
@@ -47,7 +49,7 @@ pub struct Input<'a> {
 /// Pascal source file, `main.rs` (or, for a library, `lib.rs`) first.
 pub fn generate(input: &Input) -> Vec<(String, String)> {
     // `*input` copies the struct of references out, so each is a local.
-    let Input { program, units, analysis, map, io_unchecked, comments, rust_modules, library } = *input;
+    let Input { program, units, analysis, map, io_unchecked, comments, rust_modules, features, library } = *input;
     let mut files = Vec::new();
     let mut g = Codegen {
         a: analysis,
@@ -68,10 +70,12 @@ pub fn generate(input: &Input) -> Vec<(String, String)> {
         running_first: HashSet::new(),
         calling: HashSet::new(),
         newtypes: HashSet::new(),
+        root: if library.is_some() { "super" } else { "crate" },
         goto_blocks: Vec::new(),
         loops: Vec::new(),
         io_unchecked,
         rust_modules,
+        features,
         self_expr: None,
         comments: comments::Comments::new(map, program, units, comments),
         decl_starts: HashMap::new(),
@@ -147,6 +151,11 @@ struct Codegen<'a> {
     /// Procedural types whose signatures name themselves (see
     /// `self_naming_classes`): structs rather than aliases.
     newtypes: HashSet<ProcId>,
+    /// How a unit's module names the others: `crate`, or for a library
+    /// `super` (its modules may be nested inside the user's crate, as with
+    /// `pascrust_runtime::include_library!`; at a crate's root `super::` is
+    /// the same as `crate::`).
+    root: &'static str,
     /// The goto blocks and loops we're inside, innermost last: a label
     /// (lowercase), its Rust name, and whether it jumps forward.
     goto_blocks: Vec<(String, String, bool)>,
@@ -161,6 +170,8 @@ struct Codegen<'a> {
     /// The Rust files `{$L sound.rs}` names, as (module, file name):
     /// where the `external` routines are.
     rust_modules: &'a [(String, String)],
+    /// The runtime features the units need (`crt`, `dos`).
+    features: &'a [String],
     /// While writing a trait's default method (see `object_traits`): how
     /// the body reaches its own object's fields, `self.t_shape()`, since
     /// `self` there is any object descended from it.
@@ -302,7 +313,7 @@ impl<'a> Codegen<'a> {
         if current_module.is_some() {
             for (module, _) in self.rust_modules {
                 self.line("#[allow(unused_imports)]");
-                self.line(format!("use crate::{module};"));
+                self.line(format!("use {}::{module};", self.root));
             }
         }
         if !others.is_empty() {
@@ -311,7 +322,7 @@ impl<'a> Codegen<'a> {
             // name types from units their Pascal source never mentions.
             for module in others {
                 self.line("#[allow(unused_imports)]");
-                self.line(format!("use crate::{module}::*;"));
+                self.line(format!("use {}::{module}::*;", self.root));
             }
         }
     }
@@ -399,6 +410,20 @@ impl<'a> Codegen<'a> {
             }
         }
         self.line("pub use pascrust_runtime;");
+        // A Rust program that builds this with `include_library!` chooses the
+        // runtime's features itself: say clearly which ones it must turn on.
+        let needed: Vec<&String> = self.features.iter().filter(|f| *f != "graph").collect();
+        if !needed.is_empty() {
+            self.blank();
+            self.line("// The runtime features the units need, checked when this compiles.");
+        }
+        for feature in needed {
+            self.line(format!(
+                "const _: () = assert!(pascrust_runtime::FEATURE_{}, \"the Pascal unit `{}` needs pascrust_runtime's `{feature}` feature: add it to the dependency's `features`\");",
+                feature.to_ascii_uppercase(),
+                unit.name.name
+            ));
+        }
         let vars: Vec<SymId> =
             self.a.procs[MAIN].locals.iter().copied().filter(|v| !self.a.elided_vars.contains(v)).collect();
         // (Always, even with no variables: `new()` runs the units'
@@ -458,6 +483,9 @@ impl<'a> Codegen<'a> {
         self.line("/// Pascal code, which can fail.");
         self.line(format!("pub fn new() -> {name} {{"));
         self.indent += 1;
+        // An addition compiled here: it wraps, as in TP, only if Cargo's
+        // overflow checks are off for this code.
+        self.line("pascrust_runtime::warn_unless_wrapping(|| std::hint::black_box(i16::MAX) + 1);");
         self.proc = MAIN;
         self.locals(MAIN);
         for info in &self.a.units {
@@ -1283,8 +1311,8 @@ impl<'a> Codegen<'a> {
             return object.rust_name.clone();
         }
         match self.a.units.iter().find(|u| self.map.file_index(u.span.start) == file) {
-            Some(unit) => format!("crate::{}::{}", unit.module, object.rust_name),
-            None => format!("crate::{}", object.rust_name),
+            Some(unit) => format!("{}::{}::{}", self.root, unit.module, object.rust_name),
+            None => format!("{}::{}", self.root, object.rust_name),
         }
     }
 

@@ -50,6 +50,7 @@ impl CounterContext {
     /// units' initialization parts run. Call it through `call`: they're
     /// Pascal code, which can fail.
     pub fn new() -> CounterContext {
+        pascrust_runtime::warn_unless_wrapping(|| std::hint::black_box(i16::MAX) + 1);
         let mut helper_count: i16 = 0;
         let count: i16 = 0; // same name as Counter's
         let count_2: i16 = 0;
@@ -108,5 +109,10 @@ impl CounterContext {
     /// Pascal: `function Probe: Integer;`
     pub fn probe(&self) -> i16 {
         counter::probe()
+    }
+
+    /// Pascal: `function Next(N: Integer): Integer;`
+    pub fn next(&self, n: i16) -> i16 {
+        counter::next(n)
     }
 }

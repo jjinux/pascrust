@@ -130,8 +130,9 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 - [Calling Rust from Turbo Pascal](docs/calling_rust.md): `external`
   routines written in Rust, linked with `{$L file.rs}` as TP linked
   assembly, and crates from crates.io.
-- [Calling Turbo Pascal from Rust](docs/embedding.md): `pascrust build
-  --lib unit.pas` makes a Rust library of a unit, and
+- [Calling Turbo Pascal from Rust](docs/embedding.md): a Rust project's
+  `build.rs` translates a unit as part of `cargo build` (or `pascrust
+  build --lib unit.pas` makes a library of it), and
   `pascrust_runtime::call` turns its runtime errors into `Err`s.
 - PascRust's own units, whose names start with `PR`, written in Turbo
   Pascal and translated with the program that uses them:
@@ -154,8 +155,10 @@ typed files with
 [the turtle example](examples/pascrust/turtles.pas)). Turbo Pascal code
 can also call Rust: `external` routines written in Rust, linked with
 `{$L file.rs}` (see [Calling Rust](docs/calling_rust.md)); and Rust can
-call Turbo Pascal, through a unit built as a library (see [Calling Turbo
-Pascal from Rust](docs/embedding.md)). Some things a modern
+call Turbo Pascal: a Rust project's `build.rs` translates a unit while
+`cargo build` runs, or `pascrust build --lib` makes a library of one (see
+[Calling Turbo Pascal from Rust](docs/embedding.md)). There's an example
+of each in `examples/pascrust/`. Some things a modern
 machine doesn't have are faked so old programs still run: `Lst` prints to
 a file or a command (see [Printing](docs/printing.md)), overlays need no `.OVR`
 file, `MemAvail` reports plenty of memory, and interrupt vectors keep the
@@ -202,6 +205,14 @@ PASCRUST_DRIVE_A=examples cargo run -p pascrust -- run examples/tictac/tictac.pa
 ```sh
 # Turtle graphics with PRTurtle: a Koch snowflake, a tree and a spiral
 cargo run -p pascrust -- run examples/pascrust/turtles.pas
+
+# Turbo Pascal calling Rust: calls_rust.pas links calls_rust.rs with {$L},
+# and the Rust calls a Pascal function back to sort
+cargo run -p pascrust -- run examples/pascrust/calls_rust.pas
+
+# Rust calling Turbo Pascal: a Rust project whose build.rs translates
+# examples/database/bstunit.pas (from 1997) as part of `cargo build`
+cargo run --manifest-path examples/pascrust/rust_calls_pascal/Cargo.toml
 ```
 
 The environment variable goes before `cargo`, so it applies to the whole
