@@ -97,7 +97,9 @@ pub fn io_result() -> i16 {
 pub fn halt(code: i32) {
     // Inside `call`, a Rust program called this Pascal code: `Halt` comes
     // back to it as an `Err`, rather than ending its process.
-    if CALL_DEPTH.get() > 0 {
+    // (With `panic = "abort"` nothing could catch it, so `Halt` ends the
+    // process, as in a Pascal program.)
+    if CALL_DEPTH.get() > 0 && !cfg!(panic = "abort") {
         crate::io::flush_stdout();
         panic::panic_any(RuntimeError { code, message: "Halt".to_string(), halted: true });
     }
@@ -218,8 +220,15 @@ fn quiet_runtime_errors() {
                         // With `panic = "abort"` nothing can catch it: the
                         // program ends right after this, so say why.
                         eprintln!("{err}");
+                        let lost = if for_io_result {
+                            "{$I-} can't keep it for IOResult"
+                        } else if CALL_DEPTH.get() > 0 {
+                            "`call` can't return it as an Err"
+                        } else {
+                            "it ends the program at once"
+                        };
                         eprintln!(
-                            "[PascRust] The Rust program is built with panic = \"abort\", so this can't come back as an Err (or for IOResult): see docs/embedding.md."
+                            "[PascRust] The program is built with panic = \"abort\", so {lost} (see \"Overflow checks\" in PascRust's docs/embedding.md)."
                         );
                     }
                 }

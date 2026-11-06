@@ -104,7 +104,28 @@ fn panic_abort_says_why_the_program_ends() {
     let output = cargo_run("build_rs_abort", &unit, main, "panic = \"abort\"");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!output.status.success());
-    assert!(stderr.contains("Runtime error 2") && stderr.contains("panic = \"abort\""), "{stderr}");
+    assert!(stderr.contains("Runtime error 2:") && stderr.contains("panic = \"abort\""), "{stderr}");
+}
+
+/// `Halt` inside `call` with `panic = "abort"`: nothing could catch it as
+/// an `Err`, so it ends the program with its exit code, as in Pascal.
+#[test]
+fn panic_abort_halt_exits_with_its_code() {
+    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("build_rs_abort_halt");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let unit = scratch.join("stopper.pas");
+    std::fs::write(
+        &unit,
+        "unit Stopper;\ninterface\nprocedure Stop;\nimplementation\nprocedure Stop;\nbegin\n   Halt(3);\nend;\nend.\n",
+    )
+    .unwrap();
+    let main = "pascrust_runtime::include_library!(stopper);\n\n\
+                fn main() {\n    let c = pascrust_runtime::call(stopper::StopperContext::new).unwrap();\n    \
+                let _ = pascrust_runtime::call(|| c.stop());\n    println!(\"not reached\");\n}\n";
+    let output = cargo_run("build_rs_abort_halt", &unit, main, "panic = \"abort\"");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(3), "{stderr}");
+    assert!(!stderr.contains("Halt") && output.stdout.is_empty(), "{stderr}");
 }
 
 /// Write a Rust program into `CARGO_TARGET_TMPDIR/name` whose build script

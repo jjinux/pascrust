@@ -7,6 +7,23 @@ user in `notes/open_questions.md`. Check items off as they land. Every phase
 ends with something runnable, and the examples in `examples/` are the
 acceptance test for the whole project.
 
+## For the user (things Claude can't do)
+
+Claude can't watch a window, press keys in a real terminal, or run the real
+Turbo Pascal. These need you; tell Claude what you find, and it fixes it.
+
+- [ ] Play each interactive example by hand with `cargo run -p pascrust -- run <file>` and note anything that looks or behaves differently from how you remember it:
+  - [ ] Text mode (Crt): `blkjack.pas`, `menu.pas`, `life.pas`, `gmscode.pas`, `airport/airport4.pas`, `database/filesys.pas`.
+  - [ ] Graphics (a window opens): `clock/`, and a whole game of `tictac/` against the computer.
+  - [ ] PascRust's own examples in `examples/pascrust/` (`turtles.pas`, `calls_rust.pas`, `rust_calls_pascal/`).
+- [ ] If you still have Turbo Pascal 7 (in DOSBox, say), settle what Free Pascal can't tell us, since it works in 32/64 bits:
+  - [ ] `w + 1` with `w: Word = 65535`: 0 (PascRust) or 65536?
+  - [ ] `s := s + Bump` where the function `Bump` changes `s`: which runs first?
+  - [ ] `type Small = 0..10; const X = Small(300);`: an error, or 44 (PascRust)?
+  - [ ] Graph: does `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners?
+- [ ] Read README.md and docs/ as a newcomer would, and say what's confusing or missing.
+- [ ] Send the announcements to the Pascal community, once Claude has drafted them (Phase 6).
+
 ## Original TODOs
 
 - [x] Figure out a name:
@@ -268,7 +285,13 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a7c84bf (batches A-L). Not yet reviewed: `c537266..HEAD`. Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a7c84bf (batches A-L). Not yet reviewed: `f4219c0..HEAD`. Keep this range up to date.
+- [x] Findings of review batch N (c537266..f4219c0):
+  - [x] `Halt` inside `call` with `panic = "abort"` aborted with "Halt(0)" instead of exiting with its code.
+  - [x] The abort note's wording assumed `call`; `cast` lost its doc comment to `is_unsigned`; the test matched "Runtime error 2" in "201".
+  - [x] `Byte(i shr 1)` and `Word(Integer(i shr 1))` kept a needless `as i16`. (Still open, cosmetic: `Word((i shr 1) shr 1)` has `as i16 as u16` on the inner shift.)
+  - [ ] A typecast of a real, a string or an enum value out of range in a constant says "expected a constant expression" (and then "unknown identifier"); a specific message would be better (fpc: "Illegal type conversion").
+  - [ ] `const X = Small(300)` for `type Small = 0..10` gives 44, unchecked; fpc reports a range error. TP 7 unverified (for the user, above).
 - [x] Findings of review batch M (a7c84bf..c537266):
   - [x] With `panic = "abort"`, an error inside `call` or an I/O error under `{$I-}` ended the program with nothing on stderr.
   - [x] `Word(+5)` wasn't folded (`5 as u16`); `Word(Integer(-1) shr 1)` cast to `i16` and back.

@@ -1288,14 +1288,18 @@ impl<'a> Codegen<'a> {
         }
         let code = self.coerce(&args[0], &from.concrete());
         // `Word(i shr 1)`: the shift is done as a `u16` already, so no
-        // going back to `i16` in between (`(i as u16) >> 1`).
-        if let Some((signed, unsigned)) = self.unsigned_shift.take()
-            && signed == code.0
-            && let (Type::Int(a), Type::Int(b)) = (from.concrete(), ty.concrete())
-            && a.bits() == b.bits()
-            && !b.contains(-1)
+        // going back to `i16` in between (`(i as u16) >> 1`). Converting it
+        // to a narrower type keeps the low bits either way (`Byte(i shr 1)`
+        // is `((i as u16) >> 1) as u8`).
+        if let (Type::Int(a), Type::Int(b)) = (from.concrete(), ty.concrete())
+            && self.unsigned_shift.as_ref().is_some_and(|(signed, _)| *signed == code.0)
+            && (b.bits() < a.bits() || (b.bits() == a.bits() && !b.contains(-1)))
+            && let Some((_, unsigned)) = self.unsigned_shift.take()
         {
-            return Some(unsigned);
+            if b.bits() == a.bits() {
+                return Some(unsigned);
+            }
+            return Some((format!("{} as {}", paren(unsigned, prec::AS), b.rust()), prec::AS));
         }
         Some(cast(code, &from.concrete(), &ty))
     }
@@ -1742,16 +1746,16 @@ pub(super) fn convert(code: Code, from: &Type, to: &Type) -> Code {
     }
 }
 
-/// An explicit conversion between ordinal types. Widening conversions that
-/// can't lose information use `From` (`i32::from(x)`), which Rust
-/// programmers prefer because it can never silently truncate; narrowing
-/// ones use `as`, which truncates exactly like Turbo Pascal does.
 /// Whether a (concrete) integer type is a Byte or a Word: Rust's unsigned
 /// integers have `is_multiple_of`, which clippy prefers to `% 2 == 0`.
 pub(super) fn is_unsigned(t: &Type) -> bool {
     matches!(t, Type::Int(kind) if !kind.contains(-1))
 }
 
+/// An explicit conversion between ordinal types. Widening conversions that
+/// can't lose information use `From` (`i32::from(x)`), which Rust
+/// programmers prefer because it can never silently truncate; narrowing
+/// ones use `as`, which truncates exactly like Turbo Pascal does.
 pub(super) fn cast(code: Code, from: &Type, to: &Type) -> Code {
     // `Char` and `Byte` are both `u8` in Rust: nothing to convert.
     if from == to

@@ -18,5 +18,6 @@ begin
    WriteLn(Abs(Integer(-5)), ' ', Sqr(Integer(-5)), ' ', Lo(Integer(-300)), ' ', Integer(-1) shl a, ' ', Integer(-1) shr 1);
    WriteLn(not Odd(i + 1), ' ', not Odd(-i), ' ', not not Odd(i), ' ', not Odd(l), ' ', not Odd(b));
    WriteLn(i shl 1 and 3, ' ', i shl 1 or 1, ' ', i and 3 or a, ' ', i + 1 and 3, ' ', i and 7 and 3, ' ', Odd(b));
+   WriteLn(Byte(i shr 1), ' ', Word(Integer(i shr 1)), ' ', ShortInt(i shr 1));
    WriteLn(Succ(i < 3), ' ', Pred(i = 5), ' ', i + 1 shl 1, ' ', i shl 1 shl 2, ' ', Word(Integer(-1) shr 1));
 end.
