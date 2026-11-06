@@ -80,9 +80,13 @@ with the Rust program's settings instead, and a debug build checks: then
   library).
 
 If checks are on, the library's context says so on stderr the first time
-it's made. (That check, and `call`'s turning a runtime error into an
-`Err`, need Rust's default `panic = "unwind"`; with `panic = "abort"`
-there's no check, and a runtime error ends the program.)
+it's made.
+
+Several things need Rust's default `panic = "unwind"`: that check,
+`call`'s turning a runtime error (or `Halt`) into an `Err`, and `{$I-}`,
+which keeps an I/O error for `IOResult`. With `panic = "abort"` there's
+no check, and a runtime error, even an I/O error under `{$I-}`, ends the
+program, with its message and a note saying why on stderr.
 
 ## With `pascrust build --lib`
 

@@ -211,8 +211,16 @@ fn quiet_runtime_errors() {
                     let in_run = std::thread::current().name() == Some("pascal");
                     // (An I/O error under `{$I-}` is for `IOResult`.)
                     let for_io_result = UNCHECKED_DEPTH.get() > 0 && err.code < 200 && !err.halted;
-                    if !in_run && CALL_DEPTH.get() == 0 && !for_io_result {
+                    let caught = in_run || CALL_DEPTH.get() > 0 || for_io_result;
+                    if !caught {
                         eprintln!("{err}");
+                    } else if cfg!(panic = "abort") {
+                        // With `panic = "abort"` nothing can catch it: the
+                        // program ends right after this, so say why.
+                        eprintln!("{err}");
+                        eprintln!(
+                            "[PascRust] The Rust program is built with panic = \"abort\", so this can't come back as an Err (or for IOResult): see docs/embedding.md."
+                        );
                     }
                 }
             }

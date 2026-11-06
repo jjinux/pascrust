@@ -70,16 +70,56 @@ fn a_crt_unit_checks_for_the_crt_feature() {
 #[test]
 fn a_build_script_with_used_units_and_linked_rust() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
-    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("build_rs_counter");
+    // (Its `//!` header can't follow the macro, so it's plain comments here.)
+    let host = std::fs::read_to_string(root.join("tests/embed/counter_host.rs")).unwrap().replace("//!", "//");
+    let output = cargo_run(
+        "build_rs_counter",
+        &root.join("tests/embed/counter.pas"),
+        &format!("pascrust_runtime::include_library!(counter);\n\n{host}"),
+        "overflow-checks = false",
+    );
+    assert!(output.status.success(), "the program failed:\n{}", String::from_utf8_lossy(&output.stderr));
+    let expected = std::fs::read_to_string(root.join("tests/embed/counter_host.out")).unwrap();
+    assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+}
+
+/// With `panic = "abort"`, a runtime error can't come back from `call` (nor
+/// an I/O error under `{$I-}` be kept for `IOResult`): the program ends,
+/// and stderr must say why instead of nothing.
+#[test]
+fn panic_abort_says_why_the_program_ends() {
+    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("build_rs_abort");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let unit = scratch.join("opener.pas");
+    std::fs::write(
+        &unit,
+        "unit Opener;\ninterface\nfunction Open: Integer;\nimplementation\n\
+         function Open: Integer;\nvar\n   F: Text;\nbegin\n   Assign(F, 'no such file');\n   \
+         {$I-}\n   Reset(F);\n   {$I+}\n   Open := IOResult;\nend;\nend.\n",
+    )
+    .unwrap();
+    let main = "pascrust_runtime::include_library!(opener);\n\n\
+                fn main() {\n    let c = pascrust_runtime::call(opener::OpenerContext::new).unwrap();\n    \
+                println!(\"{:?}\", pascrust_runtime::call(|| c.open()));\n}\n";
+    let output = cargo_run("build_rs_abort", &unit, main, "panic = \"abort\"");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success());
+    assert!(stderr.contains("Runtime error 2") && stderr.contains("panic = \"abort\""), "{stderr}");
+}
+
+/// Write a Rust program into `CARGO_TARGET_TMPDIR/name` whose build script
+/// translates `unit`, with `main_rs` and `[profile.dev]` lines, and run it.
+fn cargo_run(name: &str, unit: &Path, main_rs: &str, profile: &str) -> std::process::Output {
+    let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").canonicalize().unwrap();
+    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     std::fs::create_dir_all(scratch.join("src")).unwrap();
-    let crates = root.join("crates");
     std::fs::write(
         scratch.join("Cargo.toml"),
         format!(
-            "[package]\nname = \"counter_build\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n\
+            "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n\
              [dependencies]\npascrust_runtime = {{ path = \"{}\" }}\n\n\
              [build-dependencies]\npascrust = {{ path = \"{}\", default-features = false }}\n\n\
-             [profile.dev]\noverflow-checks = false\n",
+             [profile.dev]\n{profile}\n",
             crates.join("pascrust_runtime").display(),
             crates.join("pascrust").display()
         ),
@@ -87,24 +127,15 @@ fn a_build_script_with_used_units_and_linked_rust() {
     .unwrap();
     std::fs::write(
         scratch.join("build.rs"),
-        format!(
-            "fn main() {{\n    pascrust::build::library({:?}).unwrap();\n}}\n",
-            root.join("tests/embed/counter.pas")
-        ),
+        format!("fn main() {{\n    pascrust::build::library({unit:?}).unwrap();\n}}\n"),
     )
     .unwrap();
-    // (Its `//!` header can't follow the macro, so it's plain comments here.)
-    let host = std::fs::read_to_string(root.join("tests/embed/counter_host.rs")).unwrap().replace("//!", "//");
-    std::fs::write(scratch.join("src/main.rs"), format!("pascrust_runtime::include_library!(counter);\n\n{host}"))
-        .unwrap();
-    let output = Command::new("cargo")
+    std::fs::write(scratch.join("src/main.rs"), main_rs).unwrap();
+    Command::new("cargo")
         .args(["run", "--quiet", "--manifest-path"])
         .arg(scratch.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", Path::new(env!("CARGO_TARGET_TMPDIR")).join("embed/target"))
         .env("RUSTFLAGS", "-D warnings")
         .output()
-        .unwrap();
-    assert!(output.status.success(), "the program failed:\n{}", String::from_utf8_lossy(&output.stderr));
-    let expected = std::fs::read_to_string(root.join("tests/embed/counter_host.out")).unwrap();
-    assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+        .unwrap()
 }
