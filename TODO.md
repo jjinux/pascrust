@@ -15,7 +15,7 @@ Turbo Pascal. These need you; tell Claude what you find, and it fixes it.
 - [ ] Play each interactive example by hand with `cargo run -p pascrust -- run <file>` and note anything that looks or behaves differently from how you remember it:
   - [x] Text mode (Crt). Done: `database/filesys.pas` (the user, 2026-11-06: "working"), `airport/airport4.pas` (the user, 2026-11-06: "works fine"), `blkjack.pas` (the user, 2026-11-05: "It's great!"), `life.pas` ("Life works"), `gmscode.pas` ("works"), `paper.pas` ("works :)"), `magic_square.pas` (works), `menu.pas` ("menu works", with its games built into `A:\SHANNON` as the README's Examples section shows).
   - [x] Graphics (a window opens). Done: `clock/` (the user, 2026-11-06: "works"), a whole game of `tictac/` against the computer ("tictac works").
-  - [ ] PascRust's own examples in `examples/pascrust/`: `calls_rust.pas`, `rust_calls_pascal/`. Done: `turtles.pas` (the user, 2026-11-06: "works. Nice job!").
+  - [ ] PascRust's own examples in `examples/pascrust/`: `rust_calls_pascal/`. Done: `calls_rust.pas` (the user, 2026-11-06: "works"), `turtles.pas` (the user, 2026-11-06: "works. Nice job!").
 - [ ] If you still have Turbo Pascal 7 (in DOSBox, say), settle what Free Pascal can't tell us, since it works in 32/64 bits:
   - [ ] `w + 1` with `w: Word = 65535`: 0 (PascRust) or 65536?
   - [ ] With `{$Q+}`, is `Inc(b)` at 255 for a Byte (or `w + 1` at 65535 for a Word) error 215, as PascRust says, or 0? (TP's `INTO` tests the signed overflow flag, so it may only catch `Inc(b)` at 127, says Fable.)
