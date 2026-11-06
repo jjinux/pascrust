@@ -1,17 +1,23 @@
 { The $Q+ switch: integer +, -, *, negation, Abs, Sqr, Succ, Pred, Inc
   and Dec stop with runtime error 215 when the result doesn't fit, as in
-  TP 7; code compiled with $Q- wraps around. Expected output by hand: Free Pascal works in
-  32 or 64 bits, so 32767 + 1 doesn't overflow there. }
+  TP 7; code compiled with $Q- wraps around. Expected output by hand:
+  Free Pascal works in 32 or 64 bits, so 32767 + 1 doesn't overflow
+  there. }
 program OverflowChecks;
+type
+   Rec = record
+      N: Integer;
+   end;
 var
+   p: ^Rec;
    i, j: Integer;
    b: Byte;
    l: LongInt;
 
 {$Q+}
-procedure Bump(var n: Integer; by: Integer);
+procedure Bump(var N: Integer; by: Integer);
    begin
-      Inc(n, by);
+      Inc(N, by);
    end;
 {$Q-}
 
@@ -28,6 +34,12 @@ begin
    j := 181;
    Bump(j, 0);
    WriteLn(b, ' ', Sqr(j), ' ', 2 * j);
+   New(p);
+   p^.N := 1;
+   Inc(p^.N);
+   with p^ do
+      Inc(N, 2);
+   WriteLn(p^.N, ' ', (2 + 3) * j);
    {$Q-}
    WriteLn(i + 1);
    {$Q+}

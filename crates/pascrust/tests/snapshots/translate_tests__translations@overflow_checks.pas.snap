@@ -17,10 +17,17 @@ use pascrust_runtime::prelude::*;
 
 // The $Q+ switch: integer +, -, *, negation, Abs, Sqr, Succ, Pred, Inc
 // and Dec stop with runtime error 215 when the result doesn't fit, as in
-// TP 7; code compiled with $Q- wraps around. Expected output by hand: Free Pascal works in
-// 32 or 64 bits, so 32767 + 1 doesn't overflow there.
+// TP 7; code compiled with $Q- wraps around. Expected output by hand:
+// Free Pascal works in 32 or 64 bits, so 32767 + 1 doesn't overflow
+// there.
 
-/// Pascal: `procedure Bump(var n: Integer; by: Integer);`
+/// Pascal: `record N: Integer; end`
+#[derive(Clone, Copy, Debug, Default)]
+struct Rec {
+    n: i16,
+}
+
+/// Pascal: `procedure Bump(var N: Integer; by: Integer);`
 fn bump(n: &mut i16, by: i16) {
     // `{$Q+}`: `checked_add` and the like give `None` when the result doesn't fit,
     // and `overflow` stops with runtime error 215, as in Turbo Pascal.
@@ -30,6 +37,7 @@ fn bump(n: &mut i16, by: i16) {
 /// The main program: the `begin ... end.` block of `OverflowChecks`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
+    let mut p: Ptr<Rec> = Ptr::nil();
     let mut i: i16 = 0;
     let mut j: i16 = 0;
     let mut b: u8 = 0;
@@ -63,6 +71,18 @@ fn pascal_main() {
         " ",
         2_i16.checked_mul(j).unwrap_or_else(overflow)
     );
+    p = Ptr::alloc();
+    p.get_mut().n = 1;
+    {
+        let place = &mut p.get_mut().n;
+        *place = place.checked_add(1).unwrap_or_else(overflow);
+    }
+    // Pascal `with`: Rust has no equivalent, so each field is written out in full.
+    {
+        let place = &mut p.get_mut().n;
+        *place = place.checked_add(2).unwrap_or_else(overflow);
+    }
+    pwriteln!(p.get().n, " ", 5_i16.checked_mul(j).unwrap_or_else(overflow));
     pwriteln!(i + 1);
     i = i.checked_add(1).unwrap_or_else(overflow);
     pwriteln!("not reached");

@@ -168,7 +168,7 @@ objects with inheritance and virtual methods (constructors, destructors,
 `inherited`, polymorphic pointers, `TypeOf`), `goto` forward or back
 within a statement list (as Rust's labeled blocks and loops), text and
 typed files with
-`{$I-}`/`IOResult`, `PChar` strings, and the `Crt`, `Dos`, `Graph`,
+`{$I-}`/`IOResult`, `{$Q+}` overflow checks, `PChar` strings, and the `Crt`, `Dos`, `Graph`,
 `Printer`, `Overlay`, `Strings` and `WinDos` units, plus PascRust's own
 `PRJson` (JSON) and `PRTurtle` (turtle graphics on top of `Graph`; see
 [the turtle example](examples/pascrust/turtles.pas)). Turbo Pascal code

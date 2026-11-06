@@ -682,12 +682,14 @@ impl<'a> Codegen<'a> {
             && self.overflow_checked_at(e.span)
         {
             // A literal needs its type spelled out to have a method called
-            // on it (`1_i16.checked_add(i)`).
-            let left = if matches!(lt, Type::IntLit(_)) {
-                let precedence = if left.0.starts_with('-') { prec::UNARY } else { prec::ATOM };
-                (format!("{}_{}", left.0, kind.rust()), precedence)
-            } else {
-                left
+            // on it (`1_i16.checked_add(i)`), and a constant expression is
+            // written as its value (`(2 + 3) * i` is `5_i16.checked_mul(i)`).
+            let left = match lt {
+                Type::IntLit(n) => {
+                    let precedence = if n < 0 { prec::UNARY } else { prec::ATOM };
+                    (format!("{n}_{}", kind.rust()), precedence)
+                }
+                _ => left,
             };
             let method = match op {
                 Add => "checked_add",
