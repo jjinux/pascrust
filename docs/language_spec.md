@@ -539,7 +539,8 @@ Never (DOS/x86 machinery with no sensible Rust translation)
 - `Overlay` behaviour, `OvrInit` and friends (parse, ignore)
 - `Exec` of real DOS executables (it runs the path through
   `std::process::Command`, so a DOS program like `turbo.exe` isn't found; `Exec('GAME.EXE')`
-  runs `game`, a program built with `tpc`, if there's no `GAME.EXE`; a
+  runs `game`, a program built with `tpc`, if there's no `GAME.EXE`; as in
+  DOS, a bare name runs from the current directory, never from `PATH`; a
   program using `Crt` hands the terminal over while the other one runs)
 - Direct video memory writes (`DirectVideo` is accepted and ignored)
 - `far`, `near`, `export`, Windows (`TPW`) units

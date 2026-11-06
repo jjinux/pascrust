@@ -154,14 +154,25 @@ pub fn exec(path: impl Into<PString>, command_line: impl Into<PString>) {
 /// built here has no extension (`tpc game.pas` makes `game`), so without
 /// a `GAME.EXE`, `Exec` runs `GAME` instead.
 fn executable(path: &str) -> std::path::PathBuf {
-    let found = dos_path(path);
+    let found = in_a_directory(dos_path(path));
     if found.is_file() {
         return found;
     }
     let lower = path.to_ascii_lowercase();
     match lower.strip_suffix(".exe").or_else(|| lower.strip_suffix(".com")) {
-        Some(_) => dos_path(&path[..path.len() - 4]),
+        Some(_) => in_a_directory(dos_path(&path[..path.len() - 4])),
         None => found,
+    }
+}
+
+/// `game` becomes `./game`. `Command` looks a bare name up on `PATH`, as a
+/// shell does, but DOS's `Exec` only ran the file it was given, so
+/// `Exec('ls', '')` must not find `/bin/ls`.
+fn in_a_directory(path: std::path::PathBuf) -> std::path::PathBuf {
+    if path.parent().is_some_and(|dir| dir.as_os_str().is_empty()) {
+        std::path::Path::new(".").join(path)
+    } else {
+        path
     }
 }
 
@@ -257,6 +268,16 @@ mod tests {
         exec(format!("{}\\NOGAME.EXE", dir.display()).as_str(), "");
         assert_eq!(dos_error(), 2);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn exec_does_not_search_the_path() {
+        // DOS ran only the file named; `true` is on PATH but not here.
+        assert_eq!(executable("game.exe"), std::path::Path::new("./game"));
+        exec("true.exe", "");
+        assert_eq!(dos_error(), 2);
+        exec("ls", "");
+        assert_eq!(dos_error(), 2);
     }
 
     #[test]

@@ -1008,7 +1008,8 @@ window meanwhile (§19).
   a directory from a config map; open question), `Exec` → `std::process::
   Command` (a DOS program like `turbo.exe` isn't found; a
   missing `X.EXE` falls back to `X`, the name `tpc` gives a program here,
-  and with `Crt` in raw mode the terminal is handed over and taken back
+  a bare name gets `./` so `Command` doesn't search `PATH`, as DOS
+  didn't, and with `Crt` in raw mode the terminal is handed over and taken back
   around the call: `crt::suspend`/`resume`), `ChDir`,
   `GetEnv`, `DosVersion` stub. `Intr`, `MsDos`, `Keep`: unsupported.
   Interrupt vectors are faked (the user's call): a thread-local table of
