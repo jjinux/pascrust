@@ -14,7 +14,7 @@ Turbo Pascal. These need you; tell Claude what you find, and it fixes it.
 
 - [ ] Play each interactive example by hand with `cargo run -p pascrust -- run <file>` and note anything that looks or behaves differently from how you remember it:
   - [x] Text mode (Crt). Done: `database/filesys.pas` (the user, 2026-11-06: "working"), `airport/airport4.pas` (the user, 2026-11-06: "works fine"), `blkjack.pas` (the user, 2026-11-05: "It's great!"), `life.pas` ("Life works"), `gmscode.pas` ("works"), `paper.pas` ("works :)"), `magic_square.pas` (works), `menu.pas` ("menu works", with its games built into `A:\SHANNON` as the README's Examples section shows).
-  - [ ] Graphics (a window opens): a whole game of `tictac/` against the computer. Done: `clock/` (the user, 2026-11-06: "works").
+  - [x] Graphics (a window opens). Done: `clock/` (the user, 2026-11-06: "works"), a whole game of `tictac/` against the computer ("tictac works").
   - [ ] PascRust's own examples in `examples/pascrust/` (`turtles.pas`, `calls_rust.pas`, `rust_calls_pascal/`).
 - [ ] If you still have Turbo Pascal 7 (in DOSBox, say), settle what Free Pascal can't tell us, since it works in 32/64 bits:
   - [ ] `w + 1` with `w: Word = 65535`: 0 (PascRust) or 65536?
@@ -213,7 +213,7 @@ In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffe
 - [x] Get working: `clock/` (menu unit, clock unit, tester), `tictac/` (five units, `Ollie`, `CompUnit` AI). Checked headless with scripted keys and saved screenshots; the window opens on macOS.
   - [x] Transpiler fixes they needed: method call arguments that use the receiver (`obj.Prompt(obj.WhoseTurn)`) are computed first (`tests/run/method_args.pas`); two anonymous record types for same-named variables are `EndPoint` and `EndPoint2`, not `EndPoint_2` (`tests/run/anon_records.pas`).
   - [x] DOS drives: C: is the file system's root and other drives exist only when `PASCRUST_DRIVE_x` maps them (7d058ff; before, an unmapped drive was the directory the program started in) (`tictac` does `ChDir('a:\TicTac')` before every game), and names match files on disk case-insensitively.
-  - [ ] Play a whole game against the computer in the window, by hand.
+  - [x] Play a whole game against the computer in the window, by hand (the user, 2026-11-06).
 - [x] Milestone: every program in `examples/` transpiles, builds without warnings, and runs. Mark the original "Get them working" TODO done.
 
 ## Phase 6: Polish and readability
