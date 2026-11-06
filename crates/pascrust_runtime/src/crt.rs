@@ -129,11 +129,13 @@ pub(crate) fn suspend() -> bool {
 }
 
 /// Take the terminal back after `Exec`: a program that used Crt itself put
-/// it back out of raw mode when it ended.
+/// it back out of raw mode when it ended, and reset its colours, so this
+/// program's colours go back on too (Crt sets them only when they change).
 #[cfg(feature = "dos")]
 pub(crate) fn resume(suspended: bool) {
     if suspended {
         let _ = terminal::enable_raw_mode();
+        terminal_do(|out| apply_attr(out, attr()));
     }
 }
 
