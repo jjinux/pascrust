@@ -33,6 +33,18 @@ impl IntKind {
         }
     }
 
+    /// `n` converted to this type as Turbo Pascal's typecast does
+    /// (`Word(-1)` is 65535): its low bits, read as this type.
+    pub fn wrap(self, n: i64) -> i64 {
+        let bits = self.bits();
+        let value = n & ((1_i64 << bits) - 1);
+        if self.contains(-1) && value >= 1 << (bits - 1) {
+            value - (1 << bits) // a signed type's high bit is its sign
+        } else {
+            value
+        }
+    }
+
     pub fn range(self) -> (i64, i64) {
         match self {
             IntKind::ShortInt => (-128, 127),

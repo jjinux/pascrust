@@ -617,8 +617,12 @@ impl Checker {
         };
         let ty = match &value {
             // An enum value (`const Last = Sun`) keeps its enum type.
+            // So does a typecast (`const W = Word(-1)` is a Word).
             ConstVal::Int(v) => match self.expr(e) {
                 ty @ Type::Enum(_) => ty,
+                ty @ Type::Int(_) if matches!(&e.kind, ExprKind::Call { callee, args } if self.typecast_target(callee, args).is_some()) => {
+                    ty
+                }
                 _ => Type::Int(IntKind::for_literal(*v)),
             },
             ConstVal::Real(_) => Type::Real,
@@ -1384,6 +1388,17 @@ impl Checker {
         }
     }
 
+    /// The type a call converts to, if it's a typecast (`Word(x)`).
+    fn typecast_target(&self, callee: &Expr, args: &[Expr]) -> Option<Type> {
+        let ExprKind::Name(id) = &callee.kind else {
+            return None;
+        };
+        match &self.a.symbols[self.lookup(&id.key())?].kind {
+            SymKind::TypeName(target) if args.len() == 1 => Some(target.clone()),
+            _ => None,
+        }
+    }
+
     /// Evaluate a constant expression at compile time, if it is one.
     pub(super) fn eval_const(&self, e: &Expr) -> Option<ConstVal> {
         use ConstVal::*;
@@ -1469,6 +1484,24 @@ impl Checker {
                             _ => None,
                         }
                     }
+                }
+            }
+            // `Word(-1)`, `Char(65)`: a typecast of a constant (TP 7 allows
+            // them in constant expressions).
+            ExprKind::Call { callee, args } if let Some(target) = self.typecast_target(callee, args) => {
+                let n = match self.eval_const(&args[0])? {
+                    Int(n) => n,
+                    Str(s) if s.len() == 1 => s[0] as i64,
+                    Bool(b) => b as i64,
+                    _ => return None,
+                };
+                match target.concrete() {
+                    Type::Int(kind) => Some(Int(kind.wrap(n))),
+                    Type::Char => Some(Str(vec![n as u8])),
+                    Type::Bool => Some(Bool(n != 0)),
+                    // An enum value is its ordinal.
+                    Type::Enum(en) if (0..en.variants.len() as i64).contains(&n) => Some(Int(n)),
+                    _ => None,
                 }
             }
             ExprKind::Call { callee, args } if args.len() == 1 => {

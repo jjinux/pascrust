@@ -1279,11 +1279,7 @@ impl<'a> Codegen<'a> {
             match ty.concrete() {
                 Type::Char => return Some((char_literal(n as u8), prec::ATOM)),
                 Type::Int(kind) => {
-                    let bits = kind.bits();
-                    let mut value = n & ((1_i64 << bits) - 1);
-                    if kind.contains(-1) && value >= 1 << (bits - 1) {
-                        value -= 1 << bits; // a signed type's high bit is its sign
-                    }
+                    let value = kind.wrap(n);
                     let precedence = if value < 0 { prec::UNARY } else { prec::ATOM };
                     return Some((format!("{value}_{}", kind.rust()), precedence));
                 }

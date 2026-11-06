@@ -41,7 +41,7 @@ fn pascal_main() {
         " ",
         (-5_i16).pow(2),
         " ",
-        i16::from(-300_i16 as u8),
+        i16::from(212_u8),
         " ",
         (-1_i16).checked_shl(a as u32).unwrap_or(0),
         " ",
