@@ -48,6 +48,20 @@ enum Cmd {
         #[arg(last = true)]
         args: Vec<String>,
     },
+    /// Print a binary file written by a Turbo Pascal program (`file of T`)
+    /// as JSON, reading its records as a type the Pascal source declares.
+    ToJson {
+        /// The program or unit that declares the record type.
+        source: PathBuf,
+        /// The binary file.
+        data: PathBuf,
+        /// The record type (default: the only `file of` type in the source).
+        #[arg(long = "type")]
+        type_name: Option<String>,
+        /// Where to write the JSON (default: standard output).
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -80,6 +94,15 @@ fn run(command: Cmd) -> Result<ExitCode, String> {
         Cmd::Run { file, out, args } => {
             let dir = project(&file, out)?;
             cargo(&dir, &["run", "--quiet", "--"], &args)
+        }
+        Cmd::ToJson { source, data, type_name, out } => {
+            let options = pascrust::driver::Options::default();
+            let json = pascrust::json::to_json(&source, &data, type_name.as_deref(), &options)?;
+            match out {
+                Some(out) => std::fs::write(&out, json).map_err(|e| format!("cannot write {}: {e}", out.display()))?,
+                None => print!("{json}"),
+            }
+            Ok(ExitCode::SUCCESS)
         }
     }
 }

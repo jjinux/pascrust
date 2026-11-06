@@ -381,7 +381,7 @@ impl<'a> Codegen<'a> {
         {
             return (char_literal(bytes[0]), prec::ATOM);
         }
-        if let (Type::Real, Type::IntLit(_)) = (to, &from)
+        if let (Type::Real(_), Type::IntLit(_)) = (to, &from)
             && let ExprKind::Int(n) = e.kind
         {
             return (format!("{n}.0"), prec::ATOM);
@@ -493,7 +493,7 @@ impl<'a> Codegen<'a> {
         // Literals get a type suffix: `5_i16.abs()`, `(-2.5_f64).round()`.
         let literal = match (self.a.type_of(e.id), ty, &e.kind) {
             (Type::IntLit(n), Type::Int(k), _) => Some(format!("{n}_{}", k.rust())),
-            (Type::IntLit(n), Type::Real, _) => Some(format!("{n}.0_f64")),
+            (Type::IntLit(n), Type::Real(_), _) => Some(format!("{n}.0_f64")),
             (_, _, ExprKind::Real(x)) => Some(format!("{}_f64", real_literal(*x))),
             (_, _, ExprKind::Unary { op: UnaryOp::Neg, operand }) => match operand.kind {
                 ExprKind::Real(x) => Some(format!("-{}_f64", real_literal(x))),
@@ -1183,7 +1183,7 @@ impl<'a> Codegen<'a> {
                     .zip(args)
                     .map(|(param, arg)| match param {
                         Param::Int => self.expr(arg).0,
-                        Param::Real => self.coerce(arg, &Type::Real).0,
+                        Param::Real => self.coerce(arg, &Type::REAL).0,
                         Param::Str => self.string_arg(arg),
                         Param::Bool => self.expr(arg).0,
                         Param::Char => self.coerce(arg, &Type::Char).0,
@@ -1778,7 +1778,7 @@ pub(super) fn convert(code: Code, from: &Type, to: &Type) -> Code {
         (Type::Int(_) | Type::IntLit(_) | Type::Char | Type::Bool | Type::Enum(_), Type::Int(_) | Type::Char) => {
             cast(code, &from.concrete(), to)
         }
-        (Type::Int(_) | Type::IntLit(_), Type::Real) => (format!("f64::from({})", code.0), prec::POSTFIX),
+        (Type::Int(_) | Type::IntLit(_), Type::Real(_)) => (format!("f64::from({})", code.0), prec::POSTFIX),
         (Type::StrLit(_) | Type::Char, Type::Str { .. }) => (format!("pstr({})", code.0), prec::POSTFIX),
         _ => code,
     }

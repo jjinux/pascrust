@@ -398,7 +398,7 @@ impl<'a> Codegen<'a> {
                 if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) {
                     return self.checked_op((n, prec::POSTFIX), "checked_pow", "2").0;
                 }
-                let method = if t == Type::Real { "powi" } else { "pow" };
+                let method = if t == Type::REAL { "powi" } else { "pow" };
                 format!("{n}.{method}(2)")
             }
             Sqrt | Sin | Cos | ArcTan | Ln | Exp | Int | Frac => {
@@ -412,11 +412,11 @@ impl<'a> Codegen<'a> {
                     Int => "trunc",
                     _ => "fract",
                 };
-                format!("{}.{method}()", self.postfix(&args[0], &Type::Real))
+                format!("{}.{method}()", self.postfix(&args[0], &Type::REAL))
             }
             Trunc | Round => {
                 let method = if b == Trunc { "trunc" } else { "round" };
-                format!("{}.{method}() as i32", self.postfix(&args[0], &Type::Real))
+                format!("{}.{method}() as i32", self.postfix(&args[0], &Type::REAL))
             }
             // `::std`: a program's unit named `Std` becomes a module `std`.
             Pi => "::std::f64::consts::PI".to_string(),

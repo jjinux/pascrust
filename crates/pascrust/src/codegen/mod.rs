@@ -3032,7 +3032,7 @@ pub(super) fn value_temp_base(e: &Expr) -> String {
 fn default_value(ty: &Type) -> String {
     match ty {
         Type::Int(_) | Type::IntLit(_) | Type::Char => "0".to_string(),
-        Type::Real => "0.0".to_string(),
+        Type::Real(_) => "0.0".to_string(),
         Type::Bool => "false".to_string(),
         Type::Str { .. } | Type::StrLit(_) => "PString::new()".to_string(),
         // An enum starts at its first value, which is what Pascal's

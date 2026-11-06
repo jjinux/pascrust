@@ -13,6 +13,9 @@ pub mod codegen;
 pub mod diag;
 pub mod driver;
 pub mod fmt;
+// `pascrust to-json` and `from-json`: a `file of T` as JSON and back.
+#[cfg(feature = "cli")]
+pub mod json;
 pub mod lexer;
 pub mod parser;
 pub mod sema;

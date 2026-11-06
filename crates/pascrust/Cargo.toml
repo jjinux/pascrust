@@ -11,9 +11,10 @@ authors.workspace = true
 [features]
 # The command-line tools. A Rust project that uses PascRust only as a build
 # dependency (`pascrust::build` in its `build.rs`) turns this off, with
-# `default-features = false`, and doesn't build `clap`.
+# `default-features = false`, and doesn't build `clap` (nor what `to-json`
+# and `from-json` need: `serde_json`, and the runtime's Real48 and CP437).
 default = ["cli"]
-cli = ["dep:clap"]
+cli = ["dep:clap", "dep:serde_json", "dep:pascrust_runtime"]
 
 [[bin]]
 name = "pascrust"
@@ -28,8 +29,16 @@ required-features = ["cli"]
 name = "tpc_tests"
 required-features = ["cli"]
 
+# It runs `to-json` and `from-json`.
+[[test]]
+name = "json_tests"
+required-features = ["cli"]
+
 [dependencies]
 clap = { version = "4", features = ["derive"], optional = true }
+# `preserve_order` keeps a record's fields in their Pascal order.
+serde_json = { version = "1", features = ["preserve_order"], optional = true }
+pascrust_runtime = { path = "../pascrust_runtime", optional = true }
 
 [dev-dependencies]
 insta = { version = "1", features = ["glob"] }

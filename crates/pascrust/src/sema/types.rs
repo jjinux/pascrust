@@ -111,6 +111,26 @@ impl IntKind {
     }
 }
 
+/// Which real type a [`Type::Real`] is. In Rust every one of them is an
+/// `f64`, so to sema they're all the same type: two kinds always compare
+/// equal (the `PartialEq` below), and `x: Double := r` needs no conversion.
+/// The kind only says how TP stored the value: on disk a `Single` took 4
+/// bytes, a `Real` 6, a `Double` 8 and an `Extended` 10. (PascRust's files
+/// store them all as a 6-byte `Real` for now; `to-json` refuses the others.)
+#[derive(Debug, Clone, Copy)]
+pub enum RealKind {
+    Real,
+    Single,
+    Double,
+    Extended,
+}
+
+impl PartialEq for RealKind {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
 /// A Pascal type.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -118,8 +138,8 @@ pub enum Type {
     /// An integer literal. It has no fixed type yet; it takes the type of the
     /// other operand, or of the variable it's assigned to.
     IntLit(i64),
-    /// `Real` (and `Double`, `Extended`), all mapped to Rust's `f64`.
-    Real,
+    /// `Real` (and `Single`, `Double`, `Extended`), all mapped to Rust's `f64`.
+    Real(RealKind),
     Bool,
     Char,
     /// `string[cap]`; plain `string` has `cap` 255.
@@ -179,6 +199,8 @@ pub struct EnumType {
     pub rust_name: String,
     /// The Rust names of the variants, in order.
     pub variants: Vec<String>,
+    /// The values' names as the Pascal spells them (`to-json` writes those).
+    pub pascal_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -469,12 +491,15 @@ impl RecordType {
 }
 
 impl Type {
+    /// Plain `Real`.
+    pub const REAL: Type = Type::Real(RealKind::Real);
+
     pub fn is_integer(&self) -> bool {
         matches!(self, Type::Int(_) | Type::IntLit(_))
     }
 
     pub fn is_numeric(&self) -> bool {
-        self.is_integer() || *self == Type::Real
+        self.is_integer() || matches!(self, Type::Real(_))
     }
 
     pub fn is_stringish(&self) -> bool {
@@ -504,7 +529,7 @@ impl Type {
         match self {
             Type::Int(k) => k.rust().to_string(),
             Type::IntLit(v) => IntKind::for_literal(*v).rust().to_string(),
-            Type::Real => "f64".to_string(),
+            Type::Real(_) => "f64".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Char => "u8".to_string(),
             Type::Str { .. } | Type::StrLit(_) => "PString".to_string(),
@@ -597,7 +622,7 @@ impl Type {
         match (self, from) {
             (_, Type::Error) | (Type::Error, _) => true,
             (Type::Int(_), t) if t.is_integer() => true,
-            (Type::Real, t) if t.is_numeric() => true,
+            (Type::Real(_), t) if t.is_numeric() => true,
             (Type::Char, Type::Char | Type::StrLit(1)) => true,
             (Type::Str { .. }, t) if t.is_stringish() || t.is_packed_string() => true,
             // A string constant of exactly N characters fits a packed string
@@ -646,7 +671,7 @@ impl fmt::Display for Type {
         match self {
             Type::Int(k) => write!(f, "{k:?}"),
             Type::IntLit(_) => write!(f, "Integer"),
-            Type::Real => write!(f, "Real"),
+            Type::Real(kind) => write!(f, "{kind:?}"),
             Type::Bool => write!(f, "Boolean"),
             Type::Char => write!(f, "Char"),
             Type::Str { cap: 255 } | Type::StrLit(_) => write!(f, "String"),
@@ -680,9 +705,9 @@ pub fn tp_size(ty: &Type) -> Option<i64> {
         Type::Int(IntKind::ShortInt | IntKind::Byte) | Type::Char | Type::Bool => 1,
         Type::Int(IntKind::Integer | IntKind::Word) => 2,
         Type::Int(IntKind::LongInt) => 4,
-        // `Double`, `Single` and `Extended` are all `Real` here, so they
-        // get `Real`'s 6 bytes too.
-        Type::Real => 6,
+        // `Double`, `Single` and `Extended` are stored as a `Real` for now,
+        // so they get its 6 bytes too (see `RealKind`).
+        Type::Real(_) => 6,
         Type::Enum(e) => {
             if e.variants.len() <= 256 {
                 1

@@ -6,7 +6,8 @@ use std::rc::Rc;
 
 use super::names::{self, screaming_snake_case, snake_case};
 use super::types::{
-    ArrayType, EnumType, Field, ObjectType, PointerType, ProcType, RecordType, Variant, VariantPart, same_ordinal_kind,
+    ArrayType, EnumType, Field, ObjectType, PointerType, ProcType, RealKind, RecordType, Variant, VariantPart,
+    same_ordinal_kind,
 };
 use super::*;
 use crate::ast::*;
@@ -309,10 +310,10 @@ impl Checker {
             ("shortint", Type::Int(IntKind::ShortInt)),
             ("byte", Type::Int(IntKind::Byte)),
             ("word", Type::Int(IntKind::Word)),
-            ("real", Type::Real),
-            ("double", Type::Real),
-            ("extended", Type::Real),
-            ("single", Type::Real),
+            ("real", Type::REAL),
+            ("double", Type::Real(RealKind::Double)),
+            ("extended", Type::Real(RealKind::Extended)),
+            ("single", Type::Real(RealKind::Single)),
             ("boolean", Type::Bool),
             ("char", Type::Char),
             ("text", Type::Text),
@@ -625,7 +626,7 @@ impl Checker {
                 }
                 _ => Type::Int(IntKind::for_literal(*v)),
             },
-            ConstVal::Real(_) => Type::Real,
+            ConstVal::Real(_) => Type::REAL,
             ConstVal::Bool(_) => Type::Bool,
             ConstVal::Str(s) if s.len() == 1 => Type::Char,
             ConstVal::Str(s) => Type::StrLit(s.len()),
@@ -1010,7 +1011,8 @@ impl Checker {
             TypeExpr::Enum(names, _) => {
                 let rust_name = self.type_name(name.unwrap_or("Enum"));
                 let variants = names.iter().map(|n| names::camel_case(&n.name)).collect();
-                let ty = Type::Enum(Rc::new(EnumType { rust_name, variants }));
+                let pascal_names = names.iter().map(|n| n.name.clone()).collect();
+                let ty = Type::Enum(Rc::new(EnumType { rust_name, variants, pascal_names }));
                 // Each enum value is a constant in the enclosing scope, valued
                 // by its position: `Red` is 0, `Green` 1, ...
                 let Type::Enum(e) = &ty else { unreachable!() };
@@ -2291,7 +2293,7 @@ impl Checker {
     fn expr_inner(&mut self, e: &Expr) -> Type {
         match &e.kind {
             ExprKind::Int(n) => Type::IntLit(*n),
-            ExprKind::Real(_) => Type::Real,
+            ExprKind::Real(_) => Type::REAL,
             ExprKind::Str(s) => Type::StrLit(s.len()),
             ExprKind::Nil => Type::Nil,
             ExprKind::Name(ident) => {
@@ -2493,7 +2495,7 @@ impl Checker {
         let result = result.or_else(|| match op {
             Add if l.is_text() && r.is_text() => Some(Type::Str { cap: 255 }),
             Add | Sub | Mul => numeric_common(l, r),
-            RealDiv if l.is_numeric() && r.is_numeric() => Some(Type::Real),
+            RealDiv if l.is_numeric() && r.is_numeric() => Some(Type::REAL),
             // A shift has the type of the number being shifted: the count
             // doesn't widen it. (TP: "the result is of the same type as x".)
             Shl | Shr if l.is_integer() && r.is_integer() => int_common(l, l),
@@ -3718,7 +3720,7 @@ impl Checker {
             }
             Pi => {
                 arity(&mut self.errors, span, args.len(), 0..=0, &name);
-                Type::Real
+                Type::REAL
             }
             Ord => self.unary_builtin(
                 span,
@@ -3852,7 +3854,7 @@ impl Checker {
             }
             Abs | Sqr => self.unary_builtin(span, args, &name, |t| t.is_numeric(), |t| t.concrete()),
             Sqrt | Sin | Cos | ArcTan | Ln | Exp | Int | Frac => {
-                self.unary_builtin(span, args, &name, |t| t.is_numeric(), |_| Type::Real)
+                self.unary_builtin(span, args, &name, |t| t.is_numeric(), |_| Type::REAL)
             }
             Trunc | Round => self.unary_builtin(span, args, &name, |t| t.is_numeric(), |_| Type::Int(IntKind::LongInt)),
             UpCase => {
@@ -3873,7 +3875,7 @@ impl Checker {
                         }
                     }
                 } else {
-                    Type::Real
+                    Type::REAL
                 }
             }
             Inc | Dec => {
@@ -4112,8 +4114,8 @@ impl Checker {
 
 /// The type in which `l op r` is computed for `+`, `-` and `*`.
 pub fn numeric_common(l: &Type, r: &Type) -> Option<Type> {
-    if *l == Type::Real && r.is_numeric() || *r == Type::Real && l.is_numeric() {
-        Some(Type::Real)
+    if *l == Type::REAL && r.is_numeric() || *r == Type::REAL && l.is_numeric() {
+        Some(Type::REAL)
     } else {
         int_common(l, r)
     }

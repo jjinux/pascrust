@@ -150,6 +150,44 @@ pub fn transpile_unit(path: &Path, options: &Options, library: bool) -> Result<(
     Ok((generated, unit.name.name.clone()))
 }
 
+/// Check the program or unit at `path` (with the units it uses) and
+/// return what sema found, without generating code: `to-json` and
+/// `from-json` need its types. A unit is checked as a program that uses it.
+pub fn analyze_file(path: &Path, options: &Options) -> Result<sema::Analysis, String> {
+    let source = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let file_name = path.file_name().map_or_else(|| "input.pas".into(), |n| n.to_string_lossy().into_owned());
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let mut dirs = vec![parent.to_path_buf()];
+    dirs.extend(options.unit_dirs.iter().cloned());
+    let source = if is_unit(path) {
+        let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        format!("program Library;\nuses {name};\nbegin\nend.\n").into_bytes()
+    } else {
+        source
+    };
+    let mut map = SourceMap::new();
+    let base = map.add(file_name.as_str(), source.clone());
+    let SourceFile::Program(program) = parser::parse_file(&source, base).map_err(|d| map.render(&d))?.0 else {
+        unreachable!("a unit was wrapped in a program above");
+    };
+    let mut loader = UnitLoader {
+        dirs: &dirs,
+        map,
+        loaded: Vec::new(),
+        visiting: Vec::new(),
+        directives: Vec::new(),
+        comments: Vec::new(),
+        sources: Vec::new(),
+    };
+    for name in &program.uses {
+        loader.load(name)?;
+    }
+    let units: Vec<Unit> = loader.loaded.into_iter().map(|(_, unit)| unit).collect();
+    let map = loader.map;
+    sema::analyze(&program, &units)
+        .map_err(|errors| errors.iter().map(|d| map.render(d)).collect::<Vec<_>>().join("\n\n"))
+}
+
 /// Transpile a program held in memory. `file_name` is used in messages and
 /// to name the package. Units can't be found without a directory to look in.
 pub fn transpile_source(source: &[u8], file_name: &str) -> Result<Generated, String> {

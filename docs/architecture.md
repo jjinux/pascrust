@@ -1314,7 +1314,34 @@ The one exception is the graphics window, which the main thread services
 while the program runs (§19); the screen and key queue it shares with the
 program are behind `Mutex`es.
 
-## 24. Worked example
+## 24. Typed files as JSON (`to-json`)
+
+`pascrust to-json` reads a `file of T` written by a TP program and prints
+it as JSON (docs/data_files.md). Decision: decode in the transpiler, from
+sema's types, rather than generate a Rust program around the runtime's
+`FileRecord`: nothing to compile, and an answer at once. It runs the front
+end only (`driver::analyze_file`; a unit is checked as a program that uses
+it, as for `--lib`), then walks the type over each record's bytes
+(`json/decode.rs`). Sizes and offsets come from the same functions
+codegen's `file_record!` is built from (`tp_size`, `set_bytes`,
+`VariantPart::offset_of`), so it reads exactly what a translated program
+writes. Real48 and CP437 come from the runtime, which the `cli` feature
+depends on (a build script's `default-features = false` doesn't), so the
+two can't disagree. JSON is `serde_json` with `preserve_order`, so keys
+come in field order.
+
+Two things sema had dropped are kept for it: an enum's value names as the
+source spells them (`EnumType::pascal_names`; the Rust names are camel
+case), and which real type a `Real` is (`Type::Real(RealKind)`). In Rust
+every real is an `f64`, so two `RealKind`s always compare equal and sema
+treats `Double` and `Real` as one type; only the size on disk differs (8
+and 6 bytes), which PascRust's files don't model yet, so `to-json` refuses
+a `Double` rather than read the wrong bytes.
+
+The plan, Fable's review of it, and the choices made are in
+`notes/file_json.md`.
+
+## 25. Worked example
 
 Pascal input (`demo.pas`), chosen to touch a record, a pointer, a `var`
 parameter, a nested procedure that captures an outer local, a global, and
