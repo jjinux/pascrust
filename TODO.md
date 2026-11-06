@@ -294,7 +294,7 @@ Last: raw bytes and C strings
   - [x] `{$Q+}` `Inc(r^.q^.N, 40)` (two pointers) didn't compile; `from-json` refused `to-json`'s output for a Boolean variant before a Byte one; the Real range in `from-json` was approximate (2.92e-39 stored as 0, the largest Real refused).
   - [x] `tpc -E` didn't make the directory, so the README's recipe for menu.pas's games failed; Crt didn't put its colours back after `Exec`.
   - [ ] Question for the user: under `{$Q+}`, `i * (2 + 3)` checks the constant `2 + 3` for overflow (`2_i16.checked_add(3)`); only a constant on the left is folded to `5_i16`. Fold constants on either side?
-  - [ ] Question for the user: an anonymous pointer type as a record field (`q: ^Inner;` inside a record) panics codegen ("only named pointer types are emitted"). Name it (a synthesised `type`), or reject it with an error?
+  - [x] An anonymous pointer type as a record field (`q: ^Inner;` inside a record) panicked codegen ("only named pointer types are emitted"). The user: support it. It's `Ptr<Inner>`, as for a variable.
 - [x] Findings of review batch O (f4219c0..44cbc65):
   - [x] `{$Q+}`: `(2 + 3) * i` didn't compile (a suffix on a folded expression); `Inc(p^.N)` was runtime error 204 (two borrows of the heap record).
   - [x] `to-json` read a Boolean nested tag as its byte, not as TP's any-nonzero-is-True, so `from-json` refused `to-json`'s own output.

@@ -1062,7 +1062,9 @@ impl Checker {
                 // declarations around it are done.
                 self.pending_pointers.push((ptr.clone(), target.clone()));
                 let ty = Type::Pointer(ptr);
-                if self.declaring_type {
+                // Only a named pointer type gets a Rust alias to declare;
+                // one written in place (`q: ^Inner` in a record) is `Ptr<Inner>`.
+                if name.is_some() && self.declaring_type {
                     self.a.type_defs.push((ty.clone(), t.span()));
                 }
                 ty

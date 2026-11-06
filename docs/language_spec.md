@@ -285,7 +285,8 @@ Objects (TP 5.5 OOP)
 Pointers
 
 - `^T` types, `New`, `Dispose`, `nil`, `p^`, `p^.field`, pointer equality,
-  pointers inside records (linked lists, trees), `var` parameters of pointer
+  pointers inside records (linked lists, trees; a field's type may be
+  written in place, `Next: ^Node`, and becomes `Ptr<Node>`), `var` parameters of pointer
   type, passing `p^` and `p^.field` as `var` arguments
 
 Files
