@@ -155,3 +155,30 @@ fn from_json_errors() {
     let not_array = raw(r#"{"W": 1}"#).unwrap_err();
     assert!(not_array.contains("should hold an array"), "{not_array}");
 }
+
+/// `tests/json/more.pas`'s files (variant parts inside variants, a record
+/// without a tag over a Boolean, an object with a parent, sets, every
+/// character, reals, files of strings and integers): each as JSON, and
+/// back to the same bytes.
+#[test]
+fn more_kinds_of_files() {
+    for (data, type_name) in [
+        ("nested.dat", "Nested"),
+        ("tagless.dat", "Tagless"),
+        ("mixed.dat", "Mixed"),
+        ("strs.dat", "string"),
+        ("ints.dat", "Integer"),
+    ] {
+        let path = format!("tests/json/{data}");
+        let text = json("tests/json/more.pas", &path, Some(type_name)).unwrap();
+        insta::assert_snapshot!(data, text);
+        let back = bytes("tests/json/more.pas", &format!("more_{data}.json"), &text, Some(type_name)).unwrap();
+        assert_eq!(back, std::fs::read(root().join(&path)).unwrap(), "{data}");
+    }
+    // A unit can be the source too.
+    let keys = json("examples/database/bstunit.pas", "examples/database/mark.key", Some("PeopleKey")).unwrap();
+    assert!(keys.contains("\"Location\": 0"), "{keys}");
+    // A Real can't be as small as 1e-39 (TP would store 0).
+    let tiny = bytes("tests/json/more.pas", "tiny.json", "[1e-39]", Some("Real")).unwrap_err();
+    assert!(tiny.contains("too small for a Real"), "{tiny}");
+}

@@ -13,11 +13,12 @@ Claude can't watch a window, press keys in a real terminal, or run the real
 Turbo Pascal. These need you; tell Claude what you find, and it fixes it.
 
 - [ ] Play each interactive example by hand with `cargo run -p pascrust -- run <file>` and note anything that looks or behaves differently from how you remember it:
-  - [ ] Text mode (Crt): `life.pas`, `gmscode.pas`, `airport/airport4.pas`, `database/filesys.pas`. Done: `blkjack.pas` (the user, 2026-11-05: "It's great!"), `menu.pas` ("menu works", with its games built into `A:\SHANNON` as the README's Examples section shows).
+  - [ ] Text mode (Crt): `gmscode.pas`, `airport/airport4.pas`, `database/filesys.pas`. Done: `blkjack.pas` (the user, 2026-11-05: "It's great!"), `life.pas` ("Life works"), `menu.pas` ("menu works", with its games built into `A:\SHANNON` as the README's Examples section shows).
   - [ ] Graphics (a window opens): `clock/`, and a whole game of `tictac/` against the computer.
   - [ ] PascRust's own examples in `examples/pascrust/` (`turtles.pas`, `calls_rust.pas`, `rust_calls_pascal/`).
 - [ ] If you still have Turbo Pascal 7 (in DOSBox, say), settle what Free Pascal can't tell us, since it works in 32/64 bits:
   - [ ] `w + 1` with `w: Word = 65535`: 0 (PascRust) or 65536?
+  - [ ] With `{$Q+}`, is `Inc(b)` at 255 for a Byte (or `w + 1` at 65535 for a Word) error 215, as PascRust says, or 0? (TP's `INTO` tests the signed overflow flag, so it may only catch `Inc(b)` at 127, says Fable.)
   - [ ] `s := s + Bump` where the function `Bump` changes `s`: which runs first?
   - [ ] `type Small = 0..10; const X = Small(300);`: an error, or 44 (PascRust)?
   - [ ] Graph: does `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners?
@@ -287,7 +288,12 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a7c84bf (batches A-L). Not yet reviewed: `f4219c0..HEAD`. Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a7c84bf (batches A-L). Not yet reviewed: `44cbc65..HEAD`. Keep this range up to date.
+- [x] Findings of review batch O (f4219c0..44cbc65):
+  - [x] `{$Q+}`: `(2 + 3) * i` didn't compile (a suffix on a folded expression); `Inc(p^.N)` was runtime error 204 (two borrows of the heap record).
+  - [x] `to-json` read a Boolean nested tag as its byte, not as TP's any-nonzero-is-True, so `from-json` refused `to-json`'s own output.
+  - [x] `to-json` on a source with `{$I file.inc}` gave a confusing error; `from-json` wrote 0 for a Real too small; `owners` moved into `Out` (no more `too_many_arguments`); README names `{$Q+}`.
+  - [x] Tests: nested variant parts, a tagless record over a Boolean, an object with a parent, sets of 10..20 and of Byte, files of strings and integers, a unit as the source (tests/json/more.pas).
 - [x] Findings of review batch N (c537266..f4219c0):
   - [x] `Halt` inside `call` with `panic = "abort"` aborted with "Halt(0)" instead of exiting with its code.
   - [x] The abort note's wording assumed `call`; `cast` lost its doc comment to `is_unsigned`; the test matched "Runtime error 2" in "201".

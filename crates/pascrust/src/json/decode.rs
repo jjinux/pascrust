@@ -188,6 +188,8 @@ fn variant_part(
 fn ordinal(ty: &Type, bytes: &[u8]) -> i64 {
     match ty {
         Type::Int(kind) => integer(*kind, bytes),
+        // Any byte but 0 is `True`, as for the value itself.
+        Type::Bool => i64::from(bytes[0] != 0),
         _ if bytes.len() == 2 => integer(IntKind::Word, bytes),
         _ => i64::from(bytes[0]),
     }

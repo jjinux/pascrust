@@ -1,0 +1,18 @@
+---
+source: crates/pascrust/tests/json_tests.rs
+expression: text
+---
+[
+  {
+    "Str": "ab",
+    "Arr": [
+      2,
+      97,
+      98,
+      67
+    ],
+    "Flag": true,
+    "Mode": true,
+    "M2": "b"
+  }
+]

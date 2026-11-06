@@ -80,6 +80,7 @@ these is an error that says where (`[3].Where.X`):
 
 - a field missing, or a key that isn't a field (field names in any case);
 - a number that doesn't fit its type (300 for a `Byte`), or isn't whole;
+  a real too big or too small (but not 0) for a `Real`;
 - a string longer than its `string[n]`, or a character that isn't in code
   page 437, which TP's text used;
 - an enumeration name that isn't one of the type's values, or a set
@@ -92,7 +93,8 @@ these is an error that says where (`[3].Where.X`):
 In a variant record without a tag, the fields of any variants may be there,
 as `to-json` writes them all: each is written where it lives, and it's an
 error only if two put different values in the same byte (`{"W": 258,
-"Lo": 3}`, where `Lo` is `W`'s low byte, 2).
+"Lo": 3}`, where `Lo` is `W`'s low byte, 2). A Boolean `true` agrees with
+any byte but 0, since that's how TP reads it.
 
 The bytes after a string's length, and those of a variant that's shorter
 than the longest, are written as zeros. So `to-json` then `from-json` gives

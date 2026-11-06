@@ -10,18 +10,25 @@ use super::decode::has_virtual_methods;
 use crate::sema::types::{Field, ObjectType, RealKind, RecordType, VariantPart, set_bytes, tp_size};
 use crate::sema::{Analysis, IntKind, Type};
 
-/// Where a value goes: its bytes, and which of them mean something. (A
-/// string's bytes after its length don't, so two variants of a record
-/// without a tag can share them without a clash.)
+/// Where a value goes: its bytes, which of them mean something, and which
+/// field wrote each. (A string's bytes after its length mean nothing, so two
+/// variants of a record without a tag can share them without a clash; the
+/// owners name the other field when they do clash.)
 struct Out<'a> {
     bytes: &'a mut [u8],
     meant: &'a mut [bool],
+    owners: &'a mut [Option<String>],
 }
 
 impl Out<'_> {
     /// Bytes `start..start + len` of this one.
     fn part(&mut self, start: usize, len: usize) -> Out<'_> {
-        Out { bytes: &mut self.bytes[start..start + len], meant: &mut self.meant[start..start + len] }
+        let range = start..start + len;
+        Out {
+            bytes: &mut self.bytes[range.clone()],
+            meant: &mut self.meant[range.clone()],
+            owners: &mut self.owners[range],
+        }
     }
 
     fn set(&mut self, bytes: &[u8]) {
@@ -33,10 +40,26 @@ impl Out<'_> {
 /// The bytes of one record of type `ty`, from its JSON. `path` says where
 /// it is (`[3].address.zip`), for messages.
 pub fn record_bytes(analysis: &Analysis, ty: &Type, json: &Value, path: &str) -> Result<Vec<u8>, String> {
-    let size = size_of(ty)?;
-    let (mut bytes, mut meant) = (vec![0; size], vec![false; size]);
-    value(analysis, ty, json, &mut Out { bytes: &mut bytes, meant: &mut meant }, path)?;
-    Ok(bytes)
+    let mut buffer = Buffer::new(size_of(ty)?);
+    value(analysis, ty, json, &mut buffer.out(), path)?;
+    Ok(buffer.bytes)
+}
+
+/// The storage an [`Out`] writes into.
+struct Buffer {
+    bytes: Vec<u8>,
+    meant: Vec<bool>,
+    owners: Vec<Option<String>>,
+}
+
+impl Buffer {
+    fn new(size: usize) -> Self {
+        Buffer { bytes: vec![0; size], meant: vec![false; size], owners: vec![None; size] }
+    }
+
+    fn out(&mut self) -> Out<'_> {
+        Out { bytes: &mut self.bytes, meant: &mut self.meant, owners: &mut self.owners }
+    }
 }
 
 fn size_of(ty: &Type) -> Result<usize, String> {
@@ -73,9 +96,12 @@ fn value(analysis: &Analysis, ty: &Type, json: &Value, out: &mut Out, path: &str
         }
         Type::Real(RealKind::Real) => {
             let x = json.as_f64().ok_or_else(|| format!("{path} should be a number, not {json}"))?;
-            // A `Real` goes up to about 1.7e38.
+            // A `Real` goes from about 2.9e-39 to 1.7e38 (and 0).
             if x.abs() > 1.7e38 {
                 return Err(format!("{path} is {x}, too big for a Real"));
+            }
+            if x != 0.0 && x.abs() < 2.9e-39 {
+                return Err(format!("{path} is {x}, too small for a Real (it would be 0)"));
             }
             out.set(&real48::from_f64(x));
         }
@@ -246,8 +272,7 @@ fn record(analysis: &Analysis, record: &RecordType, keys: &mut Keys, out: &mut O
     }
     if let Some(part) = &record.variant {
         let len = out.bytes.len() - offset;
-        let mut owners = vec![None; len];
-        variant_part(analysis, part, &record.fields, keys, &mut out.part(offset, len), &mut owners, tag, path)?;
+        variant_part(analysis, part, &record.fields, keys, &mut out.part(offset, len), tag, path)?;
     }
     Ok(())
 }
@@ -255,16 +280,13 @@ fn record(analysis: &Analysis, record: &RecordType, keys: &mut Keys, out: &mut O
 /// The fields of a variant part. With a tag, those of the variant it picks,
 /// all required. Without one, any variant's fields may be there (`to-json`
 /// writes them all); each is written where it lives, and it's an error only
-/// if two of them put different values in the same byte. `owners` says
-/// which field wrote each byte so far.
-#[allow(clippy::too_many_arguments)]
+/// if two of them put different values in the same byte.
 fn variant_part(
     analysis: &Analysis,
     part: &VariantPart,
     fields: &[Field],
     keys: &mut Keys,
     area: &mut Out,
-    owners: &mut [Option<String>],
     tag: Option<i64>,
     path: &str,
 ) -> Result<(), String> {
@@ -279,7 +301,7 @@ fn variant_part(
             let json = if tag.is_some() { Some(keys.require(&field.name)?) } else { keys.get(&field.name) };
             if let Some(json) = json {
                 let field_path = format!("{path}.{}", field.name);
-                share(analysis, &field.ty, json, area, owners, offset as usize, &field.name, &field_path)?;
+                share(analysis, &field.ty, json, area, offset as usize, &field.name, &field_path)?;
             }
         }
         if let Some(nested) = &variant.nested {
@@ -290,25 +312,15 @@ fn variant_part(
                 let field_path = format!("{path}.{}", field.name);
                 let json = if tag.is_some() { Some(keys.require(&field.name)?) } else { keys.get(&field.name) };
                 if let Some(json) = json {
-                    share(analysis, &field.ty, json, area, owners, start, &field.name, &field_path)?;
+                    share(analysis, &field.ty, json, area, start, &field.name, &field_path)?;
                     nested_tag = Some(ordinal(&field.ty, json, &field_path)?);
                 }
                 start += size_of(&field.ty)?;
             }
             let len = area.bytes.len() - start;
-            let nested_owners = &mut owners[start..];
             // A nested part with a tag that isn't there has nothing to write.
             if nested.tag.is_none() || nested_tag.is_some() {
-                variant_part(
-                    analysis,
-                    nested,
-                    fields,
-                    keys,
-                    &mut area.part(start, len),
-                    nested_owners,
-                    nested_tag,
-                    path,
-                )?;
+                variant_part(analysis, nested, fields, keys, &mut area.part(start, len), nested_tag, path)?;
             }
         }
     }
@@ -317,31 +329,34 @@ fn variant_part(
 
 /// Write one field into a variant part's bytes at `offset`, checking that
 /// it agrees with what other variants' fields put there.
-#[allow(clippy::too_many_arguments)]
 fn share(
     analysis: &Analysis,
     ty: &Type,
     json: &Value,
     area: &mut Out,
-    owners: &mut [Option<String>],
     offset: usize,
     name: &str,
     path: &str,
 ) -> Result<(), String> {
     let size = size_of(ty)?;
-    let (mut bytes, mut meant) = (vec![0; size], vec![false; size]);
-    value(analysis, ty, json, &mut Out { bytes: &mut bytes, meant: &mut meant }, path)?;
+    let mut field = Buffer::new(size);
+    value(analysis, ty, json, &mut field.out(), path)?;
+    let Buffer { bytes, meant, .. } = field;
     for i in (0..size).filter(|&i| meant[i]) {
         let at = offset + i;
+        // A `True` agrees with any byte but 0, which is how TP reads it.
+        if *ty == Type::Bool && bytes[i] == 1 && area.meant[at] && area.bytes[at] != 0 {
+            continue;
+        }
         if area.meant[at] && area.bytes[at] != bytes[i] {
-            let other = owners[at].as_deref().unwrap_or("another field");
+            let other = area.owners[at].as_deref().unwrap_or("another field");
             return Err(format!(
                 "{path} and `{other}` share bytes (they're in different variants), but their values don't agree; give only one of them"
             ));
         }
         area.bytes[at] = bytes[i];
         area.meant[at] = true;
-        owners[at] = Some(name.to_string());
+        area.owners[at] = Some(name.to_string());
     }
     Ok(())
 }

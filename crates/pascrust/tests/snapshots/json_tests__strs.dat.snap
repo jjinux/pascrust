@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/json_tests.rs
+expression: text
+---
+[
+  "hello",
+  ""
+]

@@ -167,7 +167,8 @@ pub fn analyze_file(path: &Path, options: &Options) -> Result<sema::Analysis, St
     };
     let mut map = SourceMap::new();
     let base = map.add(file_name.as_str(), source.clone());
-    let SourceFile::Program(program) = parser::parse_file(&source, base).map_err(|d| map.render(&d))?.0 else {
+    let (program, directives, _) = parser::parse_file(&source, base).map_err(|d| map.render(&d))?;
+    let SourceFile::Program(program) = program else {
         unreachable!("a unit was wrapped in a program above");
     };
     let mut loader = UnitLoader {
@@ -175,7 +176,7 @@ pub fn analyze_file(path: &Path, options: &Options) -> Result<sema::Analysis, St
         map,
         loaded: Vec::new(),
         visiting: Vec::new(),
-        directives: Vec::new(),
+        directives,
         comments: Vec::new(),
         sources: Vec::new(),
     };
@@ -184,6 +185,8 @@ pub fn analyze_file(path: &Path, options: &Options) -> Result<sema::Analysis, St
     }
     let units: Vec<Unit> = loader.loaded.into_iter().map(|(_, unit)| unit).collect();
     let map = loader.map;
+    // An include file (`{$I name}`) would leave declarations out.
+    check_directives(&loader.directives).map_err(|d| map.render(&d))?;
     sema::analyze(&program, &units)
         .map_err(|errors| errors.iter().map(|d| map.render(d)).collect::<Vec<_>>().join("\n\n"))
 }
@@ -421,7 +424,7 @@ fn io_unchecked_regions(directives: &[parser::Directive], map: &SourceMap) -> Ve
 /// from each `on` to the next `off` (`"Q-"`) or the end of that file.
 fn switch_regions(directives: &[parser::Directive], map: &SourceMap, on: &str, off: &str) -> Vec<Span> {
     let mut regions = Vec::new();
-    // Where the current `{$I-}` region started, and in which file.
+    // Where the current region (from `on`) started, and in which file.
     let mut open: Option<(usize, usize)> = None;
     let close = |regions: &mut Vec<Span>, (start, file): (usize, usize), end: Option<usize>| {
         let source = map.file(file);
