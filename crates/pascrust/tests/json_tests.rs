@@ -190,9 +190,9 @@ fn more_kinds_of_files() {
         bytes("tests/json/more.pas", "ends.json", "[2.938735877055719e-39, 1.7014118346031449e38]", Some("Real"));
     assert_eq!(ends.unwrap(), [1, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 127]);
     let tiny = bytes("tests/json/more.pas", "tiny.json", "[2.92e-39]", Some("Real")).unwrap_err();
-    assert!(tiny.contains("too small for a Real"), "{tiny}");
+    assert!(tiny.contains("[0] is 2.92e-39, too small for a Real"), "{tiny}");
     let big = bytes("tests/json/more.pas", "big.json", "[1.71e38]", Some("Real")).unwrap_err();
-    assert!(big.contains("too big for a Real"), "{big}");
+    assert!(big.contains("[0] is 1.71e+38, too big for a Real"), "{big}");
     // A Real can't be as small as 1e-39 (TP would store 0).
     let tiny = bytes("tests/json/more.pas", "tiny.json", "[1e-39]", Some("Real")).unwrap_err();
     assert!(tiny.contains("too small for a Real"), "{tiny}");

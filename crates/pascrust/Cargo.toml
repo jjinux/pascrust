@@ -37,7 +37,7 @@ required-features = ["cli"]
 [dependencies]
 clap = { version = "4", features = ["derive"], optional = true }
 # `preserve_order` keeps a record's fields in their Pascal order.
-serde_json = { version = "1", features = ["preserve_order"], optional = true }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"], optional = true }
 pascrust_runtime = { path = "../pascrust_runtime", optional = true }
 
 [dev-dependencies]

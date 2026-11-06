@@ -111,9 +111,9 @@ fn value(analysis: &Analysis, ty: &Type, json: &Value, out: &mut Out, path: &str
             // A `Real` goes from about 2.9e-39 to 1.7e38 (and 0).
             match real48::try_from_f64(x) {
                 Ok(bytes) => out.set(&bytes),
-                Err(real48::OutOfRange::TooBig) => return Err(format!("{path} is {x}, too big for a Real")),
+                Err(real48::OutOfRange::TooBig) => return Err(format!("{path} is {json}, too big for a Real")),
                 Err(real48::OutOfRange::TooSmall) => {
-                    return Err(format!("{path} is {x}, too small for a Real (it would be 0)"));
+                    return Err(format!("{path} is {json}, too small for a Real (it would be 0)"));
                 }
             }
         }
