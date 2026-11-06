@@ -16,7 +16,7 @@ use crate::sema::{Analysis, IntKind, Type};
 /// owners name the other field when they do clash.)
 struct Out<'a> {
     bytes: &'a mut [u8],
-    meant: &'a mut [bool],
+    meant: &'a mut [Meant],
     owners: &'a mut [Option<String>],
 }
 
@@ -33,8 +33,20 @@ impl Out<'_> {
 
     fn set(&mut self, bytes: &[u8]) {
         self.bytes[..bytes.len()].copy_from_slice(bytes);
-        self.meant[..bytes.len()].fill(true);
+        self.meant[..bytes.len()].fill(Meant::Exactly);
     }
+}
+
+/// What a byte of an [`Out`] means, for the clash check between variants.
+#[derive(Clone, Copy, PartialEq)]
+enum Meant {
+    /// Nothing yet (or a string's unused bytes): any variant may write it.
+    Nothing,
+    /// Exactly this value.
+    Exactly,
+    /// A Boolean's `True`: TP reads any byte but 0 as `True`, so another
+    /// variant's nonzero byte agrees with it, and takes its place.
+    NonZero,
 }
 
 /// The bytes of one record of type `ty`, from its JSON. `path` says where
@@ -48,13 +60,13 @@ pub fn record_bytes(analysis: &Analysis, ty: &Type, json: &Value, path: &str) ->
 /// The storage an [`Out`] writes into.
 struct Buffer {
     bytes: Vec<u8>,
-    meant: Vec<bool>,
+    meant: Vec<Meant>,
     owners: Vec<Option<String>>,
 }
 
 impl Buffer {
     fn new(size: usize) -> Self {
-        Buffer { bytes: vec![0; size], meant: vec![false; size], owners: vec![None; size] }
+        Buffer { bytes: vec![0; size], meant: vec![Meant::Nothing; size], owners: vec![None; size] }
     }
 
     fn out(&mut self) -> Out<'_> {
@@ -162,7 +174,7 @@ fn value(analysis: &Analysis, ty: &Type, json: &Value, out: &mut Out, path: &str
                 return Err(format!("{path} should be null (a {ty} can't be written to a file), not {json}"));
             }
             let len = out.bytes.len();
-            out.meant[..len].fill(true);
+            out.meant[..len].fill(Meant::Exactly);
         }
         _ => return Err(format!("{path} is a {ty}, which can't be written to a file")),
     }
@@ -342,20 +354,29 @@ fn share(
     let mut field = Buffer::new(size);
     value(analysis, ty, json, &mut field.out(), path)?;
     let Buffer { bytes, meant, .. } = field;
-    for i in (0..size).filter(|&i| meant[i]) {
+    for i in (0..size).filter(|&i| meant[i] != Meant::Nothing) {
         let at = offset + i;
-        // A `True` agrees with any byte but 0, which is how TP reads it.
-        if *ty == Type::Bool && bytes[i] == 1 && area.meant[at] && area.bytes[at] != 0 {
-            continue;
-        }
-        if area.meant[at] && area.bytes[at] != bytes[i] {
+        let new = if *ty == Type::Bool && bytes[i] == 1 { Meant::NonZero } else { Meant::Exactly };
+        let agrees = match (area.meant[at], new) {
+            (Meant::Nothing, _) => true,
+            // A `True` agrees with any byte but 0, which is how TP reads it.
+            (Meant::Exactly, Meant::NonZero) => {
+                if area.bytes[at] != 0 {
+                    continue; // the exact byte stays
+                }
+                false
+            }
+            (Meant::Exactly, _) => area.bytes[at] == bytes[i],
+            (Meant::NonZero, _) => bytes[i] != 0,
+        };
+        if !agrees {
             let other = area.owners[at].as_deref().unwrap_or("another field");
             return Err(format!(
                 "{path} and `{other}` share bytes (they're in different variants), but their values don't agree; give only one of them"
             ));
         }
         area.bytes[at] = bytes[i];
-        area.meant[at] = true;
+        area.meant[at] = new;
         area.owners[at] = Some(name.to_string());
     }
     Ok(())

@@ -29,6 +29,11 @@ type
                 False: (M1: Byte);
                 True: (M2: Char));
    end;
+   BoolFirst = record
+      case Integer of
+         0: (Flag: Boolean);
+         1: (B: Byte);
+   end;
    Base = object
       X: Integer;
       procedure SetX(V: Integer);

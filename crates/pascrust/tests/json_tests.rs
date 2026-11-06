@@ -178,6 +178,13 @@ fn more_kinds_of_files() {
     // A unit can be the source too.
     let keys = json("examples/database/bstunit.pas", "examples/database/mark.key", Some("PeopleKey")).unwrap();
     assert!(keys.contains("\"Location\": 0"), "{keys}");
+    // A Boolean's `True` agrees with another variant's nonzero byte, in
+    // either order: `to-json` reads a 5 under a Boolean as `true`.
+    for text in [r#"[{"Flag": true, "B": 5}]"#, r#"[{"B": 5, "Flag": true}]"#] {
+        assert_eq!(bytes("tests/json/more.pas", "bool.json", text, Some("BoolFirst")), Ok(vec![5]), "{text}");
+    }
+    let zero = bytes("tests/json/more.pas", "bool.json", r#"[{"Flag": true, "B": 0}]"#, Some("BoolFirst"));
+    assert!(zero.unwrap_err().contains("don't agree"));
     // A Real can't be as small as 1e-39 (TP would store 0).
     let tiny = bytes("tests/json/more.pas", "tiny.json", "[1e-39]", Some("Real")).unwrap_err();
     assert!(tiny.contains("too small for a Real"), "{tiny}");
