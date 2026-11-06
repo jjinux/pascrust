@@ -288,7 +288,13 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a7c84bf (batches A-L). Not yet reviewed: `44cbc65..HEAD`. Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 70d5d51 (batches A-P). Not yet reviewed: `70d5d51..HEAD`. Keep this range up to date.
+- [x] Findings of review batch P (44cbc65..70d5d51):
+  - [x] `Exec('true.exe')` ran `/usr/bin/true`: a bare name was looked up on `PATH`; now it runs from the current directory only, as in DOS.
+  - [x] `{$Q+}` `Inc(r^.q^.N, 40)` (two pointers) didn't compile; `from-json` refused `to-json`'s output for a Boolean variant before a Byte one; the Real range in `from-json` was approximate (2.92e-39 stored as 0, the largest Real refused).
+  - [x] `tpc -E` didn't make the directory, so the README's recipe for menu.pas's games failed; Crt didn't put its colours back after `Exec`.
+  - [ ] Question for the user: under `{$Q+}`, `i * (2 + 3)` checks the constant `2 + 3` for overflow (`2_i16.checked_add(3)`); only a constant on the left is folded to `5_i16`. Fold constants on either side?
+  - [ ] Question for the user: an anonymous pointer type as a record field (`q: ^Inner;` inside a record) panics codegen ("only named pointer types are emitted"). Name it (a synthesised `type`), or reject it with an error?
 - [x] Findings of review batch O (f4219c0..44cbc65):
   - [x] `{$Q+}`: `(2 + 3) * i` didn't compile (a suffix on a folded expression); `Inc(p^.N)` was runtime error 204 (two borrows of the heap record).
   - [x] `to-json` read a Boolean nested tag as its byte, not as TP's any-nonzero-is-True, so `from-json` refused `to-json`'s own output.
