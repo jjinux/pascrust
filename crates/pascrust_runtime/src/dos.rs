@@ -133,13 +133,35 @@ pub fn dos_exit_code() -> u16 {
 pub fn exec(path: impl Into<PString>, command_line: impl Into<PString>) {
     let (path, command_line) = (path.into().to_string(), command_line.into().to_string());
     crate::io::flush_stdout();
-    let status = std::process::Command::new(dos_path(&path)).args(command_line.split_whitespace()).status();
+    let program = executable(&path);
+    // A program using Crt has the terminal in raw mode; the other program
+    // gets it as a terminal normally is, and Crt takes it back afterwards.
+    #[cfg(feature = "crt")]
+    let suspended = crate::crt::suspend();
+    let status = std::process::Command::new(program).args(command_line.split_whitespace()).status();
+    #[cfg(feature = "crt")]
+    crate::crt::resume(suspended);
     match status {
         Ok(status) => {
             DOS_ERROR.with(|e| e.set(0));
             EXIT_CODE.with(|c| c.set(status.code().unwrap_or(0) as u16));
         }
         Err(_) => DOS_ERROR.with(|e| e.set(2)),
+    }
+}
+
+/// The file `Exec(path)` runs. A DOS program is `GAME.EXE`, but a program
+/// built here has no extension (`tpc game.pas` makes `game`), so without
+/// a `GAME.EXE`, `Exec` runs `GAME` instead.
+fn executable(path: &str) -> std::path::PathBuf {
+    let found = dos_path(path);
+    if found.is_file() {
+        return found;
+    }
+    let lower = path.to_ascii_lowercase();
+    match lower.strip_suffix(".exe").or_else(|| lower.strip_suffix(".com")) {
+        Some(_) => dos_path(&path[..path.len() - 4]),
+        None => found,
     }
 }
 
@@ -219,6 +241,23 @@ pub fn get_env(name: impl Into<PString>) -> PString {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Exec('GAME.EXE')` runs `game`, as `tpc game.pas` builds it.
+    #[cfg(unix)]
+    #[test]
+    fn exec_runs_a_program_without_its_dos_extension() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("pascrust_exec_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let game = dir.join("game");
+        std::fs::write(&game, "#!/bin/sh\nexit 3\n").unwrap();
+        std::fs::set_permissions(&game, std::fs::Permissions::from_mode(0o755)).unwrap();
+        exec(format!("{}\\GAME.EXE", dir.display()).as_str(), "");
+        assert_eq!((dos_error(), dos_exit_code()), (0, 3));
+        exec(format!("{}\\NOGAME.EXE", dir.display()).as_str(), "");
+        assert_eq!(dos_error(), 2);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn fexpand_gives_dos_paths() {

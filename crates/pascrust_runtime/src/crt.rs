@@ -113,6 +113,30 @@ pub(crate) fn restore() {
     }
 }
 
+/// Hand the terminal over to another program (`Exec`): out of raw mode,
+/// with the cursor showing. Returns whether there was anything to give.
+/// (Only `Dos`'s `Exec` needs it.)
+#[cfg(feature = "dos")]
+pub(crate) fn suspend() -> bool {
+    if !RAW_MODE.load(Ordering::SeqCst) {
+        return false;
+    }
+    let mut out = std::io::stdout();
+    let _ = out.queue(cursor::Show);
+    let _ = out.flush();
+    let _ = terminal::disable_raw_mode();
+    true
+}
+
+/// Take the terminal back after `Exec`: a program that used Crt itself put
+/// it back out of raw mode when it ended.
+#[cfg(feature = "dos")]
+pub(crate) fn resume(suspended: bool) {
+    if suspended {
+        let _ = terminal::enable_raw_mode();
+    }
+}
+
 /// Run a terminal command, ignoring errors (as TP's Crt couldn't fail), but
 /// only in terminal mode.
 fn terminal_do(f: impl FnOnce(&mut std::io::Stdout) -> std::io::Result<()>) {

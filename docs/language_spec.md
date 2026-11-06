@@ -537,8 +537,10 @@ Never (DOS/x86 machinery with no sensible Rust translation)
 - `Mem`, `MemW`, `MemL`, `Port`, `PortW`, `Seg`, `Ofs`, `Ptr`, `CSeg`,
   `DSeg`, `SPtr`, `Addr` arithmetic, `absolute` at fixed addresses
 - `Overlay` behaviour, `OvrInit` and friends (parse, ignore)
-- `Exec` of real DOS executables (it will run the path through
-  `std::process::Command`; `turbo.exe` will not be found)
+- `Exec` of real DOS executables (it runs the path through
+  `std::process::Command`, so `turbo.exe` isn't found; `Exec('GAME.EXE')`
+  runs `game`, a program built with `tpc`, if there's no `GAME.EXE`; a
+  program using `Crt` hands the terminal over while the other one runs)
 - Direct video memory writes (`DirectVideo` is accepted and ignored)
 - `far`, `near`, `export`, Windows (`TPW`) units
 - `Graph3` and `Turbo3`, the units TP 4.0 to 7.0 kept for Turbo Pascal

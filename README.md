@@ -204,7 +204,10 @@ cargo run -p pascrust -- run examples/paper.pas          # Paper, scissors, rock
 cargo run -p pascrust -- run examples/life.pas           # The Game of Life
 cargo run -p pascrust -- run examples/magic_square.pas   # Solves a 4x4 magic square puzzle
 cargo run -p pascrust -- run examples/gmscode.pas        # Encodes what you type as you type it
-cargo run -p pascrust -- run examples/menu.pas           # A DOS menu (its choices ran other .exe files)
+# A DOS menu, whose games ran from A:\SHANNON: build them there with tpc,
+# then map drive A: to out/a. (Exec of GAME.EXE runs the program `game`.)
+for g in life gmscode paper blkjack airport/airport4; do cargo run -p pascrust --bin tpc -- -Eout/a/shannon examples/$g.pas; done
+PASCRUST_DRIVE_A=out/a cargo run -p pascrust -- run examples/menu.pas
 
 # Multi-file programs: run the main file, and its units come along
 cargo run -p pascrust -- run examples/airport/airport4.pas   # An airport runway simulation
