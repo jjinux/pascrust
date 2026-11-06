@@ -233,7 +233,9 @@ cargo run -p pascrust -- run examples/pascrust/turtles.pas
 cargo run -p pascrust -- run examples/pascrust/calls_rust.pas
 
 # Rust calling Turbo Pascal: a Rust project whose build.rs translates
-# examples/database/bstunit.pas (from 1997) as part of `cargo build`
+# examples/database/bstunit.pas (from 1997) as part of `cargo build`, then
+# uses its binary search tree: it inserts four IDs, searches for one and
+# deletes one, printing each result (src/main.rs is the Rust side)
 cargo run --manifest-path examples/pascrust/rust_calls_pascal/Cargo.toml
 ```
 
