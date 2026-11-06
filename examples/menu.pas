@@ -11,7 +11,7 @@ program Menu;
 
 uses Crt, Dos;
 const
-   SizeOfMenu = 'C';                    {Letter: last choice on menu}
+   SizeOfMenu = 'B';                    {Letter: last choice on menu}
    ScreenSaveTime = 10000;              {milisec's before ScrnSv}
 type
    letter = 'A'..'Z';
@@ -96,16 +96,8 @@ procedure ExeChoice(selection: char; var highlight: letter;
                     var leave: boolean);
    begin
       case selection of
-         'A': begin
-            exec('c:\tp\bin\turbo.exe', '');
-            if DosError <> 0 then
-            begin
-               gotoxy(1, wherey+1);
-               writeln(chr(7), 'Dos Error ', DosError);
-            end; {if}
-         end; {'A'}
-         'B'     : ShannonGames;
-         'C'     : Exit(leave);                {reset dos defaults}
+         'A'     : ShannonGames;
+         'B'     : Exit(leave);                {reset dos defaults}
          chr(13) : begin                       {translate.  65 is upcase A}
             selection := chr(ord(highlight));
             ExeChoice(selection, highlight, leave);
@@ -182,9 +174,8 @@ procedure showmenu(highlight: letter);
       begin
          textcolor(green);
          gotoxy(1, 5);                            {Store choices into array}
-         choices['A'] := 'A. Turbo Pascal';       {Notice the format ?. ?????}
-         choices['B'] := 'B. Shannon''s Games';
-         choices['C'] := 'C. Exit to Dos';
+         choices['A'] := 'A. Shannon''s Games';   {Notice the format ?. ?????}
+         choices['B'] := 'B. Exit to Dos';
          for a := 'A' to SizeOfMenu do       {Notice only print what's needed}
             if a <> highlight then                {Don't highlight it}
                writeln('   ', choices[a])

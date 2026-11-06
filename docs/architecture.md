@@ -1006,7 +1006,7 @@ window meanwhile (§19).
 - **Dos** (`feature = "dos"`): `GetDate`/`GetTime` (via `chrono` local time),
   `FExpand`/`FSearch`/`FSplit` with a DOS-path translation layer (`a:\x` →
   a directory from a config map; open question), `Exec` → `std::process::
-  Command` (the examples run `turbo.exe`, which will simply fail; a
+  Command` (a DOS program like `turbo.exe` isn't found; a
   missing `X.EXE` falls back to `X`, the name `tpc` gives a program here,
   and with `Crt` in raw mode the terminal is handed over and taken back
   around the call: `crt::suspend`/`resume`), `ChDir`,
