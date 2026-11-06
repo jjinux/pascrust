@@ -13,7 +13,7 @@ Claude can't watch a window, press keys in a real terminal, or run the real
 Turbo Pascal. These need you; tell Claude what you find, and it fixes it.
 
 - [ ] Play each interactive example by hand with `cargo run -p pascrust -- run <file>` and note anything that looks or behaves differently from how you remember it:
-  - [ ] Text mode (Crt): `magic_square.pas`, `airport/airport4.pas`, `database/filesys.pas`. Done: `blkjack.pas` (the user, 2026-11-05: "It's great!"), `life.pas` ("Life works"), `gmscode.pas` ("works"), `paper.pas` ("works :)"), `menu.pas` ("menu works", with its games built into `A:\SHANNON` as the README's Examples section shows).
+  - [ ] Text mode (Crt): `airport/airport4.pas`, `database/filesys.pas`. Done: `blkjack.pas` (the user, 2026-11-05: "It's great!"), `life.pas` ("Life works"), `gmscode.pas` ("works"), `paper.pas` ("works :)"), `magic_square.pas` (works), `menu.pas` ("menu works", with its games built into `A:\SHANNON` as the README's Examples section shows).
   - [ ] Graphics (a window opens): `clock/`, and a whole game of `tictac/` against the computer.
   - [ ] PascRust's own examples in `examples/pascrust/` (`turtles.pas`, `calls_rust.pas`, `rust_calls_pascal/`).
 - [ ] If you still have Turbo Pascal 7 (in DOSBox, say), settle what Free Pascal can't tell us, since it works in 32/64 bits:
