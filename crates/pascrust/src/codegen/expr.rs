@@ -333,20 +333,33 @@ impl<'a> Codegen<'a> {
     /// Turbo Pascal works those out when it compiles, so `{$Q+}` never
     /// checks them: they're written as under `{$Q-}`, and Rust folds them.
     pub(super) fn is_constant(&self, e: &Expr) -> bool {
+        self.constant_int(e).is_some()
+    }
+
+    /// The value of an integer constant expression (see [`Self::is_constant`]),
+    /// worked out in 64 bits as TP works constants out in 32. `None` if it
+    /// isn't one (or divides by 0).
+    pub(super) fn constant_int(&self, e: &Expr) -> Option<i64> {
         match &e.kind {
-            ExprKind::Int(_) => true,
-            ExprKind::Name(_) => self
-                .a
-                .refs
-                .get(&e.id)
-                .is_some_and(|&s| matches!(self.a.sym(s).kind, SymKind::Const { value: ConstVal::Int(_), .. })),
-            ExprKind::Unary { op: UnaryOp::Neg | UnaryOp::Plus, operand } => self.is_constant(operand),
-            ExprKind::Binary {
-                op: BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod,
-                lhs,
-                rhs,
-            } => self.is_constant(lhs) && self.is_constant(rhs),
-            _ => false,
+            ExprKind::Int(n) => Some(*n),
+            ExprKind::Name(_) => match &self.a.sym(*self.a.refs.get(&e.id)?).kind {
+                SymKind::Const { value: ConstVal::Int(n), .. } => Some(*n),
+                _ => None,
+            },
+            ExprKind::Unary { op: UnaryOp::Neg, operand } => self.constant_int(operand)?.checked_neg(),
+            ExprKind::Unary { op: UnaryOp::Plus, operand } => self.constant_int(operand),
+            ExprKind::Binary { op, lhs, rhs } => {
+                let (l, r) = (self.constant_int(lhs)?, self.constant_int(rhs)?);
+                match op {
+                    BinaryOp::Add => l.checked_add(r),
+                    BinaryOp::Sub => l.checked_sub(r),
+                    BinaryOp::Mul => l.checked_mul(r),
+                    BinaryOp::Div => l.checked_div(r),
+                    BinaryOp::Mod => l.checked_rem(r),
+                    _ => None,
+                }
+            }
+            _ => None,
         }
     }
 

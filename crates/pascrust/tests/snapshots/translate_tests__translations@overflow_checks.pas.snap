@@ -21,6 +21,8 @@ use pascrust_runtime::prelude::*;
 // Free Pascal works in 32 or 64 bits, so 32767 + 1 doesn't overflow
 // there.
 
+const K: i16 = 5;
+
 /// Pascal: `record N: Integer; end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Rec {
@@ -89,20 +91,20 @@ fn pascal_main() {
     p = Ptr::alloc();
     p.get_mut().n = 1;
     {
-        let value = p.get().n.checked_add(1).unwrap_or_else(overflow);
-        p.get_mut().n = value;
+        let updated = p.get().n.checked_add(1).unwrap_or_else(overflow);
+        p.get_mut().n = updated;
     }
     // Pascal `with`: Rust has no equivalent, so each field is written out in full.
     {
-        let value = p.get().n.checked_add(2).unwrap_or_else(overflow);
-        p.get_mut().n = value;
+        let updated = p.get().n.checked_add(2).unwrap_or_else(overflow);
+        p.get_mut().n = updated;
     }
     pwriteln!(p.get().n, " ", 5_i16.checked_mul(j).unwrap_or_else(overflow));
     r = Ptr::alloc();
     r.get_mut().q = p.clone();
     {
-        let value = r.get().q.get().n.checked_add(40).unwrap_or_else(overflow);
-        r.get().q.get_mut().n = value;
+        let updated = r.get().q.get().n.checked_add(40).unwrap_or_else(overflow);
+        r.get().q.get_mut().n = updated;
     }
     pwriteln!(p.get().n);
     // A constant (2 + 3) is worked out when TP compiles, so it isn't checked.
@@ -121,6 +123,14 @@ fn pascal_main() {
         " ",
         w_
     );
+    // A constant step that's negative turns round, as -5 does: up by 5.
+    b = 250;
+    b = b.checked_add(5).unwrap_or_else(overflow);
+    {
+        let updated = p.get().n.checked_add(K).unwrap_or_else(overflow);
+        p.get_mut().n = updated;
+    }
+    pwriteln!(i16::from(b), " ", p.get().n);
     pwriteln!(i + 1);
     i = i.checked_add(1).unwrap_or_else(overflow);
     pwriteln!("not reached");

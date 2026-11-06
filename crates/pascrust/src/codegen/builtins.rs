@@ -244,15 +244,9 @@ impl<'a> Codegen<'a> {
             Inc | Dec => {
                 let target_ty = ty(self, &args[0]);
                 let place = self.place(&args[0]);
-                // A number step (`2`, `-1`): its value.
-                let mut number = args.get(1).and_then(|n| match &n.kind {
-                    ExprKind::Int(k) => Some(*k),
-                    ExprKind::Unary { op: UnaryOp::Neg, operand } => match operand.kind {
-                        ExprKind::Int(k) => Some(-k),
-                        _ => None,
-                    },
-                    _ => None,
-                });
+                // A constant step (`2`, `-1`, `-K`, `2 + 300`): its value.
+                let mut number = args.get(1).and_then(|n| self.constant_int(n));
+                let mut wraps = false;
                 // One that doesn't fit the target wraps, as in TP: in a Byte,
                 // `Inc(b, 300)` adds 44 (the low 8 bits).
                 let bits = match target_ty.concrete() {
@@ -285,16 +279,21 @@ impl<'a> Codegen<'a> {
                     self.pending
                         .push(format!("// {n} wraps to {wrapped} in {target_ty} arithmetic, as in Turbo Pascal."));
                     number = Some(wrapped);
+                    wraps = true;
                 }
                 // A negative step goes the other way: `Dec(b, -1)` is `b += 1`.
                 // (Not if the type can't hold the step turned round:
                 // `Inc(i, -32768)` stays `i += -32768`.)
                 let flip = number.is_some_and(|n| n < 0 && in_range(-n));
                 let up = (b == Inc) != flip;
+                // A step that wraps or turns round is written as its value;
+                // otherwise as written (`K` stays `K`, `2 + 3` too).
                 let amount = match (args.get(1), number) {
                     (Some(_), Some(n)) if flip => (-n).to_string(),
-                    (Some(_), Some(n)) => n.to_string(),
-                    (Some(n), None) => self.coerce(n, &target_ty).0,
+                    (Some(_), Some(n)) if wraps => n.to_string(),
+                    // (A literal needs no conversion, even into a `Char`.)
+                    (Some(step), Some(n)) if matches!(step.kind, ExprKind::Int(_)) => n.to_string(),
+                    (Some(n), _) => self.coerce(n, &target_ty).0,
                     (None, _) => "1".to_string(),
                 };
                 if matches!(target_ty.concrete(), Type::Int(_)) && self.overflow_checked_at(span) {
@@ -305,10 +304,10 @@ impl<'a> Codegen<'a> {
                     // write. (A `let place = &mut ...` can't hold it either
                     // when the path has two calls: `r.get().q.get_mut()`
                     // borrows from a temporary that the `let` drops.)
-                    if place.contains('(') {
+                    if place.contains(".get_mut()") {
                         let read = self.coerce(&args[0], &target_ty);
                         let value = self.checked_op(read, method, &amount).0;
-                        return format!("{{ let value = {value}; {place} = value; }}");
+                        return format!("{{ let updated = {value}; {place} = updated; }}");
                     }
                     // (`*n` for a `var` parameter needs parentheses: `(*n).checked_add(1)`.)
                     let precedence = if place.starts_with('*') { prec::UNARY } else { prec::POSTFIX };

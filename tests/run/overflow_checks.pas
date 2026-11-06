@@ -4,6 +4,8 @@
   Free Pascal works in 32 or 64 bits, so 32767 + 1 doesn't overflow
   there. }
 program OverflowChecks;
+const
+   K = 5;
 type
    Rec = record
       N: Integer;
@@ -56,6 +58,11 @@ begin
    w := 10;
    w := w * (2 + 3);
    WriteLn(j * (2 + 3), ' ', (2 + 3) * (4 + 5), ' ', l - (2 + 3), ' ', b, ' ', w);
+   { A constant step that's negative turns round, as -5 does: up by 5. }
+   b := 250;
+   Dec(b, -K);
+   Inc(p^.N, K);
+   WriteLn(b, ' ', p^.N);
    {$Q-}
    WriteLn(i + 1);
    {$Q+}
