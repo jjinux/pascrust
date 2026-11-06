@@ -437,24 +437,60 @@ impl FileRecord for f64 {
 /// `(1 + mantissa / 2^39) * 2^(exponent - 129)`. It has about 11-12 digits,
 /// so an `f64` stored and read back is rounded to that, as in TP.
 pub mod real48 {
+    /// Why an `f64` doesn't fit in a `Real`.
+    #[derive(Debug, PartialEq)]
+    pub enum OutOfRange {
+        /// Smaller than 2^-128 (about 2.9e-39), but not 0: TP stores 0.
+        TooSmall,
+        /// Bigger than about 1.7e38.
+        TooBig,
+    }
+
+    /// `x` as a `Real`, as TP stores it: one too small becomes 0, and one
+    /// too big gets the largest exponent.
     pub fn from_f64(x: f64) -> [u8; 6] {
-        if x == 0.0 || !x.is_finite() {
-            return [0; 6];
+        match try_from_f64(x) {
+            Ok(bytes) => bytes,
+            Err(OutOfRange::TooSmall) => [0; 6],
+            Err(OutOfRange::TooBig) => {
+                let (sign, _, mantissa) = parts(x);
+                encode(sign, 255, mantissa)
+            }
         }
+    }
+
+    /// `x` as a `Real`, or why it doesn't fit. (The check comes after
+    /// rounding to the `Real`'s 39 bits: just under 2^-128 rounds up into
+    /// range.)
+    pub fn try_from_f64(x: f64) -> Result<[u8; 6], OutOfRange> {
+        if x == 0.0 || !x.is_finite() {
+            return Ok([0; 6]);
+        }
+        let (sign, exponent, mantissa) = parts(x);
+        if exponent < 1 {
+            return Err(OutOfRange::TooSmall); // exponent 0 means the value 0
+        }
+        // `u8::try_from` fails for an exponent above 255.
+        let exponent = u8::try_from(exponent).map_err(|_| OutOfRange::TooBig)?;
+        Ok(encode(sign, exponent, mantissa))
+    }
+
+    /// The sign bit, the `Real`'s biased exponent (possibly out of range)
+    /// and its 39-bit mantissa, for a finite `x` other than 0.
+    fn parts(x: f64) -> (u8, i64, u64) {
         let bits = x.to_bits();
         let sign = (bits >> 63) as u8;
-        let exponent = ((bits >> 52) & 0x7FF) as i64 - 1023 + 129;
+        let mut exponent = ((bits >> 52) & 0x7FF) as i64 - 1023 + 129;
         // The f64 mantissa's top 39 of 52 bits, rounded.
         let mut mantissa = ((bits & ((1 << 52) - 1)) + (1 << 12)) >> 13;
-        let mut exponent = exponent;
         if mantissa == 1 << 39 {
             mantissa = 0;
             exponent += 1;
         }
-        if exponent < 1 {
-            return [0; 6]; // too small for a Real: 0
-        }
-        let exponent = exponent.min(255) as u8;
+        (sign, exponent, mantissa)
+    }
+
+    fn encode(sign: u8, exponent: u8, mantissa: u64) -> [u8; 6] {
         let mut out = [0u8; 6];
         out[0] = exponent;
         for (i, byte) in out[1..].iter_mut().enumerate() {

@@ -185,6 +185,14 @@ fn more_kinds_of_files() {
     }
     let zero = bytes("tests/json/more.pas", "bool.json", r#"[{"Flag": true, "B": 0}]"#, Some("BoolFirst"));
     assert!(zero.unwrap_err().contains("don't agree"));
+    // The exact ends of a Real's range: 2^-128 and (2 - 2^-39) * 2^126.
+    let ends =
+        bytes("tests/json/more.pas", "ends.json", "[2.938735877055719e-39, 1.7014118346031449e38]", Some("Real"));
+    assert_eq!(ends.unwrap(), [1, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 127]);
+    let tiny = bytes("tests/json/more.pas", "tiny.json", "[2.92e-39]", Some("Real")).unwrap_err();
+    assert!(tiny.contains("too small for a Real"), "{tiny}");
+    let big = bytes("tests/json/more.pas", "big.json", "[1.71e38]", Some("Real")).unwrap_err();
+    assert!(big.contains("too big for a Real"), "{big}");
     // A Real can't be as small as 1e-39 (TP would store 0).
     let tiny = bytes("tests/json/more.pas", "tiny.json", "[1e-39]", Some("Real")).unwrap_err();
     assert!(tiny.contains("too small for a Real"), "{tiny}");

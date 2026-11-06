@@ -109,13 +109,13 @@ fn value(analysis: &Analysis, ty: &Type, json: &Value, out: &mut Out, path: &str
         Type::Real(RealKind::Real) => {
             let x = json.as_f64().ok_or_else(|| format!("{path} should be a number, not {json}"))?;
             // A `Real` goes from about 2.9e-39 to 1.7e38 (and 0).
-            if x.abs() > 1.7e38 {
-                return Err(format!("{path} is {x}, too big for a Real"));
+            match real48::try_from_f64(x) {
+                Ok(bytes) => out.set(&bytes),
+                Err(real48::OutOfRange::TooBig) => return Err(format!("{path} is {x}, too big for a Real")),
+                Err(real48::OutOfRange::TooSmall) => {
+                    return Err(format!("{path} is {x}, too small for a Real (it would be 0)"));
+                }
             }
-            if x != 0.0 && x.abs() < 2.9e-39 {
-                return Err(format!("{path} is {x}, too small for a Real (it would be 0)"));
-            }
-            out.set(&real48::from_f64(x));
         }
         Type::Real(kind) => {
             return Err(format!("{path} is a {kind:?}: PascRust writes only 6-byte `Real`s to files for now"));
