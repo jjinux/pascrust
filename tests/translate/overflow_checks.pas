@@ -18,6 +18,7 @@ var
    i, j: Integer;
    b: Byte;
    l: LongInt;
+   w: Word;
 
 {$Q+}
 procedure Bump(var N: Integer; by: Integer);
@@ -49,6 +50,12 @@ begin
    r^.q := p;
    Inc(r^.q^.N, 40);
    WriteLn(p^.N);
+   { A constant (2 + 3) is worked out when TP compiles, so it isn't checked. }
+   b := 10;
+   Dec(b, 2 + 3);
+   w := 10;
+   w := w * (2 + 3);
+   WriteLn(j * (2 + 3), ' ', (2 + 3) * (4 + 5), ' ', l - (2 + 3), ' ', b, ' ', w);
    {$Q-}
    WriteLn(i + 1);
    {$Q+}

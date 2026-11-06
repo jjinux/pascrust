@@ -217,7 +217,7 @@ impl<'a> Codegen<'a> {
                     return format!("{}.{method}()", self.postfix(&args[0], &t));
                 }
                 let n = self.coerce(&args[0], &t);
-                if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) {
+                if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) && !self.is_constant(&args[0]) {
                     let method = if b == Succ { "checked_add" } else { "checked_sub" };
                     return self.checked_op(n, method, "1").0;
                 }
@@ -398,7 +398,7 @@ impl<'a> Codegen<'a> {
             Abs => {
                 let t = ty(self, &args[0]).concrete();
                 let n = self.postfix(&args[0], &t);
-                if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) {
+                if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) && !self.is_constant(&args[0]) {
                     return self.checked_op((n, prec::POSTFIX), "checked_abs", "").0;
                 }
                 format!("{n}.abs()")
@@ -406,7 +406,7 @@ impl<'a> Codegen<'a> {
             Sqr => {
                 let t = ty(self, &args[0]).concrete();
                 let n = self.postfix(&args[0], &t);
-                if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) {
+                if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) && !self.is_constant(&args[0]) {
                     return self.checked_op((n, prec::POSTFIX), "checked_pow", "2").0;
                 }
                 let method = if t == Type::REAL { "powi" } else { "pow" };

@@ -241,7 +241,11 @@ like `{$I-}`: the driver works out which source ranges it covers
 `overflow()` raises error 215. The check is in the type PascRust computes
 in, which follows TP's (an `Integer` sum in 16 bits). Only the code that
 asks for checks pays for the longer form; `x := x + 1` isn't turned into
-`x += 1` there. Inside `call` (a Rust program calling Pascal) the error
+`x += 1` there. A constant expression (`is_constant`: literals, named
+constants and arithmetic on them) is left unchecked, as TP computed it at
+compile time: `i * (2 + 3)` is `i.checked_mul(2 + 3)`, and a constant of
+literals as the receiver is written as its typed value, `5_i16.checked_mul(i)`.
+Inside `call` (a Rust program calling Pascal) the error
 comes back as an `Err` like any runtime error.
 
 Division: `/` always produces `f64` (codegen casts both operands); `div` and

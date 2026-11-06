@@ -293,7 +293,8 @@ Last: raw bytes and C strings
   - [x] `Exec('true.exe')` ran `/usr/bin/true`: a bare name was looked up on `PATH`; now it runs from the current directory only, as in DOS.
   - [x] `{$Q+}` `Inc(r^.q^.N, 40)` (two pointers) didn't compile; `from-json` refused `to-json`'s output for a Boolean variant before a Byte one; the Real range in `from-json` was approximate (2.92e-39 stored as 0, the largest Real refused).
   - [x] `tpc -E` didn't make the directory, so the README's recipe for menu.pas's games failed; Crt didn't put its colours back after `Exec`.
-  - [ ] Question for the user: under `{$Q+}`, `i * (2 + 3)` checks the constant `2 + 3` for overflow (`2_i16.checked_add(3)`); only a constant on the left is folded to `5_i16`. Fold constants on either side?
+  - [x] Under `{$Q+}`, `i * (2 + 3)` checked the constant `2 + 3`, and `w * (2 + 3)` (a Word), `l - (2 + 3)`, `Dec(b, 2 + 3)` didn't compile. The user: simplify, as Fable advised: a constant expression is never checked (TP works it out when it compiles), so it's written as under `{$Q-}`: `i.checked_mul(2 + 3)`.
+  - [ ] From Fable's advice on that: a kept constant expression is computed in the context's type, where TP used 32 bits: `i * (30000 + 30000 - 40000)` fails with rustc's `overflowing_literals`, and `const C = 32767; i * (C + 1)` with `arithmetic_overflow` (both modes). Fold such an expression to its value when an intermediate doesn't fit. And `Inc(b, 2 + 300)` misses the Byte wrap that `Inc(b, 302)` gets (`number` sees only a bare literal).
   - [x] An anonymous pointer type as a record field (`q: ^Inner;` inside a record) panicked codegen ("only named pointer types are emitted"). The user: support it. It's `Ptr<Inner>`, as for a variable.
 - [x] Findings of review batch O (f4219c0..44cbc65):
   - [x] `{$Q+}`: `(2 + 3) * i` didn't compile (a suffix on a folded expression); `Inc(p^.N)` was runtime error 204 (two borrows of the heap record).

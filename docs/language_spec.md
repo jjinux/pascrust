@@ -47,7 +47,8 @@ Program structure
   integer `+`, `-`, `*`, negation, `Abs`, `Sqr`, `Succ`, `Pred`, `Inc` and
   `Dec` stop with runtime error 215 when the result doesn't fit its type
   (`i.checked_add(1).unwrap_or_else(overflow)`); elsewhere they wrap, as in
-  TP's default `{$Q-}`. The others are parsed and ignored, with a warning
+  TP's default `{$Q-}`. A constant expression (`2 + 3`, `C * 2`) is never
+  checked: TP works it out when it compiles. The others are parsed and ignored, with a warning
   for ones that change semantics (`{$B+}`, `{$R+}`); `{$M}`, `{$N+}` and the
   overlay ones (`{$O+}`, `{$O UnitName}`, `{$F+}`) are ignored silently;
   include files (`{$I name}`) are an error

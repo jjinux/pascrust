@@ -163,7 +163,11 @@ impl<'a> Codegen<'a> {
             }
             ExprKind::Unary { op, operand } => {
                 let ty = self.a.type_of(e.id).clone();
-                if *op == UnaryOp::Neg && matches!(ty, Type::Int(_)) && self.overflow_checked_at(e.span) {
+                if *op == UnaryOp::Neg
+                    && matches!(ty, Type::Int(_))
+                    && self.overflow_checked_at(e.span)
+                    && !self.is_constant(e)
+                {
                     let operand = self.coerce(operand, &ty);
                     return self.checked_op(operand, "checked_neg", "");
                 }
@@ -322,6 +326,27 @@ impl<'a> Codegen<'a> {
             ConstVal::Bool(b) => Some(*b as i64),
             ConstVal::Str(bytes) if bytes.len() == 1 => Some(i64::from(bytes[0])),
             _ => None,
+        }
+    }
+
+    /// Is this an integer constant expression (`5`, `C`, `2 + 3`, `-(C * 2)`)?
+    /// Turbo Pascal works those out when it compiles, so `{$Q+}` never
+    /// checks them: they're written as under `{$Q-}`, and Rust folds them.
+    pub(super) fn is_constant(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Int(_) => true,
+            ExprKind::Name(_) => self
+                .a
+                .refs
+                .get(&e.id)
+                .is_some_and(|&s| matches!(self.a.sym(s).kind, SymKind::Const { value: ConstVal::Int(_), .. })),
+            ExprKind::Unary { op: UnaryOp::Neg | UnaryOp::Plus, operand } => self.is_constant(operand),
+            ExprKind::Binary {
+                op: BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod,
+                lhs,
+                rhs,
+            } => self.is_constant(lhs) && self.is_constant(rhs),
+            _ => false,
         }
     }
 
@@ -680,10 +705,13 @@ impl<'a> Codegen<'a> {
         }
         if let (Add | Sub | Mul, Type::Int(kind)) = (op, operand_ty.concrete())
             && self.overflow_checked_at(e.span)
+            && !self.is_constant(e)
         {
             // A literal needs its type spelled out to have a method called
-            // on it (`1_i16.checked_add(i)`), and a constant expression is
-            // written as its value (`(2 + 3) * i` is `5_i16.checked_mul(i)`).
+            // on it (`1_i16.checked_add(i)`), and a constant expression of
+            // literals is written as its value (`(2 + 3) * i` is
+            // `5_i16.checked_mul(i)`). A constant operand isn't checked
+            // (`i * (2 + 3)` is `i.checked_mul(2 + 3)`): see `is_constant`.
             let left = match lt {
                 Type::IntLit(n) => {
                     let precedence = if n < 0 { prec::UNARY } else { prec::ATOM };
