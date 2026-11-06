@@ -300,11 +300,15 @@ impl<'a> Codegen<'a> {
                 if matches!(target_ty.concrete(), Type::Int(_)) && self.overflow_checked_at(span) {
                     let method = if up { "checked_add" } else { "checked_sub" };
                     // A place reached through a call (`p.get_mut().n`, a heap
-                    // record) is borrowed once: written twice, the first
-                    // borrow would still be alive for the second.
+                    // record) is read, then written, in two statements: in
+                    // one, the read's borrow would still be alive for the
+                    // write. (A `let place = &mut ...` can't hold it either
+                    // when the path has two calls: `r.get().q.get_mut()`
+                    // borrows from a temporary that the `let` drops.)
                     if place.contains('(') {
-                        let value = self.checked_op(("place".to_string(), prec::ATOM), method, &amount).0;
-                        return format!("{{ let place = &mut {place}; *place = {value}; }}");
+                        let read = self.coerce(&args[0], &target_ty);
+                        let value = self.checked_op(read, method, &amount).0;
+                        return format!("{{ let value = {value}; {place} = value; }}");
                     }
                     // (`*n` for a `var` parameter needs parentheses: `(*n).checked_add(1)`.)
                     let precedence = if place.starts_with('*') { prec::UNARY } else { prec::POSTFIX };

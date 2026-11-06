@@ -8,8 +8,13 @@ type
    Rec = record
       N: Integer;
    end;
+   PRec = ^Rec;
+   Outer = record
+      q: PRec;
+   end;
 var
    p: ^Rec;
+   r: ^Outer;
    i, j: Integer;
    b: Byte;
    l: LongInt;
@@ -40,6 +45,10 @@ begin
    with p^ do
       Inc(N, 2);
    WriteLn(p^.N, ' ', (2 + 3) * j);
+   New(r);
+   r^.q := p;
+   Inc(r^.q^.N, 40);
+   WriteLn(p^.N);
    {$Q-}
    WriteLn(i + 1);
    {$Q+}

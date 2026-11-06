@@ -27,6 +27,19 @@ struct Rec {
     n: i16,
 }
 
+/// Pascal: `^Rec`
+///
+/// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared
+/// heap record (an `Rc<RefCell<...>>` inside): using `nil` or a disposed
+/// record is a runtime error instead of undefined behaviour.
+type PRec = Ptr<Rec>;
+
+/// Pascal: `record q: PRec; end`
+#[derive(Clone, Debug, Default)]
+struct Outer {
+    q: PRec,
+}
+
 /// Pascal: `procedure Bump(var N: Integer; by: Integer);`
 fn bump(n: &mut i16, by: i16) {
     // `{$Q+}`: `checked_add` and the like give `None` when the result doesn't fit,
@@ -38,6 +51,7 @@ fn bump(n: &mut i16, by: i16) {
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
     let mut p: Ptr<Rec> = Ptr::nil();
+    let mut r: Ptr<Outer> = Ptr::nil();
     let mut i: i16 = 0;
     let mut j: i16 = 0;
     let mut b: u8 = 0;
@@ -74,15 +88,22 @@ fn pascal_main() {
     p = Ptr::alloc();
     p.get_mut().n = 1;
     {
-        let place = &mut p.get_mut().n;
-        *place = place.checked_add(1).unwrap_or_else(overflow);
+        let value = p.get().n.checked_add(1).unwrap_or_else(overflow);
+        p.get_mut().n = value;
     }
     // Pascal `with`: Rust has no equivalent, so each field is written out in full.
     {
-        let place = &mut p.get_mut().n;
-        *place = place.checked_add(2).unwrap_or_else(overflow);
+        let value = p.get().n.checked_add(2).unwrap_or_else(overflow);
+        p.get_mut().n = value;
     }
     pwriteln!(p.get().n, " ", 5_i16.checked_mul(j).unwrap_or_else(overflow));
+    r = Ptr::alloc();
+    r.get_mut().q = p.clone();
+    {
+        let value = r.get().q.get().n.checked_add(40).unwrap_or_else(overflow);
+        r.get().q.get_mut().n = value;
+    }
+    pwriteln!(p.get().n);
     pwriteln!(i + 1);
     i = i.checked_add(1).unwrap_or_else(overflow);
     pwriteln!("not reached");
