@@ -16,9 +16,10 @@ input_file: tests/translate/casts_folded.pas
 use pascrust_runtime::prelude::*;
 
 // Review batch M: more conversions of numbers (out of range, nested, as
-// the receiver of a method), not Odd of expressions, and Succ of a
-// comparison. Output from fpc -Mtp, except Integer(-1) shr 1: TP shifts
-// in 16 bits (32767), Free Pascal in 64.
+// the receiver of a method), not Odd of expressions, Succ of a
+// comparison, and bit operators next to shifts and arithmetic. Output
+// from fpc -Mtp, except Integer(-1) shr 1: TP shifts in 16 bits (32767),
+// Free Pascal in 64.
 
 /// The main program: the `begin ... end.` block of `CastsFolded`.
 /// Its local variables are the Pascal program's global variables.
@@ -46,7 +47,20 @@ fn pascal_main() {
         " ",
         ((-1_i16 as u16) >> 1) as i16
     );
-    pwriteln!((i + 1) % 2 == 0, " ", -i % 2 == 0, " ", !(i % 2 == 0), " ", l % 2 == 0, " ", b % 2 == 0);
+    pwriteln!((i + 1) % 2 == 0, " ", -i % 2 == 0, " ", !(i % 2 == 0), " ", l % 2 == 0, " ", b.is_multiple_of(2));
+    pwriteln!(
+        (i << 1) & 3,
+        " ",
+        (i << 1) | 1,
+        " ",
+        (i & 3) | a,
+        " ",
+        i + (1 & 3),
+        " ",
+        i & 7 & 3,
+        " ",
+        !b.is_multiple_of(2)
+    );
     pwriteln!((i < 3).succ(), " ", (i == 5).pred(), " ", i + (1 << 1), " ", (i << 1) << 2, " ", (-1_i16 as u16) >> 1);
 }
 

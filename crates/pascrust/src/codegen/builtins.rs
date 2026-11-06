@@ -201,7 +201,12 @@ impl<'a> Codegen<'a> {
             }
             Odd => {
                 let t = ty(self, &args[0]).concrete();
-                format!("{} % 2 != 0", paren(self.coerce(&args[0], &t), prec::MUL))
+                let n = self.coerce(&args[0], &t);
+                if super::expr::is_unsigned(&t) {
+                    format!("!{}.is_multiple_of(2)", paren(n, prec::POSTFIX))
+                } else {
+                    format!("{} % 2 != 0", paren(n, prec::MUL))
+                }
             }
             Succ | Pred => {
                 let t = ty(self, &args[0]).concrete();

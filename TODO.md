@@ -274,8 +274,8 @@ Last: raw bytes and C strings
   - [x] `Word(+5)` wasn't folded (`5 as u16`); `Word(Integer(-1) shr 1)` cast to `i16` and back.
   - [x] Tests: out-of-range and nested conversions, a folded negative literal as a method's receiver, `not Odd` of expressions (tests/run/casts_folded.pas).
   - [ ] Typecasts in constant expressions (`const W = Word(-1)`, `case` labels): TP 7 allows them; sema's constant evaluator could share `value_cast`'s folding. (Documented as not yet.)
-  - [ ] For the user: `not Odd(b)` of a Byte/Word is `b % 2 == 0`, which clippy's default `manual_is_multiple_of` wants as `b.is_multiple_of(2)`.
-  - [ ] For the user: `i shl 1 shl 2` is `(i << 1) << 2`; `i shl 1 and 3` is `i << 1 & 3` (people often write `(i << 1) & 3`).
+  - [x] `Odd`/`not Odd` of a Byte/Word as `b.is_multiple_of(2)`, as clippy's default `manual_is_multiple_of` wants (the user's choice).
+  - [x] A bit operator's operands get parentheses unless simple: `(i << 1) & 3`, `(a & b) | c` (the user: parentheses make it easier to understand).
 - [x] Findings of review batch L (6b96dc9..a7c84bf), fixed (the user's choices: `super::` in linked Rust, no overflow probe under `panic = "abort"`, Boolean `Succ`/`Pred` as for an enum, clippy-clean where a person would write it so):
   - [x] A linked `.rs` that names the unit's types `crate::X` (as docs/calling_rust.md and calls_rust.rs say) doesn't compile under `include_library!`; `super::X` works everywhere.
   - [x] The overflow probe aborts the program under `panic = "abort"` (`catch_unwind` can't catch).

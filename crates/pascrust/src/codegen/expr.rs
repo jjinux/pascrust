@@ -154,7 +154,12 @@ impl<'a> Codegen<'a> {
                         .is_some_and(|&s| matches!(self.a.sym(s).kind, SymKind::Builtin(Builtin::Odd))) =>
             {
                 let t = self.a.type_of(args[0].id).concrete();
-                (format!("{} % 2 == 0", paren(self.coerce(&args[0], &t), prec::MUL)), prec::CMP)
+                let n = self.coerce(&args[0], &t);
+                if is_unsigned(&t) {
+                    (format!("{}.is_multiple_of(2)", paren(n, prec::POSTFIX)), prec::POSTFIX)
+                } else {
+                    (format!("{} % 2 == 0", paren(n, prec::MUL)), prec::CMP)
+                }
             }
             ExprKind::Unary { op, operand } => {
                 let ty = self.a.type_of(e.id).clone();
@@ -681,7 +686,15 @@ impl<'a> Codegen<'a> {
         } else {
             p
         };
-        let code = format!("{} {rust_op} {}", paren(left, left_min), paren(right, p + 1));
+        // A bit operator's operands get parentheses unless they're simple
+        // (`(i << 1) & 3`, `(a & b) | c`), as a person writes it, though
+        // Rust wouldn't need them; a chain of one operator doesn't.
+        let (left_min, right_min) = if matches!(p, prec::BIT_AND | prec::BIT_OR | prec::BIT_XOR) {
+            (if left.1 == p { p } else { prec::AS }, prec::AS)
+        } else {
+            (left_min, p + 1)
+        };
+        let code = format!("{} {rust_op} {}", paren(left, left_min), paren(right, right_min));
         (code, p)
     }
 
@@ -1220,6 +1233,8 @@ impl<'a> Codegen<'a> {
         let ends_with_cast =
             code.rsplit_once(" as ").is_some_and(|(_, ty)| ty.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
         match builtin {
+            // (`!b.is_multiple_of(2)` for a Byte or Word.)
+            Some(Builtin::Odd) if code.starts_with('!') && code.ends_with(".is_multiple_of(2)") => prec::UNARY,
             Some(Builtin::Odd) => prec::CMP,
             Some(Builtin::Succ | Builtin::Pred)
                 if !matches!(self.a.type_of(args[0].id).concrete(), Type::Enum(_) | Type::Bool) =>
@@ -1735,6 +1750,12 @@ pub(super) fn convert(code: Code, from: &Type, to: &Type) -> Code {
 /// can't lose information use `From` (`i32::from(x)`), which Rust
 /// programmers prefer because it can never silently truncate; narrowing
 /// ones use `as`, which truncates exactly like Turbo Pascal does.
+/// Whether a (concrete) integer type is a Byte or a Word: Rust's unsigned
+/// integers have `is_multiple_of`, which clippy prefers to `% 2 == 0`.
+pub(super) fn is_unsigned(t: &Type) -> bool {
+    matches!(t, Type::Int(kind) if !kind.contains(-1))
+}
+
 pub(super) fn cast(code: Code, from: &Type, to: &Type) -> Code {
     // `Char` and `Byte` are both `u8` in Rust: nothing to convert.
     if from == to
