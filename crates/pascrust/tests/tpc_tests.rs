@@ -26,6 +26,16 @@ fn tpc_compiles_next_to_the_source_with_switches() {
         Command::new(tmp.join(format!("Probe{}", std::env::consts::EXE_SUFFIX))).current_dir(&tmp).output().unwrap();
     assert!(output.status.success(), "{:?}", output.status);
     assert_eq!(String::from_utf8_lossy(&output.stdout), "IOResult = 2\n");
+    // `-E` puts the executable in another directory, made if it's missing.
+    let _ = std::fs::remove_dir_all(tmp.join("exe"));
+    let status = Command::new(env!("CARGO_BIN_EXE_tpc"))
+        .args(["-Q", "-Eexe/sub", "PROBE"])
+        .current_dir(&tmp)
+        .env("XDG_CACHE_HOME", tmp.join("cache"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert!(tmp.join(format!("exe/sub/Probe{}", std::env::consts::EXE_SUFFIX)).is_file());
 }
 
 /// TPC compiled a unit to a .TPU file; `tpc` checks one compiles and says

@@ -105,7 +105,7 @@ tpc -Q '-$I-' backup                      # quiet, and I/O errors go to IOResult
 | Option | Meaning |
 | --- | --- |
 | `'-$<switches>'` | Compiler switches, as at the top of each file: `'-$I-'`, `'-$R+,I-'`. Quote them in a Unix shell, which would read `$I` as a variable. |
-| `-E<dir>` | Where to write the executable. |
+| `-E<dir>` | Where to write the executable (the directory is made if it's missing). |
 | `-U<dirs>` | More directories to find units in, separated by `;` (quote the argument in a Unix shell). |
 | `-Q` | Quiet: no messages unless something goes wrong. |
 | `-B`, `-M` | Build all / make: accepted; units are always compiled with the program. |

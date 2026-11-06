@@ -144,6 +144,7 @@ fn compile(args: &Args) -> Result<(), String> {
     // a program's code signature by file, so an executable rewritten in
     // place can be killed as soon as it starts.
     let _ = std::fs::remove_file(&exe);
+    std::fs::create_dir_all(&exe_dir).map_err(|e| format!("cannot make {}: {e}", exe_dir.display()))?;
     std::fs::copy(&built, &exe).map_err(|e| format!("cannot write {}: {e}", exe.display()))?;
     if !args.quiet {
         let lines = std::fs::read(&source).map_or(0, |text| text.iter().filter(|&&b| b == b'\n').count());
