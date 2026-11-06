@@ -420,8 +420,11 @@ impl Parser {
         let params = if self.at(&TokenKind::LParen) { self.param_list()? } else { Vec::new() };
         // The result type may be left out when repeating the header of a
         // function that was declared `forward`.
-        let ret =
-            if kind == ProcKind::Function && self.eat(&TokenKind::Colon) { Some(self.type_expr()?) } else { None };
+        let ret = if kind == ProcKind::Function && self.eat(&TokenKind::Colon) {
+            Some(self.type_name_expr("a function's result")?)
+        } else {
+            None
+        };
         let header_span = start.to(self.expect(&TokenKind::Semi)?);
 
         // Directives after the header. `far` and `near` were about 16-bit
@@ -475,6 +478,24 @@ impl Parser {
         })
     }
 
+    /// The type of a parameter or a function's result. TP wants a type's
+    /// name there, so `p: ^Node` is an error ("Type identifier expected"):
+    /// the pointer type needs a name of its own. (Other types written in
+    /// place, such as an array, are let through.)
+    fn type_name_expr(&mut self, what: &str) -> PResult<TypeExpr> {
+        let ty = self.type_expr()?;
+        if let TypeExpr::Pointer(target, span) = &ty {
+            let name = &target.name;
+            return Err(Diagnostic::new(
+                *span,
+                format!(
+                    "the type of {what} must be a type's name: declare `type P{name} = ^{name};` and use `P{name}`"
+                ),
+            ));
+        }
+        Ok(ty)
+    }
+
     fn param_list(&mut self) -> PResult<Vec<ParamGroup>> {
         self.expect(&TokenKind::LParen)?;
         let mut groups = Vec::new();
@@ -487,7 +508,7 @@ impl Parser {
                 ParamMode::Value
             };
             let names = self.ident_list()?;
-            let ty = if self.eat(&TokenKind::Colon) { Some(self.type_expr()?) } else { None };
+            let ty = if self.eat(&TokenKind::Colon) { Some(self.type_name_expr("a parameter")?) } else { None };
             groups.push(ParamGroup { mode, names, ty });
             if !self.eat(&TokenKind::Semi) {
                 break;

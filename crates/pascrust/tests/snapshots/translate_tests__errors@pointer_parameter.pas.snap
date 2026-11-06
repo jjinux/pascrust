@@ -1,0 +1,8 @@
+---
+source: crates/pascrust/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/pointer_parameter.pas
+---
+pointer_parameter.pas:9:19: error: the type of a parameter must be a type's name: declare `type PNode = ^Node;` and use `PNode`
+procedure Show(p: ^Node);
+                  ^^^^^
