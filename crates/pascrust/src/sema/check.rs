@@ -613,7 +613,10 @@ impl Checker {
             return;
         };
         let Some(value) = self.eval_const(e) else {
-            self.error(e.span, "expected a constant expression");
+            match self.division_by_zero(e) {
+                Some(span) => self.error(span, "division by zero"),
+                None => self.error(e.span, "expected a constant expression"),
+            }
             return;
         };
         let ty = match &value {
@@ -1404,6 +1407,21 @@ impl Checker {
     }
 
     /// Evaluate a constant expression at compile time, if it is one.
+    /// Where a constant expression divides by 0 (`10 div Z`), if it does:
+    /// [`Self::eval_const`] just gives up there.
+    fn division_by_zero(&self, e: &Expr) -> Option<Span> {
+        match &e.kind {
+            ExprKind::Binary { op: BinaryOp::Div | BinaryOp::Mod, rhs, .. }
+                if self.eval_const(rhs) == Some(ConstVal::Int(0)) =>
+            {
+                Some(rhs.span)
+            }
+            ExprKind::Binary { lhs, rhs, .. } => self.division_by_zero(lhs).or_else(|| self.division_by_zero(rhs)),
+            ExprKind::Unary { operand, .. } => self.division_by_zero(operand),
+            _ => None,
+        }
+    }
+
     pub(super) fn eval_const(&self, e: &Expr) -> Option<ConstVal> {
         use ConstVal::*;
         match &e.kind {
@@ -2452,6 +2470,14 @@ impl Checker {
     fn binary_type(&mut self, e: &Expr, op: BinaryOp, l: &Type, r: &Type) -> Type {
         use BinaryOp::*;
         if *l == Type::Error || *r == Type::Error {
+            return Type::Error;
+        }
+        // `5 div 0` (or `n mod Z`, with `Z = 0` a constant) is TP's compile
+        // error "Division by zero"; rustc refuses it too.
+        if let (Div | Mod, ExprKind::Binary { rhs, .. }) = (op, &e.kind)
+            && self.eval_const(rhs) == Some(ConstVal::Int(0))
+        {
+            self.error(rhs.span, "division by zero");
             return Type::Error;
         }
         // Two literals: fold, so `maxrows - 1` keeps adapting to its context.
