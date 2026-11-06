@@ -197,6 +197,7 @@ fn transpile(
         with_switches.extend(directives.iter().filter(|d| map.file_index(d.span.start) == file).cloned());
     }
     let io_unchecked = io_unchecked_regions(&with_switches, &map);
+    let overflow_checked = switch_regions(&with_switches, &map, "Q+", "Q-");
     let warnings = warnings.iter().map(|d| map.render(d)).collect();
     let units: Vec<Unit> = loaded.into_iter().map(|(_, unit)| unit).collect();
 
@@ -231,6 +232,7 @@ fn transpile(
         analysis: &analysis,
         map: &map,
         io_unchecked: &io_unchecked,
+        overflow_checked: &overflow_checked,
         comments: &comments,
         rust_modules: &modules,
         features: &features,
@@ -362,7 +364,6 @@ fn check_directives(directives: &[parser::Directive]) -> Result<Vec<Diagnostic>,
             let meaning = match switch.as_str() {
                 "B+" => "complete Boolean evaluation; `and` and `or` still short-circuit",
                 "R+" => "range checks on subranges; only array indexes are checked",
-                "Q+" => "overflow checks; integer arithmetic still wraps",
                 _ => continue,
             };
             warnings.push(Diagnostic::warning(d.span, format!("`{{${switch}}}` isn't supported: no {meaning}")));
@@ -375,6 +376,12 @@ fn check_directives(directives: &[parser::Directive]) -> Result<Vec<Diagnostic>,
 /// next `{$I+}` or the end of that file. `{$I-}` is a compile-time switch, so
 /// it applies to the text it covers, not to whatever runs in between.
 fn io_unchecked_regions(directives: &[parser::Directive], map: &SourceMap) -> Vec<Span> {
+    switch_regions(directives, map, "I-", "I+")
+}
+
+/// The parts of the source where a switch is in the state `on` (`"Q+"`):
+/// from each `on` to the next `off` (`"Q-"`) or the end of that file.
+fn switch_regions(directives: &[parser::Directive], map: &SourceMap, on: &str, off: &str) -> Vec<Span> {
     let mut regions = Vec::new();
     // Where the current `{$I-}` region started, and in which file.
     let mut open: Option<(usize, usize)> = None;
@@ -390,8 +397,8 @@ fn io_unchecked_regions(directives: &[parser::Directive], map: &SourceMap) -> Ve
         }
         for switch in d.text.split(',') {
             match switch.trim().to_ascii_uppercase().as_str() {
-                "I-" if open.is_none() => open = Some((d.span.end, file)),
-                "I+" => {
+                s if s == on && open.is_none() => open = Some((d.span.end, file)),
+                s if s == off => {
                     if let Some(region) = open.take() {
                         close(&mut regions, region, Some(d.span.start));
                     }
@@ -624,9 +631,9 @@ mod tests {
     fn directives_that_change_meaning_give_warnings() {
         let source = b"program P;\n{$R+,B-}\n{$I-}\n{$M 16384,0,0}\n{$Q+}\nbegin\nend.\n";
         let generated = transpile_source(source, "p.pas").unwrap();
-        assert_eq!(generated.warnings.len(), 2);
+        // (`{$Q+}` is supported: overflow checks.)
+        assert_eq!(generated.warnings.len(), 1);
         assert!(generated.warnings[0].starts_with("p.pas:2:1: warning: `{$R+}`"));
-        assert!(generated.warnings[1].starts_with("p.pas:5:1: warning: `{$Q+}`"));
     }
 
     #[test]

@@ -36,6 +36,13 @@ pub fn rte(code: i32, message: impl Into<String>) -> ! {
     panic::panic_any(RuntimeError { code, message: message.into(), halted: false })
 }
 
+/// `{$Q+}`: an integer operation overflowed (`checked_add` and friends gave
+/// `None`), so stop with runtime error 215, as Turbo Pascal does. Generic
+/// over the result's type, so it fits `x.checked_add(y).unwrap_or_else(overflow)`.
+pub fn overflow<T>() -> T {
+    rte(215, "Arithmetic overflow error")
+}
+
 /// Pascal `RunError(code)`: stop with runtime error `code`, as if the
 /// runtime had found one. (Declared to return `()`, like `halt`, so
 /// statements after it don't warn.)

@@ -163,6 +163,10 @@ impl<'a> Codegen<'a> {
             }
             ExprKind::Unary { op, operand } => {
                 let ty = self.a.type_of(e.id).clone();
+                if *op == UnaryOp::Neg && matches!(ty, Type::Int(_)) && self.overflow_checked_at(e.span) {
+                    let operand = self.coerce(operand, &ty);
+                    return self.checked_op(operand, "checked_neg", "");
+                }
                 let inner = paren(self.coerce(operand, &ty), prec::UNARY);
                 match op {
                     // `--x` reads like C's decrement, and rustc warns about it.
@@ -674,6 +678,24 @@ impl<'a> Codegen<'a> {
         if let (Shl | Shr, Type::Int(kind)) = (op, operand_ty.concrete()) {
             return self.shift(op, kind, (left, &lt), (right, &rt));
         }
+        if let (Add | Sub | Mul, Type::Int(kind)) = (op, operand_ty.concrete())
+            && self.overflow_checked_at(e.span)
+        {
+            // A literal needs its type spelled out to have a method called
+            // on it (`1_i16.checked_add(i)`).
+            let left = if matches!(lt, Type::IntLit(_)) {
+                let precedence = if left.0.starts_with('-') { prec::UNARY } else { prec::ATOM };
+                (format!("{}_{}", left.0, kind.rust()), precedence)
+            } else {
+                left
+            };
+            let method = match op {
+                Add => "checked_add",
+                Sub => "checked_sub",
+                _ => "checked_mul",
+            };
+            return self.checked_op(left, method, &right.0);
+        }
         // `x as i16 < y` would parse `<` as the start of generic arguments,
         // so a cast on the left of `<` or `<<` always gets parentheses.
         // Comparisons don't chain in Rust, so both sides need higher
@@ -1145,7 +1167,7 @@ impl<'a> Codegen<'a> {
             SymKind::Proc(p) => self.user_call(*p, args),
             SymKind::Builtin(b) => {
                 let b = *b;
-                let code = self.builtin(b, args, callee.id);
+                let code = self.builtin(b, args, callee.id, callee.span);
                 // Writing to the console never sets `IOResult`, so it needs
                 // no `io_unchecked` around it.
                 let console_write = matches!(b, Builtin::Write | Builtin::Writeln)
@@ -1302,6 +1324,22 @@ impl<'a> Codegen<'a> {
             return Some((format!("{} as {}", paren(unsigned, prec::AS), b.rust()), prec::AS));
         }
         Some(cast(code, &from.concrete(), &ty))
+    }
+
+    /// Was the code at `span` compiled with `{$Q+}`?
+    pub(super) fn overflow_checked_at(&self, span: crate::diag::Span) -> bool {
+        self.overflow_checked.iter().any(|r| r.start <= span.start && span.start < r.end)
+    }
+
+    /// `{$Q+}` integer arithmetic: `a.checked_add(b).unwrap_or_else(overflow)`,
+    /// which stops with runtime error 215 where the result doesn't fit.
+    pub(super) fn checked_op(&mut self, receiver: Code, method: &str, arg: &str) -> Code {
+        if self.first_time("overflow") {
+            self.pending
+                .push("// `{$Q+}`: `checked_add` and the like give `None` when the result doesn't fit,".to_string());
+            self.pending.push("// and `overflow` stops with runtime error 215, as in Turbo Pascal.".to_string());
+        }
+        (format!("{}.{method}({arg}).unwrap_or_else(overflow)", paren(receiver, prec::POSTFIX)), prec::POSTFIX)
     }
 
     /// An I/O call at `span`: as is, or, if it was compiled with `{$I-}`,

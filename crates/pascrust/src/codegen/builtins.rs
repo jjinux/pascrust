@@ -3,6 +3,7 @@
 use super::expr::{convert, paren, prec};
 use super::{Codegen, LoopLabels};
 use crate::ast::*;
+use crate::diag::Span;
 use crate::sema::{Builtin, IntKind, StdFile, SymKind, Type};
 
 impl<'a> Codegen<'a> {
@@ -33,14 +34,14 @@ impl<'a> Codegen<'a> {
     }
 
     /// `call_id` is the callee's id, which sema's notes about the call use.
-    pub(super) fn builtin(&mut self, b: Builtin, args: &[Expr], call_id: NodeId) -> String {
+    pub(super) fn builtin(&mut self, b: Builtin, args: &[Expr], call_id: NodeId, span: Span) -> String {
         use Builtin::*;
         let ty = |g: &Self, e: &Expr| g.a.type_of(e.id).clone();
         // `Writeln(Output, ...)` and `Readln(Input, ...)` are the console ones.
         if matches!(b, Write | Writeln | Read | Readln | Eof | Eoln | SeekEof | SeekEoln)
             && args.first().is_some_and(|a| matches!(self.std_text(a), Some(StdFile::Input | StdFile::Output)))
         {
-            return self.builtin(b, &args[1..], call_id);
+            return self.builtin(b, &args[1..], call_id, span);
         }
         // `Delete(p^.name, p^.w, 1)`: a value read from the heap record the
         // routine changes is worked out first, into a `let`, so the record
@@ -215,8 +216,13 @@ impl<'a> Codegen<'a> {
                     let method = if b == Succ { "succ" } else { "pred" };
                     return format!("{}.{method}()", self.postfix(&args[0], &t));
                 }
+                let n = self.coerce(&args[0], &t);
+                if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) {
+                    let method = if b == Succ { "checked_add" } else { "checked_sub" };
+                    return self.checked_op(n, method, "1").0;
+                }
                 let op = if b == Succ { "+" } else { "-" };
-                format!("{} {op} 1", paren(self.coerce(&args[0], &t), prec::ADD))
+                format!("{} {op} 1", paren(n, prec::ADD))
             }
             // `Inc(P, 2)` moves a `PChar` on: `p += 2;`.
             Inc | Dec if ty(self, &args[0]) == Type::PChar => {
@@ -291,6 +297,13 @@ impl<'a> Codegen<'a> {
                     (Some(n), None) => self.coerce(n, &target_ty).0,
                     (None, _) => "1".to_string(),
                 };
+                if matches!(target_ty.concrete(), Type::Int(_)) && self.overflow_checked_at(span) {
+                    let method = if up { "checked_add" } else { "checked_sub" };
+                    // (`*n` for a `var` parameter needs parentheses: `(*n).checked_add(1)`.)
+                    let precedence = if place.starts_with('*') { prec::UNARY } else { prec::POSTFIX };
+                    let value = self.checked_op((place.clone(), precedence), method, &amount).0;
+                    return format!("{place} = {value};");
+                }
                 let op = if up { "+=" } else { "-=" };
                 format!("{place} {op} {amount};")
             }
@@ -373,12 +386,20 @@ impl<'a> Codegen<'a> {
             }
             Abs => {
                 let t = ty(self, &args[0]).concrete();
-                format!("{}.abs()", self.postfix(&args[0], &t))
+                let n = self.postfix(&args[0], &t);
+                if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) {
+                    return self.checked_op((n, prec::POSTFIX), "checked_abs", "").0;
+                }
+                format!("{n}.abs()")
             }
             Sqr => {
                 let t = ty(self, &args[0]).concrete();
+                let n = self.postfix(&args[0], &t);
+                if matches!(t, Type::Int(_)) && self.overflow_checked_at(span) {
+                    return self.checked_op((n, prec::POSTFIX), "checked_pow", "2").0;
+                }
                 let method = if t == Type::Real { "powi" } else { "pow" };
-                format!("{}.{method}(2)", self.postfix(&args[0], &t))
+                format!("{n}.{method}(2)")
             }
             Sqrt | Sin | Cos | ArcTan | Ln | Exp | Int | Frac => {
                 let method = match b {

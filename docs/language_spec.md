@@ -43,8 +43,12 @@ Program structure
   file, as TP's `{$L sound.obj}` named an object file; see
   [Calling Rust](calling_rust.md). An `.OBJ` file can't be linked
 - Compiler directives `{$...}`: `{$I-}`/`{$I+}` switch I/O checking (see
-  Files). The others are parsed and ignored, with a warning for ones that
-  change semantics (`{$B+}`, `{$R+}`, `{$Q+}`); `{$M}`, `{$N+}` and the
+  Files). `{$Q+}`/`{$Q-}` switch overflow checking: in `{$Q+}` code,
+  integer `+`, `-`, `*`, negation, `Abs`, `Sqr`, `Succ`, `Pred`, `Inc` and
+  `Dec` stop with runtime error 215 when the result doesn't fit its type
+  (`i.checked_add(1).unwrap_or_else(overflow)`); elsewhere they wrap, as in
+  TP's default `{$Q-}`. The others are parsed and ignored, with a warning
+  for ones that change semantics (`{$B+}`, `{$R+}`); `{$M}`, `{$N+}` and the
   overlay ones (`{$O+}`, `{$O UnitName}`, `{$F+}`) are ignored silently;
   include files (`{$I name}`) are an error
 - Comments `{ }` and `(* *)`, including the examples' `{t ... }` headers

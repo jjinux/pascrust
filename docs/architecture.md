@@ -234,6 +234,16 @@ Disabling overflow checks keeps the arithmetic readable (`a + b`, not
 Rust argument for keeping checks on does not apply. Open question #1 offers a
 `--integer-width 32` escape hatch.
 
+`{$Q+}` (TP's overflow checking, off by default) is a compile-time switch
+like `{$I-}`: the driver works out which source ranges it covers
+(`switch_regions`), and there codegen writes the checked operations,
+`i.checked_add(1).unwrap_or_else(overflow)`, where the runtime's generic
+`overflow()` raises error 215. The check is in the type PascRust computes
+in, which follows TP's (an `Integer` sum in 16 bits). Only the code that
+asks for checks pays for the longer form; `x := x + 1` isn't turned into
+`x += 1` there. Inside `call` (a Rust program calling Pascal) the error
+comes back as an `Err` like any runtime error.
+
 Division: `/` always produces `f64` (codegen casts both operands); `div` and
 `mod` map to Rust `/` and `%`, whose truncating semantics match TP exactly.
 Division by zero is a Rust panic, which becomes Pascal runtime error 200

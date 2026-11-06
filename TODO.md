@@ -181,7 +181,7 @@ chosen so each step is testable with the previous ones.
 - [x] A Rust project that embeds Pascal code: how does its `cargo build` know to run PascRust on the Pascal? Done: `pascrust::build::library` in its `build.rs` and `pascrust_runtime::include_library!` (`examples/pascrust/rust_calls_pascal`, docs/embedding.md). (The user's question.) Likely answer: a `build.rs` build script, with PascRust as a build dependency, that translates the unit into Cargo's `OUT_DIR` (`cargo:rerun-if-changed=unit.pas` so a change in the Pascal is noticed) and an `include!` of it; a helper such as `pascrust::build::library("unit.pas")` would make that `build.rs` two lines. Document it in docs/embedding.md, and test it with the BSTUnit host.
 
 - [x] Overflow (decided with the user, 2026-11-04): integer arithmetic keeps wrapping, as TP's default `{$Q-}` did; forbidding it would break correct programs (hashes, checksums, random number generators, `Byte` sums TP cut to fit). A library gets wrap-around only if the Rust program turns overflow checks off, so the docs give the `Cargo.toml` line and the runtime warns once when checks are on (part of the `build.rs` plan, `notes/build_rs.md`).
-- [ ] Later, if a program needs it: `{$Q+}` turns overflow into runtime error 215, as in TP (today it's a warning that it isn't supported).
+- [x] `{$Q+}` turns integer overflow into runtime error 215, as in TP: checked arithmetic in the regions it covers (the user, 2026-11-05: "if it isn't too hard").
 
 ## Requests from the user, 2026-11-02
 
@@ -195,7 +195,9 @@ In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffe
 
 ## Requests from the user, 2026-10-29
 
-- [ ] A command like `fmt` that turns a binary file written by a Turbo Pascal program (`file of T`) into JSON: an input file and an output file. A binary file doesn't say what its records look like, so it also needs the record type: probably the Pascal source that declares it and the type's name (`pascrust json founit.pas People mark.dat mark.json`), or the only `file of` type the program uses. It can reuse the runtime's TP-exact layout (`FileRecord`), decoding through the type's fields; one JSON object per record, in an array.
+- [ ] `Single`/`Double`/`Extended`/`Comp` on disk in their TP sizes (4/8/10/8 bytes; today all are 6-byte `Real`), in translated programs and `to-json` (the user, 2026-11-05: later; `to-json` refuses them meanwhile). See notes/file_json.md.
+- [ ] An enum of more than 256 values: `tp_size` says 2 bytes (as TP), the runtime writes 1.
+- [ ] (Prioritized by the user, 2026-11-05; plan in notes/file_json.md: `pascrust to-json` and `from-json`.) A command like `fmt` that turns a binary file written by a Turbo Pascal program (`file of T`) into JSON: an input file and an output file. A binary file doesn't say what its records look like, so it also needs the record type: probably the Pascal source that declares it and the type's name (`pascrust json founit.pas People mark.dat mark.json`), or the only `file of` type the program uses. It can reuse the runtime's TP-exact layout (`FileRecord`), decoding through the type's fields; one JSON object per record, in an array.
 
 ## Phase 5: Dos and Graph, then the graphics examples
 

@@ -34,6 +34,8 @@ pub struct Input<'a> {
     pub map: &'a SourceMap,
     /// The parts of the source compiled with `{$I-}`.
     pub io_unchecked: &'a [Span],
+    /// The parts of the source compiled with `{$Q+}`.
+    pub overflow_checked: &'a [Span],
     /// The source's comments, carried into the Rust.
     pub comments: &'a [crate::lexer::Comment],
     /// The Rust files `{$L file.rs}` links, as (module, file name).
@@ -49,7 +51,18 @@ pub struct Input<'a> {
 /// Pascal source file, `main.rs` (or, for a library, `lib.rs`) first.
 pub fn generate(input: &Input) -> Vec<(String, String)> {
     // `*input` copies the struct of references out, so each is a local.
-    let Input { program, units, analysis, map, io_unchecked, comments, rust_modules, features, library } = *input;
+    let Input {
+        program,
+        units,
+        analysis,
+        map,
+        io_unchecked,
+        overflow_checked,
+        comments,
+        rust_modules,
+        features,
+        library,
+    } = *input;
     let mut files = Vec::new();
     let mut g = Codegen {
         a: analysis,
@@ -75,6 +88,7 @@ pub fn generate(input: &Input) -> Vec<(String, String)> {
         goto_blocks: Vec::new(),
         loops: Vec::new(),
         io_unchecked,
+        overflow_checked,
         rust_modules,
         features,
         self_expr: None,
@@ -171,6 +185,7 @@ struct Codegen<'a> {
     /// The parts of the source compiled with `{$I-}`, where I/O errors go
     /// to `IOResult` instead of stopping the program.
     io_unchecked: &'a [Span],
+    overflow_checked: &'a [Span],
     /// The Rust files `{$L sound.rs}` names, as (module, file name):
     /// where the `external` routines are.
     rust_modules: &'a [(String, String)],
@@ -2560,6 +2575,8 @@ impl<'a> Codegen<'a> {
             && *self.a.type_of(value.id) == target_ty
             && *self.a.type_of(lhs.id) == target_ty
             && !matches!(target_ty, Type::Str { .. })
+            // (`{$Q+}` checks the arithmetic: `x = x.checked_add(n)...`.)
+            && !(matches!(target_ty, Type::Int(_)) && self.overflow_checked_at(value.span))
             && self.same_place(lhs, target)
             // `n += f()` calls `f` before it reads `n`, but Pascal (as Free
             // Pascal does it) reads `n` first, which matters when `f` can
