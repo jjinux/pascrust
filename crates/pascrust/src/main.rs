@@ -62,6 +62,20 @@ enum Cmd {
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
+    /// The reverse of `to-json`: write the records in a JSON file back as a
+    /// binary file a Turbo Pascal program reads (`file of T`).
+    FromJson {
+        /// The program or unit that declares the record type.
+        source: PathBuf,
+        /// The JSON file (an array, one element per record).
+        json: PathBuf,
+        /// The record type (default: the only `file of` type in the source).
+        #[arg(long = "type")]
+        type_name: Option<String>,
+        /// Where to write the binary file.
+        #[arg(short, long)]
+        out: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -102,6 +116,12 @@ fn run(command: Cmd) -> Result<ExitCode, String> {
                 Some(out) => std::fs::write(&out, json).map_err(|e| format!("cannot write {}: {e}", out.display()))?,
                 None => print!("{json}"),
             }
+            Ok(ExitCode::SUCCESS)
+        }
+        Cmd::FromJson { source, json, type_name, out } => {
+            let options = pascrust::driver::Options::default();
+            let bytes = pascrust::json::from_json(&source, &json, type_name.as_deref(), &options)?;
+            std::fs::write(&out, bytes).map_err(|e| format!("cannot write {}: {e}", out.display()))?;
             Ok(ExitCode::SUCCESS)
         }
     }

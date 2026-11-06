@@ -1314,7 +1314,7 @@ The one exception is the graphics window, which the main thread services
 while the program runs (§19); the screen and key queue it shares with the
 program are behind `Mutex`es.
 
-## 24. Typed files as JSON (`to-json`)
+## 24. Typed files as JSON (`to-json`, `from-json`)
 
 `pascrust to-json` reads a `file of T` written by a TP program and prints
 it as JSON (docs/data_files.md). Decision: decode in the transpiler, from
@@ -1338,8 +1338,16 @@ treats `Double` and `Real` as one type; only the size on disk differs (8
 and 6 bytes), which PascRust's files don't model yet, so `to-json` refuses
 a `Double` rather than read the wrong bytes.
 
+`from-json` is the reverse walk (`json/encode.rs`), strict about every
+field and range. Each value is written with a mask of the bytes that mean
+something (a string's bytes after its length don't), so the fields of
+several variants of a tagless record can share bytes: a clash is an error
+only where two meaningful bytes differ.
+
 The plan, Fable's review of it, and the choices made are in
-`notes/file_json.md`.
+`notes/file_json.md`. One deviation: no separate `Layout` tree; the
+decoder and encoder walk sema's `Type` directly, which is the same
+information.
 
 ## 25. Worked example
 

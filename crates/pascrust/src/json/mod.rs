@@ -8,6 +8,7 @@
 //! `tp_size`) says where each field's bytes are. See docs/data_files.md.
 
 mod decode;
+mod encode;
 
 use std::path::Path;
 
@@ -40,6 +41,25 @@ pub fn to_json(source: &Path, data: &Path, type_name: Option<&str>, options: &Op
     let mut json = serde_json::to_string_pretty(&serde_json::Value::Array(records)).map_err(|e| e.to_string())?;
     json.push('\n');
     Ok(json)
+}
+
+/// The reverse of [`to_json`]: the bytes of a typed file whose records are
+/// the JSON `json` (an array, one element per record, as `to_json` writes
+/// it), of the type `type_name` declared in `source`.
+pub fn from_json(source: &Path, json: &Path, type_name: Option<&str>, options: &Options) -> Result<Vec<u8>, String> {
+    let analysis = driver::analyze_file(source, options)?;
+    let text = std::fs::read_to_string(json).map_err(|e| format!("cannot read {}: {e}", json.display()))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("{} isn't valid JSON: {e}", json.display()))?;
+    let serde_json::Value::Array(records) = value else {
+        return Err(format!("{} should hold an array, one element per record", json.display()));
+    };
+    let ty = record_type(&analysis, source, type_name, None)?;
+    let mut bytes = Vec::new();
+    for (i, record) in records.iter().enumerate() {
+        bytes.extend(encode::record_bytes(&analysis, &ty, record, &format!("[{i}]"))?);
+    }
+    Ok(bytes)
 }
 
 /// The type a file's records have: the one named `type_name`, or, without

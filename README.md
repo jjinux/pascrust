@@ -69,17 +69,20 @@ cargo run -p pascrust -- fmt examples/database/*.pas
 cargo run -p pascrust -- fmt --check examples/*.pas examples/*/*.pas
 ```
 
-### Data files as JSON: `pascrust to-json`
+### Data files as JSON: `pascrust to-json` and `from-json`
 
 A typed file (`file of T`) written by a Turbo Pascal program is just its
 records' bytes. `to-json` reads them as a type the Pascal source declares,
-and prints them as JSON (see [Data files as JSON](docs/data_files.md)):
+and prints them as JSON; `from-json` writes JSON back as the binary file
+(see [Data files as JSON](docs/data_files.md)):
 
 ```sh
 # The user's 1997 database file: founit.pas declares its record type.
 cargo run -p pascrust -- to-json examples/database/founit.pas examples/database/mark.dat
 # Say which type when the source has several; -o writes to a file.
 cargo run -p pascrust -- to-json tests/json/records.pas tests/json/items.dat --type Item -o items.json
+# And back, after editing items.json.
+cargo run -p pascrust -- from-json tests/json/records.pas items.json --type Item -o items.dat
 ```
 
 ### A Turbo Pascal style compiler: `tpc`
@@ -139,7 +142,8 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
   link there.
 - [Printing](docs/printing.md): where the `Printer` unit's `Lst` output goes.
 - [Data files as JSON](docs/data_files.md): `pascrust to-json` reads a
-  `file of T` written by a Turbo Pascal program.
+  `file of T` written by a Turbo Pascal program, and `from-json` writes
+  one back.
 - [Timer interrupts](docs/timer_interrupts.md): getting a steady tick in a
   game without the timer interrupt, which PascRust doesn't have.
 - [Calling Rust from Turbo Pascal](docs/calling_rust.md): `external`
