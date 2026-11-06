@@ -83,7 +83,10 @@ Expressions
   `Lo`, `Low`, `Odd`, `Ord`, `Pred`, `Round`, `SizeOf`, `Succ`, `Swap`,
   `Trunc`. A constant that is an enum value (`const Last = Sun`) has the
   enum's type, and `Succ`/`Pred` of one must stay in the enum. A call
-  with constant arguments (`Hi(-1)`) is written as its value
+  with constant arguments (`Hi(-1)`) is written as its value. Not yet:
+  typecasts in constant expressions (`const W = Word(-1)`), which TP 7
+  allows; in other expressions a typecast of a number is written as its
+  value (`Word(-1)` is `65535_u16`)
 - Function calls, including calling a function name as the result variable
   inside its own body
 - Operator precedence exactly as TP (`not` > `* / div mod and shl shr` > `+ -

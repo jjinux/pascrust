@@ -64,6 +64,7 @@ pub fn generate(input: &Input) -> Vec<(String, String)> {
         vis: "",
         mutable_place: false,
         pending: Vec::new(),
+        unsigned_shift: None,
         after: Vec::new(),
         lent: Vec::new(),
         lent_roots: Vec::new(),
@@ -134,6 +135,9 @@ struct Codegen<'a> {
     /// `let` statements to emit before the next line (see
     /// `expr::call_args`).
     pending: Vec<String>,
+    /// The last `shr` of a signed integer, done unsigned: its code with
+    /// the cast back to the signed type, and without (see `expr::shift`).
+    unsigned_shift: Option<(String, expr::Code)>,
     /// Statements to emit after the next line: a `Char` array lent a
     /// `PChar` getting its characters back (see `expr::lent_pchar`).
     after: Vec<String>,

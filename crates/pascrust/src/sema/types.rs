@@ -24,6 +24,15 @@ impl IntKind {
         }
     }
 
+    /// How many bits the type has.
+    pub fn bits(self) -> u32 {
+        match self {
+            IntKind::ShortInt | IntKind::Byte => 8,
+            IntKind::Integer | IntKind::Word => 16,
+            IntKind::LongInt => 32,
+        }
+    }
+
     pub fn range(self) -> (i64, i64) {
         match self {
             IntKind::ShortInt => (-128, 127),

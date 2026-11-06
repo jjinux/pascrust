@@ -268,7 +268,14 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [ ] From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a7c84bf (batches A-L). Not yet reviewed: `a7c84bf..HEAD`. Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to a7c84bf (batches A-L). Not yet reviewed: `c537266..HEAD`. Keep this range up to date.
+- [ ] Findings of review batch M (a7c84bf..c537266):
+  - [x] With `panic = "abort"`, an error inside `call` or an I/O error under `{$I-}` ended the program with nothing on stderr.
+  - [x] `Word(+5)` wasn't folded (`5 as u16`); `Word(Integer(-1) shr 1)` cast to `i16` and back.
+  - [x] Tests: out-of-range and nested conversions, a folded negative literal as a method's receiver, `not Odd` of expressions (tests/run/casts_folded.pas).
+  - [ ] Typecasts in constant expressions (`const W = Word(-1)`, `case` labels): TP 7 allows them; sema's constant evaluator could share `value_cast`'s folding. (Documented as not yet.)
+  - [ ] For the user: `not Odd(b)` of a Byte/Word is `b % 2 == 0`, which clippy's default `manual_is_multiple_of` wants as `b.is_multiple_of(2)`.
+  - [ ] For the user: `i shl 1 shl 2` is `(i << 1) << 2`; `i shl 1 and 3` is `i << 1 & 3` (people often write `(i << 1) & 3`).
 - [x] Findings of review batch L (6b96dc9..a7c84bf), fixed (the user's choices: `super::` in linked Rust, no overflow probe under `panic = "abort"`, Boolean `Succ`/`Pred` as for an enum, clippy-clean where a person would write it so):
   - [x] A linked `.rs` that names the unit's types `crate::X` (as docs/calling_rust.md and calls_rust.rs say) doesn't compile under `include_library!`; `super::X` works everywhere.
   - [x] The overflow probe aborts the program under `panic = "abort"` (`catch_unwind` can't catch).

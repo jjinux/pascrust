@@ -688,11 +688,7 @@ impl<'a> Codegen<'a> {
     /// `x shl n` or `x shr n` on an integer of type `kind`.
     fn shift(&mut self, op: BinaryOp, kind: IntKind, left: (Code, &Type), right: (Code, &Type)) -> Code {
         let ((left, lt), (right, rt)) = (left, right);
-        let width = match kind {
-            IntKind::ShortInt | IntKind::Byte => 8,
-            IntKind::Integer | IntKind::Word => 16,
-            IntKind::LongInt => 32,
-        };
+        let width = i64::from(kind.bits());
         // Turbo Pascal's `shr` is a logical shift: it fills with zeros, so
         // `-300 shr 4` is 4077. Rust's `>>` on a signed integer copies the
         // sign bit instead (-19), so shift the same bits as unsigned.
@@ -742,8 +738,13 @@ impl<'a> Codegen<'a> {
             (format!("{}.{method}({count}).unwrap_or(0)", paren(left, prec::POSTFIX)), prec::POSTFIX)
         };
         match unsigned {
-            // Back to the signed type.
-            Some(_) => (format!("{} as {}", paren(code, prec::AS), kind.rust()), prec::AS),
+            // Back to the signed type. (`value_cast` uses the shift as it
+            // is, if it's converted to the unsigned type anyway.)
+            Some(_) => {
+                let signed = format!("{} as {}", paren(code.clone(), prec::AS), kind.rust());
+                self.unsigned_shift = Some((signed.clone(), code));
+                (signed, prec::AS)
+            }
             None => code,
         }
     }
@@ -1253,17 +1254,17 @@ impl<'a> Codegen<'a> {
                 ExprKind::Int(n) => Some(-n),
                 _ => None,
             },
+            ExprKind::Unary { op: UnaryOp::Plus, operand } => match operand.kind {
+                ExprKind::Int(n) => Some(n),
+                _ => None,
+            },
             _ => None,
         };
         if let Some(n) = number {
             match ty.concrete() {
                 Type::Char => return Some((char_literal(n as u8), prec::ATOM)),
                 Type::Int(kind) => {
-                    let bits = match kind {
-                        IntKind::ShortInt | IntKind::Byte => 8,
-                        IntKind::Integer | IntKind::Word => 16,
-                        IntKind::LongInt => 32,
-                    };
+                    let bits = kind.bits();
                     let mut value = n & ((1_i64 << bits) - 1);
                     if kind.contains(-1) && value >= 1 << (bits - 1) {
                         value -= 1 << bits; // a signed type's high bit is its sign
@@ -1275,6 +1276,16 @@ impl<'a> Codegen<'a> {
             }
         }
         let code = self.coerce(&args[0], &from.concrete());
+        // `Word(i shr 1)`: the shift is done as a `u16` already, so no
+        // going back to `i16` in between (`(i as u16) >> 1`).
+        if let Some((signed, unsigned)) = self.unsigned_shift.take()
+            && signed == code.0
+            && let (Type::Int(a), Type::Int(b)) = (from.concrete(), ty.concrete())
+            && a.bits() == b.bits()
+            && !b.contains(-1)
+        {
+            return Some(unsigned);
+        }
         Some(cast(code, &from.concrete(), &ty))
     }
 
