@@ -759,8 +759,35 @@ impl<'a> Codegen<'a> {
         } else {
             (left_min, p + 1)
         };
+        // Rust's `x / 0.0` is infinity; Turbo Pascal stops with runtime
+        // error 200. `nonzero` checks the divisor (not needed for a constant
+        // that isn't 0, `x / 2`).
+        if op == RealDiv && !self.nonzero_constant(rhs) {
+            if self.first_time("nonzero") {
+                self.pending
+                    .push("// `nonzero(y)` stops with runtime error 200 if `y` is 0, as Turbo Pascal's".to_string());
+                self.pending.push("// `/` does (Rust's would give infinity).".to_string());
+            }
+            let right = (format!("nonzero({})", right.0), prec::POSTFIX);
+            let code = format!("{} {rust_op} {}", paren(left, left_min), paren(right, right_min));
+            return (code, p);
+        }
         let code = format!("{} {rust_op} {}", paren(left, left_min), paren(right, right_min));
         (code, p)
+    }
+
+    /// Is `e` a constant that isn't 0 (`2`, `2.5`, `C`, `2 * C`)? A real
+    /// division by one needs no check.
+    fn nonzero_constant(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Real(x) => *x != 0.0,
+            ExprKind::Name(_) => match self.a.refs.get(&e.id).map(|&s| &self.a.sym(s).kind) {
+                Some(SymKind::Const { value: ConstVal::Real(x), .. }) => *x != 0.0,
+                _ => self.constant_int(e).is_some_and(|n| n != 0),
+            },
+            ExprKind::Unary { op: UnaryOp::Neg | UnaryOp::Plus, operand } => self.nonzero_constant(operand),
+            _ => self.constant_int(e).is_some_and(|n| n != 0),
+        }
     }
 
     /// `x shl n` or `x shr n` on an integer of type `kind`.

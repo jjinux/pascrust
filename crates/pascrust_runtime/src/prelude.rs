@@ -16,7 +16,7 @@ pub use crate::overlay::*;
 pub use crate::pchar::*;
 pub use crate::printer::Lst;
 pub use crate::ptr::{AnyPtr, ProcVar, Ptr};
-pub use crate::run::{halt, io_result, io_unchecked, overflow, rte, run_error};
+pub use crate::run::{halt, io_result, io_unchecked, nonzero, overflow, rte, run_error};
 pub use crate::set::PSet;
 pub use crate::string::{PString, pos, pstr};
 pub use crate::system::{

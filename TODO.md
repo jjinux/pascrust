@@ -295,7 +295,7 @@ Last: raw bytes and C strings
 - [ ] Findings of review batch R (b89b0fe..721ee55):
   - [x] `Inc(i, 32768)` on an Integer (`Inc(s, 128)` on a ShortInt) was an out-of-range literal that rustc refused; it wraps to -32768 now, as in TP.
   - [x] Division by a constant 0 in a subrange, array bound, string length, variant or case label gave a second, generic error (and a type declaration both twice); the docs didn't say it's a compile error, nor that a parameter's type must be a type's name.
-  - [ ] Real division by zero (`x / 0`) printed `+Inf`; TP stops with runtime error 200. The user (2026-11-06): stop with runtime error 200, as TP did.
+  - [x] Real division by zero (`x / 0`) printed `+Inf`; TP stops with runtime error 200. The user (2026-11-06): stop with runtime error 200, as TP did.
   - [x] PUNT: `from-json` takes `[1e-400]` as 0 without an error (serde_json reads it as 0.0), where `[1e-320]` is refused as too small. The user (2026-11-06): leave it.
   - [ ] Asking Fable (the user, 2026-11-06: "I don't know"): codegen's `constant_int` is a second constant evaluator next to sema's `eval_const`, and knows less (`Ord`, `Sqr`, `Abs`, `Chr` of constants aren't folded, so `Inc(b, Ord('A'))` under `{$Q+}` takes the long form). Have sema record each constant's value for codegen? And should `Inc(b, K)` into a narrower type write `5` rather than `K as u8`?
   - [x] PUNT: `Inc(c, s)` on a Char isn't checked under `{$Q+}`; a literal above MaxLongInt (`2147483648`) is accepted and rustc refuses it.

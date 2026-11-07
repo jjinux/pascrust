@@ -320,14 +320,16 @@ pub fn move_turtle(turtle: &mut TTurtleContext, mut to_x: f64, mut to_y: f64) {
         tx = 2.0;
         ty = 2.0;
         if dx > 0.0 {
-            tx = (half_w - turtle.pos_x) / dx;
+            // `nonzero(y)` stops with runtime error 200 if `y` is 0, as Turbo Pascal's
+            // `/` does (Rust's would give infinity).
+            tx = (half_w - turtle.pos_x) / nonzero(dx);
         } else if dx < 0.0 {
-            tx = (-half_w - turtle.pos_x) / dx;
+            tx = (-half_w - turtle.pos_x) / nonzero(dx);
         }
         if dy > 0.0 {
-            ty = (half_h - turtle.pos_y) / dy;
+            ty = (half_h - turtle.pos_y) / nonzero(dy);
         } else if dy < 0.0 {
-            ty = (-half_h - turtle.pos_y) / dy;
+            ty = (-half_h - turtle.pos_y) / nonzero(dy);
         }
         if tx < ty {
             t = tx;

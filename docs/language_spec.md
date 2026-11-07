@@ -78,7 +78,8 @@ Types
 Expressions
 
 - Integer and real arithmetic with TP's promotion rules; `/` is always real;
-  `div`, `mod`; unary minus
+  `div`, `mod`; unary minus. Dividing by zero, with `/` as with `div` and
+  `mod`, stops with runtime error 200, as in TP
 - `and`, `or`, `not`, `xor` on booleans (short-circuit) and on integers;
   `shl`, `shr` (TP's: `shr` is a logical shift, and shifting by the type's
   width or more gives 0)

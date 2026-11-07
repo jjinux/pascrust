@@ -256,7 +256,9 @@ comes back as an `Err` like any runtime error.
 Division: `/` always produces `f64` (codegen casts both operands); `div` and
 `mod` map to Rust `/` and `%`, whose truncating semantics match TP exactly.
 Integer division by zero is a Rust panic, which becomes Pascal runtime
-error 200 (§17); `div` or `mod` by a constant 0 (`5 div 0`, `n mod Z`) is a
+error 200 (§17). Real division by zero would give infinity in Rust, so a
+divisor that isn't a constant other than 0 goes through the runtime's
+`nonzero` (`x / nonzero(y)`), which stops with error 200 as TP does; `div` or `mod` by a constant 0 (`5 div 0`, `n mod Z`) is a
 compile error, as in TP (sema's `division_by_zero`, which also keeps a
 "must be a constant" error from following it).
 

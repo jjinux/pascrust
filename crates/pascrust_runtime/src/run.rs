@@ -43,6 +43,16 @@ pub fn overflow<T>() -> T {
     rte(215, "Arithmetic overflow error")
 }
 
+/// The divisor of a real division, checked: Turbo Pascal stops with
+/// runtime error 200 when it's 0, where Rust's `x / 0.0` gives infinity.
+/// Written `x / nonzero(y)`.
+pub fn nonzero(divisor: f64) -> f64 {
+    if divisor == 0.0 {
+        rte(200, "Division by zero");
+    }
+    divisor
+}
+
 /// Pascal `RunError(code)`: stop with runtime error `code`, as if the
 /// runtime had found one. (Declared to return `()`, like `halt`, so
 /// statements after it don't warn.)
