@@ -21,6 +21,7 @@ var
    b: Byte;
    l: LongInt;
    w: Word;
+   s: ShortInt;
 
 {$Q+}
 procedure Bump(var N: Integer; by: Integer);
@@ -63,6 +64,14 @@ begin
    Dec(b, -K);
    Inc(p^.N, K);
    WriteLn(b, ' ', p^.N);
+   { A variable step that's negative adds as a number: 10 + -5 is 5. }
+   b := 10;
+   s := -5;
+   Inc(b, s);
+   Dec(r^.q^.N, s);
+   w := 3;
+   Inc(w, s + 2);
+   WriteLn(b, ' ', p^.N, ' ', w);
    {$Q-}
    WriteLn(i + 1);
    {$Q+}

@@ -48,7 +48,10 @@ Program structure
   `Dec` stop with runtime error 215 when the result doesn't fit its type
   (`i.checked_add(1).unwrap_or_else(overflow)`); elsewhere they wrap, as in
   TP's default `{$Q-}`. A constant expression (`2 + 3`, `C * 2`) is never
-  checked: TP works it out when it compiles. The others are parsed and ignored, with a warning
+  checked: TP works it out when it compiles. `Inc(b, s)` with a variable
+  step of a type the target can't hold (a ShortInt into a Byte) adds the
+  two as numbers: 10 + -5 is 5, and only a result out of range is an
+  error. The others are parsed and ignored, with a warning
   for ones that change semantics (`{$B+}`, `{$R+}`); `{$M}`, `{$N+}` and the
   overlay ones (`{$O+}`, `{$O UnitName}`, `{$F+}`) are ignored silently;
   include files (`{$I name}`) are an error

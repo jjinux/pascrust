@@ -296,7 +296,41 @@ impl<'a> Codegen<'a> {
                     (Some(n), _) => self.coerce(n, &target_ty).0,
                     (None, _) => "1".to_string(),
                 };
-                if matches!(target_ty.concrete(), Type::Int(_)) && self.overflow_checked_at(span) {
+                if let Type::Int(target) = target_ty.concrete()
+                    && self.overflow_checked_at(span)
+                {
+                    // A variable step whose type holds values the target
+                    // can't (`Inc(b, s)`, `s` a ShortInt, `b` a Byte): the
+                    // sum is worked out in a signed type wide enough for
+                    // both, and only a result that doesn't fit the target
+                    // is error 215. (`s as u8` would turn -5 into 251.)
+                    if let (Some(step), None) = (args.get(1), number)
+                        && let Type::Int(from) = ty(self, step).concrete()
+                        && !target.holds(from)
+                    {
+                        let wide = if target == IntKind::LongInt || from == IntKind::LongInt { "i64" } else { "i32" };
+                        let op = if b == Inc { "+" } else { "-" };
+                        let read = self.coerce(&args[0], &target_ty).0;
+                        let step = self.expr(step).0;
+                        if self.first_time("overflow_wide") {
+                            self.pending.push(
+                                "// `{$Q+}`: a step whose type holds values the target's can't is added in a wider type;"
+                                    .to_string(),
+                            );
+                            self.pending.push(
+                                "// `try_from` fails, and `overflow` stops with runtime error 215, when the result doesn't fit."
+                                    .to_string(),
+                            );
+                        }
+                        let value = format!(
+                            "{}::try_from({wide}::from({read}) {op} {wide}::from({step})).unwrap_or_else(|_| overflow())",
+                            target.rust()
+                        );
+                        if place.contains(".get_mut()") {
+                            return format!("{{ let updated = {value}; {place} = updated; }}");
+                        }
+                        return format!("{place} = {value};");
+                    }
                     let method = if up { "checked_add" } else { "checked_sub" };
                     // A place reached through a call (`p.get_mut().n`, a heap
                     // record) is read, then written, in two statements: in

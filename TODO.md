@@ -292,7 +292,7 @@ Last: raw bytes and C strings
 - [ ] Findings of review batch Q (70d5d51..b89b0fe):
   - [x] `Dec(b, -K)` (a constant step) was error 215 under `{$Q+}`, where `Dec(b, -5)` turns round; a checked index was written twice in the read-then-write block (now only for a place through a pointer); `Inc(a^[i], a^[i])` shadowed `value` with `value`.
   - [x] Division by a constant 0 went to rustc, which refused it; it's TP's compile error now. `p: ^Node` as a parameter's type said "unknown type `Node`"; now it says to name the pointer type. `from-json` printed a Real out of range with hundreds of digits.
-  - [ ] Question for the user: under `{$Q+}`, `Inc(b, s)` or `Dec(b, s)` on a Byte or Word with a negative variable `s` is error 215 in PascRust (`b.checked_sub(s as u8)`); Free Pascal gives the wrapped value, but it works in 32/64 bits, so it isn't TP's reference. What did TP 7 do?
+  - [x] Under `{$Q+}`, `Inc(b, s)` or `Dec(b, s)` on a Byte or Word with a negative variable `s` was error 215 (`b.checked_sub(s as u8)`). The user (2026-11-06): add in a wider signed type and check the result, as a negative constant step does.
 - [x] Findings of review batch P (44cbc65..70d5d51):
   - [x] `Exec('true.exe')` ran `/usr/bin/true`: a bare name was looked up on `PATH`; now it runs from the current directory only, as in DOS.
   - [x] `{$Q+}` `Inc(r^.q^.N, 40)` (two pointers) didn't compile; `from-json` refused `to-json`'s output for a Boolean variant before a Byte one; the Real range in `from-json` was approximate (2.92e-39 stored as 0, the largest Real refused).

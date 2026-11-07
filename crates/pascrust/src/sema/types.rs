@@ -86,6 +86,13 @@ impl IntKind {
         }
     }
 
+    /// Every value of `other` is one of this type's: an Integer holds a
+    /// Byte, a Byte doesn't hold a ShortInt.
+    pub fn holds(self, other: IntKind) -> bool {
+        let (lo, hi) = other.range();
+        self.contains(lo) && self.contains(hi)
+    }
+
     pub fn contains(self, value: i64) -> bool {
         let (lo, hi) = self.range();
         lo <= value && value <= hi

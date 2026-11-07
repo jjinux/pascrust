@@ -245,6 +245,11 @@ asks for checks pays for the longer form; `x := x + 1` isn't turned into
 constants and arithmetic on them) is left unchecked, as TP computed it at
 compile time: `i * (2 + 3)` is `i.checked_mul(2 + 3)`, and a constant of
 literals as the receiver is written as its typed value, `5_i16.checked_mul(i)`.
+`Inc`/`Dec` with a variable step whose type holds values the target can't
+(`IntKind::holds`: a ShortInt step on a Byte) adds in a wider signed type,
+`u8::try_from(i32::from(b) + i32::from(s))`, because `s as u8` would turn
+-5 into 251 and `checked_add` would call that an overflow (the user's
+choice, 2026-11-06; TP 7's behaviour there is untested).
 Inside `call` (a Rust program calling Pascal) the error
 comes back as an `Err` like any runtime error.
 
