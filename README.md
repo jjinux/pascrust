@@ -225,35 +225,75 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 
 ## What's supported
 
-Most of Turbo Pascal 5.5/6.0 as students used it: the usual types, strings,
-arrays, records (variant records too), enums, sets, pointers, procedural
-types, nested procedures, `with`, units,
-objects with inheritance and virtual methods (constructors, destructors,
-`inherited`, polymorphic pointers, `TypeOf`), `goto` forward or back
-within a statement list (as Rust's labeled blocks and loops), text and
-typed files with
-`{$I-}`/`IOResult`, `{$Q+}` overflow checks, `PChar` strings, and the `Crt`, `Dos`, `Graph`,
-`Printer`, `Overlay`, `Strings` and `WinDos` units, plus Ruscal's own
-`PRJson` (JSON) and `PRTurtle` (turtle graphics on top of `Graph`; see
-[the turtle example](examples/ruscal/turtles.pas)). Turbo Pascal code
-can also call Rust: `external` routines written in Rust, linked with
-`{$L file.rs}` (see [Calling Rust](docs/calling_rust.md)); and Rust can
-call Turbo Pascal: a Rust project's `build.rs` translates a unit while
-`cargo build` runs, or `ruscal build --lib` makes a library of one (see
-[Calling Turbo Pascal from Rust](docs/embedding.md)). There's an example
-of each in `examples/ruscal/`. Some things a modern
-machine doesn't have are faked so old programs still run: `Lst` prints to
-a file or a command (see [Printing](docs/printing.md)), overlays need no `.OVR`
-file, `MemAvail` reports plenty of memory, and interrupt vectors keep the
-handlers set in them (which never run).
+Ruscal reads Turbo Pascal 7.0 syntax and covers most of Turbo Pascal 5.5
+to 7.0 as students used it. It runs every program in `examples/`. The
+[language spec](docs/language_spec.md) has the details, and
+[`TODO.md`](TODO.md) says what's next.
 
-Not supported yet: a `goto` into a statement it isn't in, pointer
-arithmetic other than on `PChar`,
-keeping a `PChar` into a `Char` array (`P := A`; a `PChar` from `StrNew`
-or `GetMem` works), and interrupts (`SetIntVec` keeps a handler, with a
-warning, but never calls it). See the [language spec](docs/language_spec.md)
-for the details and [`TODO.md`](TODO.md) for what's next. Runtime errors
-print Turbo Pascal's message and exit code (e.g. `Runtime error 201: Range check error ...`).
+- **The language:** the usual types (`Integer`, `LongInt`, `Real`, `Char`,
+  `Boolean` and the rest), strings, arrays, records (variant records too),
+  enums, subranges, sets, typed constants, `with`, `case`, `Break` and
+  `Continue`, nested and recursive procedures, `var` and `const`
+  parameters, and procedural types.
+- **Units:** a program pulls in its units' source files, which are
+  translated with it.
+- **Objects:** inheritance, virtual methods, constructors and destructors,
+  `inherited`, polymorphic pointers and `TypeOf`.
+- **Pointers:** `New`/`Dispose`, linked lists and trees, the untyped
+  `Pointer`, `GetMem`/`FreeMem`, and `PChar` strings with their pointer
+  arithmetic.
+- **`goto`:** a jump forward or back within a statement list, translated
+  as Rust's labeled blocks and loops.
+- **Files:** text files, typed files (`file of T`) and untyped files.
+  Typed files use Turbo Pascal's own byte layout (6-byte `Real`s,
+  `string[n]` as n+1 bytes, unpadded records), so a program can read the
+  data files it wrote decades ago. `{$I-}` and `IOResult` work.
+- **Standard units:** `Crt`, `Dos`, `Graph` (in a window), `Printer`,
+  `Overlay`, `Strings` and `WinDos`.
+- **Ruscal's own units:** [`PRJson`](docs/pr_json.md) for reading and
+  writing JSON, and [`PRTurtle`](docs/pr_turtle.md) for turtle graphics,
+  with Turbo Pascal 3.0's turtle routines on top of `Graph`.
+- **Turbo Pascal's behavior:** runtime errors print Turbo Pascal's message
+  and exit code (`Runtime error 201: Range check error ...`), `{$Q+}`
+  checks for overflow, `Random` gives the same numbers as Turbo Pascal,
+  and DOS file names like `C:\DATA\X.DAT` go to directories you choose
+  (see [Environment variables](#environment-variables)).
+- **Calling Rust:** Turbo Pascal code can call `external` routines written
+  in Rust, linked with `{$L file.rs}` (see
+  [Calling Rust](docs/calling_rust.md)).
+- **Calling Turbo Pascal from Rust:** a Rust project's `build.rs`
+  translates a unit while `cargo build` runs, or `ruscal build --lib`
+  makes a library of one (see
+  [Calling Turbo Pascal from Rust](docs/embedding.md)). There's an
+  example of each way in `examples/ruscal/`.
+- **Faked, so old programs still run:** `Lst` prints to a file or a
+  command (see [Printing](docs/printing.md)), overlays need no `.OVR`
+  file, `MemAvail` reports plenty of memory, and interrupt vectors keep
+  the handlers set in them (which never run).
+
+Not supported yet:
+
+- A `goto` into a statement it isn't in, or two jumps whose blocks would
+  cross.
+- Open array parameters (`a: array of Integer`).
+- Pointer arithmetic other than on `PChar`, `@` on a variable, and
+  `absolute` variables.
+- Keeping a `PChar` into a `Char` array (`P := A`). A `PChar` from
+  `StrNew` or `GetMem` works.
+- Include files (`{$I name}`).
+- `{$R+}` range checks on subranges: it's ignored, with a warning. Array
+  indexes are always checked.
+
+Never supported, since they need a real DOS PC:
+
+- `asm` and `inline`, `Mem` and `Port`, `Intr` and `MsDos`.
+- Interrupts: `SetIntVec` keeps a handler, with a warning, but never
+  calls it. [Timer interrupts](docs/timer_interrupts.md) shows how to
+  rewrite a program that uses one.
+- `Exec` of a real DOS program. `Exec('GAME.EXE')` runs `game`, a
+  program built with `tpc`.
+- The `Graph3` and `Turbo3` units, kept for Turbo Pascal 3.0 programs.
+  `PRTurtle` has `Graph3`'s turtle routines.
 
 ## Developing
 

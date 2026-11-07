@@ -468,6 +468,8 @@ Last: raw bytes and C strings
 - [x] PUNT: Left for later, if a program needs it: `Func(P)`, a `Pointer` turned back into a routine.
 - [x] PUNT: Argument order in `Inc(a[Pick], Bump)`: Ruscal runs `Pick` before `Bump`, Free Pascal `Bump` first (from the Fable review of 99e4f09). TP doesn't document it; obscure.
 - [ ] Hex constants as TP reads them: a 32-bit `$AABBCCDD` is a `LongInt` bit pattern (`$FFFFFFFF` is -1); Ruscal says it's out of range.
+- [ ] Assigning to a `const` parameter (`procedure P(const n: Integer); begin n := 2 end`) is accepted; TP rejects it. Found while rewriting the README's "What's supported", 2026-11-07.
+- [ ] Open array parameters (`a: array of Integer`, TP 7) are a parse error; the README lists them as not supported yet.
 - [ ] An anonymous record type is named `Record` in Rust (`fn pair(&self) -> Record`); naming it after its field (`Pair`) would read better.
 - [x] Field names needn't avoid the runtime's function names (done: `names::field_name` escapes only Rust keywords): a field `W` becomes `w_` because `w` is the runtime's width helper, but a struct field can't clash with a function.
 - [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, docs/architecture.md §16), and `TypeOf`.

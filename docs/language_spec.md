@@ -115,7 +115,7 @@ Statements
   overlap an earlier one, and the first wins; a label the value can never
   equal (300 for a `Byte`, a range like `5..1`) is an error
 - Procedure calls; `Exit`; `Halt` / `Halt(n)`
-- Value and `var` parameters; passing arrays, records and strings both ways.
+- Value, `var` and `const` parameters (TP 7); passing arrays, records and strings both ways.
   A parameter's or result's type is a type's name, as in TP: `p: ^Node`
   is an error that says to declare `PNode = ^Node` and use that.
   Different fields of one record may be passed as two `var` arguments
@@ -533,8 +533,8 @@ Later (real TP features, not in the examples, worth doing in order)
    the place-descriptor representation from `architecture.md` §15)
 7. (Untyped files are done, in tier 2.) `TextRec`/`FileRec`
 8. (Done, now in tier 2: TP-exact binary layout for `file of Rec`.)
-9. `const` parameters, open array parameters, `Include`/`Exclude` (TP 7
-   additions). (`PChar`, `Assigned` and `WinDos` are done, in tier 2.) A
+9. Open array parameters (a TP 7 addition). (`const` parameters,
+   `Include`/`Exclude`, `PChar`, `Assigned` and `WinDos` are done.) A
    `PChar` kept into a `Char` array (`P := A`)
 10. Vector (stroked) BGI fonts, `RegisterBGIfont`, custom drivers
 11. `Overlay` unit: parse and ignore
