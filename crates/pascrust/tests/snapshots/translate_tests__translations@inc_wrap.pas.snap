@@ -17,7 +17,8 @@ use pascrust_runtime::prelude::*;
 
 // Integer arithmetic wraps, as in TP, even where rustc can see it will
 // (it refuses that by default); and a negative step at the type's
-// minimum.
+// minimum, or one just past the type's top (128 in a ShortInt
+// adds -128).
 
 /// The main program: the `begin ... end.` block of `IncWrap`.
 /// Its local variables are the Pascal program's global variables.
@@ -44,6 +45,16 @@ fn pascal_main() {
     pwriteln!(i16::from(b));
     // Inc(b, 256) changes nothing: 256 wraps to 0 in Byte arithmetic.
     pwriteln!(i16::from(b));
+    sb = 10;
+    // 128 wraps to -128 in ShortInt arithmetic, as in Turbo Pascal.
+    sb += -128;
+    i = 10;
+    // 32768 wraps to -32768 in Integer arithmetic, as in Turbo Pascal.
+    i += -32768;
+    pwriteln!(sb, " ", i);
+    // 32768 wraps to -32768 in Integer arithmetic, as in Turbo Pascal.
+    i -= -32768;
+    pwriteln!(i);
 }
 
 fn main() {

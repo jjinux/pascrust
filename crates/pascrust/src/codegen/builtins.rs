@@ -260,7 +260,7 @@ impl<'a> Codegen<'a> {
                 };
                 if let Some(n) = number
                     && !in_range(n)
-                    && !in_range(-n)
+                    && !(n < 0 && in_range(-n))
                 {
                     let mut wrapped = n & ((1_i64 << bits) - 1);
                     if matches!(target_ty.concrete(), Type::Int(kind) if kind.contains(-1))
