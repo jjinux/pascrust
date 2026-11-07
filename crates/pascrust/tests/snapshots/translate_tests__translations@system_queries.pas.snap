@@ -104,7 +104,7 @@ fn pascal_main() {
     let mut p: PPoint = Ptr::nil();
     let mut w_: u16 = 0;
     let mut i: i16 = 0;
-    let small: PArray<u8, 0, 10> = PArray::default();
+    let small: PArray<u8, 0, { (LAST_DIGIT + 1) as usize }> = PArray::default();
     let one: i8 = 0;
     let centered: i8 = 0;
     let a_digit: i8 = 0;

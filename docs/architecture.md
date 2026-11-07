@@ -303,7 +303,13 @@ a constant keeps it (`Dec(i, Neg)` is `i -= NEG`, `Dec(b, -K)` is
 negative one on a Byte or Word is added in a wider type, as a variable
 step is. `High`/`Low` of an array with an integer index are its bounds,
 `a.high()` or `TArr::HIGH` (`PArray`'s), so they follow the declaration;
-`High(Integer)` stays `32767`, as no name is lost. Where Rust takes only a
+`High(Integer)` stays `32767`, as no name is lost. An array's bounds keep
+their constants too (sema's `bounds_rust`, kept in `ArrayType` but not
+part of its equality): `array[1..N]` is `PArray<i16, 1, { N as usize }>`,
+`array[0..N - 1]` the same, and `array[Lo..Hi]` is
+`PArray<u8, { LO as i64 }, { (HI - LO + 1) as usize }>`, also through a
+named subrange type, so changing `N` in the Rust resizes the array.
+(`string[K]` stays a number: a reader rarely edits one.) Where Rust takes only a
 pattern, a constant's name is one (`case c of Esc:` is `ESC =>`, and a
 Byte compared with Integer constants is widened, `match i16::from(b)`); a
 set element worked out from a constant isn't, so `i in [K + 1..K * 2]`

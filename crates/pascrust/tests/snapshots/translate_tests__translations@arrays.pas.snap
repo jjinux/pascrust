@@ -19,7 +19,7 @@ const MAX_COL: i16 = 5;
 const MAX_ROW: i16 = 3;
 
 /// Pascal: `array[0..MaxCol, 0..MaxRow] of boolean`
-type GridT = PArray<PArray<bool, 0, 4>, 0, 6>;
+type GridT = PArray<PArray<bool, 0, { (MAX_ROW + 1) as usize }>, 0, { (MAX_COL + 1) as usize }>;
 
 /// Pascal: `array['a'..'e'] of integer`
 type Counts = PArray<i16, 97, 5>;

@@ -76,6 +76,9 @@ pub(super) struct Checker {
     declaring_type: bool,
     /// Bounds of type names declared as subranges (`Index = 1..10`).
     subrange_types: HashMap<SymId, (Type, i64, i64)>,
+    /// The bounds of each subrange type as written (`1..MaxItems`), for an
+    /// array indexed by it to keep the names in Rust (see `bounds_rust`).
+    subrange_exprs: HashMap<SymId, (Expr, Expr)>,
     /// Bounds of variables and parameters declared with a subrange type
     /// (`i: 1..10`), which are stored as their host type: for `High(i)`.
     var_bounds: HashMap<SymId, (i64, i64)>,
@@ -159,6 +162,7 @@ impl Checker {
             pending_pointers: Vec::new(),
             method_scopes: Vec::new(),
             subrange_types: HashMap::new(),
+            subrange_exprs: HashMap::new(),
             var_bounds: HashMap::new(),
             with_records: Vec::new(),
             with_selectors: Vec::new(),
@@ -540,6 +544,9 @@ impl Checker {
                     self.bind(&t.name, sym);
                     if let Some(bounds) = bounds {
                         self.subrange_types.insert(sym, bounds);
+                        if let TypeExpr::Subrange { lo, hi, .. } = &t.ty {
+                            self.subrange_exprs.insert(sym, ((**lo).clone(), (**hi).clone()));
+                        }
                     }
                 }
                 Decl::Var(v) => {
@@ -1060,7 +1067,8 @@ impl Checker {
                     // Only a `type` declaration gets a Rust type alias; an
                     // array declared directly on a variable stays anonymous.
                     let alias = if i == 0 && self.declaring_type { name.map(|n| self.type_name(n)) } else { None };
-                    ty = Type::Array(Rc::new(ArrayType { index: index_ty, lo, hi, elem: ty, alias }));
+                    let bounds_rust = self.index_exprs(index).and_then(|(l, h)| self.bounds_rust(&l, &h, lo, hi));
+                    ty = Type::Array(Rc::new(ArrayType { index: index_ty, lo, hi, elem: ty, alias, bounds_rust }));
                 }
                 if name.is_some() && self.declaring_type {
                     self.a.type_defs.push((ty.clone(), t.span()));
@@ -1407,6 +1415,146 @@ impl Checker {
                 None
             }
         }
+    }
+
+    /// An array index's bounds as written, if they're expressions: a
+    /// subrange (`1..N`) or the name of a subrange type.
+    fn index_exprs(&self, t: &TypeExpr) -> Option<(Expr, Expr)> {
+        match t {
+            TypeExpr::Subrange { lo, hi, .. } => Some(((**lo).clone(), (**hi).clone())),
+            TypeExpr::Named(ident) => self.subrange_exprs.get(&self.lookup(&ident.key())?).cloned(),
+            _ => None,
+        }
+    }
+
+    /// An array's bounds as `PArray`'s const generic arguments, keeping the
+    /// constants they name: `array[1..N]` is `PArray<T, 1, { N as usize }>`
+    /// and `array[Lo..Hi]` is `PArray<T, { LO as i64 }, { (HI - LO + 1) as
+    /// usize }>`, so changing `N` in the Rust resizes the array. `None` when
+    /// they name no constant (the numbers say it all), or aren't integer
+    /// arithmetic that Rust can write the same way.
+    fn bounds_rust(&self, lo: &Expr, hi: &Expr, lo_value: i64, hi_value: i64) -> Option<(String, String)> {
+        let (lo_named, hi_named) = (self.names_constant(lo), self.names_constant(hi));
+        if !lo_named && !hi_named {
+            return None;
+        }
+        // Worked out in the widest type a constant has (an Integer, or a
+        // LongInt), with the others converted to it.
+        let mut kinds = Vec::new();
+        self.const_kinds(lo, &mut kinds)?;
+        self.const_kinds(hi, &mut kinds)?;
+        let kind = if kinds.contains(&IntKind::LongInt) { IntKind::LongInt } else { IntKind::Integer };
+        if !self.fits_along_the_way(lo, kind)
+            || !self.fits_along_the_way(hi, kind)
+            || !kind.contains(hi_value - lo_value + 1)
+        {
+            return None;
+        }
+        let lo_text = if lo_named {
+            format!("{{ {} as i64 }}", self.const_rust(lo, kind, AS_OPERAND)?)
+        } else if lo_value < 0 {
+            format!("{{ {lo_value} }}")
+        } else {
+            lo_value.to_string()
+        };
+        // The count, `hi - lo + 1`, said as simply as it can be:
+        // `array[1..N]` has `N`, `array[0..N - 1]` too.
+        let count = match &hi.kind {
+            _ if lo_named => {
+                let hi = self.const_rust(hi, kind, ADD_LEFT)?;
+                let lo = self.const_rust(lo, kind, ADD_RIGHT)?;
+                format!("({hi} - {lo} + 1)")
+            }
+            ExprKind::Binary { op: BinaryOp::Sub, lhs, rhs }
+                if self.eval_const(rhs) == Some(ConstVal::Int(1 - lo_value)) =>
+            {
+                self.const_rust(lhs, kind, AS_OPERAND)?
+            }
+            _ if lo_value == 1 => self.const_rust(hi, kind, AS_OPERAND)?,
+            _ if lo_value < 1 => format!("({} + {})", self.const_rust(hi, kind, ADD_LEFT)?, 1 - lo_value),
+            _ => format!("({} - {})", self.const_rust(hi, kind, ADD_LEFT)?, lo_value - 1),
+        };
+        Some((lo_text, format!("{{ {count} as usize }}")))
+    }
+
+    /// Does `e` use a named constant (not an enum value or `True`)?
+    fn names_constant(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Name(_) => self.a.refs.get(&e.id).is_some_and(|&s| {
+                matches!(&self.a.symbols[s].kind, SymKind::Const { ty, .. } if !matches!(ty, Type::Enum(_) | Type::Bool))
+            }),
+            ExprKind::Call { args, .. } => args.iter().any(|a| self.names_constant(a)),
+            ExprKind::Unary { operand, .. } => self.names_constant(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.names_constant(lhs) || self.names_constant(rhs),
+            _ => false,
+        }
+    }
+
+    /// The integer types of the constants `e` names, or `None` if it's not
+    /// integer arithmetic on literals and constants.
+    fn const_kinds(&self, e: &Expr, kinds: &mut Vec<IntKind>) -> Option<()> {
+        match &e.kind {
+            ExprKind::Int(_) => Some(()),
+            ExprKind::Name(_) => match &self.a.symbols[*self.a.refs.get(&e.id)?].kind {
+                SymKind::Const { ty: Type::Int(kind), .. } => {
+                    kinds.push(*kind);
+                    Some(())
+                }
+                _ => None,
+            },
+            ExprKind::Unary { op: UnaryOp::Neg | UnaryOp::Plus, operand } => self.const_kinds(operand, kinds),
+            ExprKind::Binary {
+                op: BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod,
+                lhs,
+                rhs,
+            } => {
+                self.const_kinds(lhs, kinds)?;
+                self.const_kinds(rhs, kinds)
+            }
+            _ => None,
+        }
+    }
+
+    /// Does every value along the way in `e` fit `kind`?
+    fn fits_along_the_way(&self, e: &Expr, kind: IntKind) -> bool {
+        let fits = matches!(self.a.consts.get(&e.id), Some(ConstVal::Int(n)) if kind.contains(*n));
+        fits && match &e.kind {
+            ExprKind::Unary { operand, .. } => self.fits_along_the_way(operand, kind),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                self.fits_along_the_way(lhs, kind) && self.fits_along_the_way(rhs, kind)
+            }
+            _ => true,
+        }
+    }
+
+    /// `e` (checked by `const_kinds`) in Rust, in `kind`, parenthesized for
+    /// where it goes (`context`: one of the `AS_OPERAND`... below).
+    fn const_rust(&self, e: &Expr, kind: IntKind, context: u8) -> Option<String> {
+        let (code, precedence) = match &e.kind {
+            ExprKind::Int(n) => (n.to_string(), if *n < 0 { UNARY } else { ATOM }),
+            ExprKind::Name(_) => {
+                let sym = &self.a.symbols[*self.a.refs.get(&e.id)?];
+                match &sym.kind {
+                    SymKind::Const { ty: Type::Int(own), .. } if *own == kind => (sym.rust_name.clone(), ATOM),
+                    _ => (format!("{} as {}", sym.rust_name, kind.rust()), CAST),
+                }
+            }
+            ExprKind::Unary { op: UnaryOp::Plus, operand } => return self.const_rust(operand, kind, context),
+            ExprKind::Unary { operand, .. } => (format!("-{}", self.const_rust(operand, kind, UNARY)?), UNARY),
+            ExprKind::Binary { op, lhs, rhs } => {
+                let (rust_op, p) = match op {
+                    BinaryOp::Add => ("+", ADD_LEFT),
+                    BinaryOp::Sub => ("-", ADD_LEFT),
+                    BinaryOp::Mul => ("*", MUL_LEFT),
+                    BinaryOp::Div => ("/", MUL_LEFT),
+                    _ => ("%", MUL_LEFT),
+                };
+                let (l, r) = (self.const_rust(lhs, kind, p)?, self.const_rust(rhs, kind, p + 1)?);
+                (format!("{l} {rust_op} {r}"), p)
+            }
+            _ => return None,
+        };
+        Some(if precedence < context { format!("({code})") } else { code })
     }
 
     /// If the call `e` has constant arguments, record its value for codegen
@@ -4387,3 +4535,13 @@ fn visit_stmts(s: &Stmt, f: &mut impl FnMut(&Stmt)) {
         StmtKind::Empty | StmtKind::Assign { .. } | StmtKind::Call(_) | StmtKind::Goto(_) => {}
     }
 }
+
+// How tightly a piece of Rust in `const_rust` binds, and how tightly the
+// place it goes needs it to: a piece binding less is parenthesized.
+const ADD_LEFT: u8 = 1; // `a + b`, `a - b` (the right side needs `ADD_RIGHT`)
+const ADD_RIGHT: u8 = 2;
+const MUL_LEFT: u8 = 3; // `a * b`, `a / b`, `a % b` (the right side, 4)
+const AS_OPERAND: u8 = 5; // the left side of `as`
+const CAST: u8 = 5; // `x as i16`
+const UNARY: u8 = 6; // `-x`
+const ATOM: u8 = 7; // names and literals

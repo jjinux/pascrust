@@ -75,6 +75,7 @@ pub fn search_rec_type() -> Type {
         hi: 21,
         elem: Type::Int(IntKind::Byte),
         alias: None,
+        bounds_rust: None,
     }));
     Type::Record(std::rc::Rc::new(RecordType {
         rust_name: "SearchRec".to_string(),
@@ -147,6 +148,7 @@ pub fn record_type(name: &str) -> Option<Type> {
                 hi: 15,
                 elem: Type::Int(IntKind::ShortInt),
                 alias: None,
+                bounds_rust: None,
             }));
             unit_record("PaletteType", &[("Size", Type::Int(IntKind::Byte)), ("Colors", colors)])
         }
@@ -167,6 +169,7 @@ pub fn record_type(name: &str) -> Option<Type> {
                     hi,
                     elem,
                     alias: None,
+                    bounds_rust: None,
                 }))
             };
             unit_record(
@@ -192,6 +195,7 @@ pub fn fill_pattern_type() -> Type {
         hi: 8,
         elem: Type::Int(IntKind::Byte),
         alias: Some("FillPatternType".to_string()),
+        bounds_rust: None,
     }))
 }
 

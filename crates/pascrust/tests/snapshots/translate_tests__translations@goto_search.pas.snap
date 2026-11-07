@@ -22,7 +22,7 @@ const SIZE: i16 = 4;
 /// The main program: the `begin ... end.` block of `GotoSearch`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
-    let mut grid: PArray<PArray<i16, 1, 4>, 1, 4> = PArray::default();
+    let mut grid: PArray<PArray<i16, 1, { SIZE as usize }>, 1, { SIZE as usize }> = PArray::default();
     let mut row: i16 = 0;
     let mut col: i16 = 0;
     let mut target: i16 = 0;

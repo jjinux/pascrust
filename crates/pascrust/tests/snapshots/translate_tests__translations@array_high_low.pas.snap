@@ -21,7 +21,7 @@ use pascrust_runtime::prelude::*;
 const N: i16 = 10;
 
 /// Pascal: `array[1..N] of Integer`
-type TArr = PArray<i16, 1, 10>;
+type TArr = PArray<i16, 1, { N as usize }>;
 
 /// Pascal: `procedure Last;`
 ///

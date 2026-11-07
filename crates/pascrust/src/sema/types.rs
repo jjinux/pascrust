@@ -210,7 +210,7 @@ pub struct EnumType {
     pub pascal_names: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ArrayType {
     /// The index type (an integer type, `Char`, `Boolean` or an enum).
     pub index: Type,
@@ -219,6 +219,18 @@ pub struct ArrayType {
     pub elem: Type,
     /// The Rust type alias generated for a named array type (`GridT`).
     pub alias: Option<String>,
+    /// `PArray`'s `LO` and `N` written with the constants the bounds name
+    /// (`{ N as usize }`), when they name any; otherwise the numbers.
+    pub bounds_rust: Option<(String, String)>,
+}
+
+/// Two array types are the same when their bounds are: how the bounds are
+/// written doesn't matter.
+impl PartialEq for ArrayType {
+    fn eq(&self, other: &Self) -> bool {
+        (&self.index, self.lo, self.hi, &self.elem, &self.alias)
+            == (&other.index, other.lo, other.hi, &other.elem, &other.alias)
+    }
 }
 
 impl ArrayType {
@@ -667,6 +679,9 @@ impl ArrayType {
     /// `PArray<T, LO, N>`, spelled out without the alias. A negative const
     /// generic argument needs braces in Rust: `PArray<i16, { -5 }, 11>`.
     pub fn rust_unaliased(&self) -> String {
+        if let Some((lo, count)) = &self.bounds_rust {
+            return format!("PArray<{}, {lo}, {count}>", self.elem.rust());
+        }
         let lo = if self.lo < 0 { format!("{{ {} }}", self.lo) } else { self.lo.to_string() };
         format!("PArray<{}, {lo}, {}>", self.elem.rust(), self.count())
     }

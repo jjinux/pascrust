@@ -21,7 +21,7 @@ const MAX_SIZE: i16 = 5;
 /// Pascal: `Queue = object ... end`
 #[derive(Clone, Copy, Debug, Default)]
 struct Queue {
-    items: PArray<i16, 1, 5>,
+    items: PArray<i16, 1, { MAX_SIZE as usize }>,
     count: i16,
 }
 
