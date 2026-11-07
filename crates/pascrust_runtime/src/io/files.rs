@@ -655,16 +655,27 @@ macro_rules! file_record {
             }
         }
     };
+    // An enum is its ordinal: one byte, or, as in TP, a Word (two bytes,
+    // low first) for a type of more than 256 values.
     (enum $ty:ident) => {
         impl $crate::io::FileRecord for $ty {
             fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
-                out.push($crate::ordinal::Ordinal::ord(*self) as u8);
+                let ord = $crate::ordinal::Ordinal::ord(*self);
+                if <$ty as $crate::ordinal::Enumerated>::VALUES.len() > 256 {
+                    $crate::io::FileRecord::encode(&(ord as u16), out);
+                } else {
+                    out.push(ord as u8);
+                }
             }
             fn decode(input: &mut &[u8]) -> Self {
-                // A byte beyond the last value (another program's file) is
-                // read as the last value rather than stopping the program.
+                // An ordinal beyond the last value (another program's file)
+                // is read as the last value rather than stopping the program.
                 let values = <$ty as $crate::ordinal::Enumerated>::VALUES;
-                let ord = usize::from(<u8 as $crate::io::FileRecord>::decode(input));
+                let ord = if values.len() > 256 {
+                    usize::from(<u16 as $crate::io::FileRecord>::decode(input))
+                } else {
+                    usize::from(<u8 as $crate::io::FileRecord>::decode(input))
+                };
                 values[ord.min(values.len() - 1)]
             }
         }
