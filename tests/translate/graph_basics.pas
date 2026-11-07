@@ -1,6 +1,6 @@
 program GraphBasics;
 { The Graph unit, drawn without a window (the tests run with
-  PASCRUST_GRAPH=headless) and checked with GetPixel. The expected output is
+  RUSCAL_GRAPH=headless) and checked with GetPixel. The expected output is
   written by hand: Free Pascal's Graph unit needs a real screen. }
 uses Graph;
 var

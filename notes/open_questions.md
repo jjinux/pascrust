@@ -36,7 +36,7 @@ go with the default" needs no further action.
 
 5. **DOS paths and drives.** The examples hard-code `a:\tictac`,
    `c:\tp\bin\turbo.exe`, `a:;c:;h:`. Proposal: the runtime reads an optional
-   `pascrust.toml` (or `PASCRUST_DRIVE_A=...` env vars) mapping drive letters
+   `ruscal.toml` (or `RUSCAL_DRIVE_A=...` env vars) mapping drive letters
    to directories, converts `\` to `/`, and treats an unmapped drive as the
    current directory.
    **Default: that mapping scheme, with every drive defaulting to the current
@@ -46,12 +46,12 @@ go with the default" needs no further action.
    use screen-saver and animation timing), make `Sound`/`NoSound` ring the
    terminal bell once (or no-op), and let `Exec` try `std::process::Command`
    and set `DosError` on failure.
-   **Default: as described; a `PASCRUST_FAST=1` env var makes `Delay` a
+   **Default: as described; a `RUSCAL_FAST=1` env var makes `Delay` a
    no-op for tests.**
 
 7. **Where does generated code live, and is it committed?** Proposal:
    `out/<program>/` as a Cargo project per program, git-ignored, regenerated
-   by `pascrust build`. Committing one or two generated examples under
+   by `ruscal build`. Committing one or two generated examples under
    `examples/generated/` would let readers see the output without running
    anything.
    **Default: `out/` ignored; commit the generated Rust for `hello.pas` and
@@ -70,7 +70,7 @@ go with the default" needs no further action.
    **Default: check what codegen needs (types of every expression, lvalues,
    parameter kinds, alias detection) and report those errors with Pascal
    positions; rely on rustc for anything else, and treat any rustc error on
-   generated code as a PascRust bug to fix.**
+   generated code as a Ruscal bug to fix.**
 
 10. **Scope of OOP.** The examples use static `object` methods and single
     inheritance only. Should virtual methods, constructors and destructors be

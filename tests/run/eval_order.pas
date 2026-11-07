@@ -5,7 +5,7 @@ program EvalOrder;
   as Free Pascal does. A call that can't change n keeps n += ....
   The .out comes from fpc -Mtp, except that Free Pascal prints the line
   written to the '' file first: piped, its standard output is held until
-  the program ends. TP (and PascRust) print in program order. }
+  the program ends. TP (and Ruscal) print in program order. }
 type
    PCount = ^Count;
    Count = record

@@ -1,0 +1,3286 @@
+//! Code generation: walk the AST, consult sema's [`Analysis`], and write
+//! Rust source text.
+//!
+//! The output only needs to be valid Rust; the driver runs it through
+//! `rustfmt` afterwards, so this module doesn't fuss over line lengths. It
+//! does care about *readability*, though: it avoids redundant parentheses,
+//! casts and `mut`s, because the generated code is meant to be read.
+//!
+//! Split by area:
+//! - `mod.rs` (this file): the file layout, functions and statements
+//! - `expr.rs`: expressions, type conversions and literals
+//! - `builtins.rs`: calls to Turbo Pascal's built-in procedures
+
+mod builtins;
+mod comments;
+mod expr;
+
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+
+use crate::ast::*;
+use crate::diag::{SourceMap, Span};
+use crate::sema::goto::GotoBlock;
+use crate::sema::types::{ObjectType, RecordType, VariantPart, tp_size};
+use crate::sema::{Access, Analysis, Builtin, CaptureMode, IntKind, MAIN, ProcId, SymId, SymKind, Type, VarRole};
+
+/// What [`generate`] writes Rust for: the program and its units, with what
+/// the driver learned about them.
+#[derive(Clone, Copy)]
+pub struct Input<'a> {
+    pub program: &'a Program,
+    pub units: &'a [Unit],
+    pub analysis: &'a Analysis,
+    pub map: &'a SourceMap,
+    /// The parts of the source compiled with `{$I-}`.
+    pub io_unchecked: &'a [Span],
+    /// The parts of the source compiled with `{$Q+}`.
+    pub overflow_checked: &'a [Span],
+    /// The source's comments, carried into the Rust.
+    pub comments: &'a [crate::lexer::Comment],
+    /// The Rust files `{$L file.rs}` links, as (module, file name).
+    pub rust_modules: &'a [(String, String)],
+    /// The runtime features the units need (`crt`, `dos`).
+    pub features: &'a [String],
+    /// For `ruscal build --lib`: the unit to write `lib.rs` for, in place
+    /// of the program's `main.rs`.
+    pub library: Option<&'a Unit>,
+}
+
+/// Generate the Rust source for a program and its units: one file per
+/// Pascal source file, `main.rs` (or, for a library, `lib.rs`) first.
+pub fn generate(input: &Input) -> Vec<(String, String)> {
+    // `*input` copies the struct of references out, so each is a local.
+    let Input {
+        program,
+        units,
+        analysis,
+        map,
+        io_unchecked,
+        overflow_checked,
+        comments,
+        rust_modules,
+        features,
+        library,
+    } = *input;
+    let mut files = Vec::new();
+    let mut g = Codegen {
+        a: analysis,
+        map,
+        out: String::new(),
+        indent: 0,
+        proc: MAIN,
+        explained: Default::default(),
+        end_comment: None,
+        hoisted: HashMap::new(),
+        file: 0,
+        vis: "",
+        mutable_place: false,
+        pending: Vec::new(),
+        unsigned_shift: None,
+        after: Vec::new(),
+        lent: Vec::new(),
+        lent_roots: Vec::new(),
+        running_first: HashSet::new(),
+        calling: HashSet::new(),
+        newtypes: HashSet::new(),
+        root: if library.is_some() { "super" } else { "crate" },
+        goto_blocks: Vec::new(),
+        loops: Vec::new(),
+        io_unchecked,
+        overflow_checked,
+        rust_modules,
+        features,
+        self_expr: None,
+        comments: comments::Comments::new(map, program, units, comments),
+        decl_starts: HashMap::new(),
+    };
+    g.newtypes = g.self_naming_classes();
+    // `decls` also maps a `for` statement's variable to its symbol, so keep
+    // the earliest place each symbol is named: its declaration.
+    for (&start, &sym) in &analysis.decls {
+        let first = g.decl_starts.entry(sym).or_insert(start);
+        *first = (*first).min(start);
+    }
+    // A program's `main.rs`, or, for `ruscal build --lib unit.pas`, the
+    // library's `lib.rs`.
+    match library {
+        Some(unit) => {
+            g.library(unit);
+            files.push(("lib.rs".to_string(), std::mem::take(&mut g.out)));
+        }
+        None => {
+            g.program(program);
+            files.push(("main.rs".to_string(), std::mem::take(&mut g.out)));
+        }
+    }
+    for (unit, info) in units.iter().zip(&analysis.units) {
+        g.unit(unit);
+        files.push((format!("{}.rs", info.module), std::mem::take(&mut g.out)));
+    }
+    files
+}
+
+struct Codegen<'a> {
+    a: &'a Analysis,
+    map: &'a SourceMap,
+    out: String,
+    indent: usize,
+    /// The Pascal procedure whose Rust function is being generated. It
+    /// decides how variables are reached (`x` or `*x`, see [`Access`]).
+    proc: ProcId,
+    /// Teaching comments already written. Each explanation appears in full
+    /// only the first time, so the output doesn't drown in them.
+    explained: std::collections::HashSet<&'static str>,
+    /// The comment after the `end` of an `if` or loop body (`end; {loop}`),
+    /// for the line that closes the Rust block. See [`Codegen::line`].
+    end_comment: Option<String>,
+    /// Parts of an expression worked out first into a `let`, by node: call
+    /// indexes (see [`Codegen::hoist_target_indexes`]) and reads through a
+    /// pointer that must end before a call.
+    hoisted: HashMap<NodeId, String>,
+    /// The source file (index in the source map) being translated.
+    file: usize,
+    /// Visibility for items: `pub ` in a unit's module, nothing in `main.rs`.
+    vis: &'static str,
+    /// True while generating a place that will be written, so that `p^`
+    /// borrows the record mutably (`p.get_mut()`).
+    mutable_place: bool,
+    /// `let` statements to emit before the next line (see
+    /// `expr::call_args`).
+    pending: Vec<String>,
+    /// The last `shr` of a signed integer, done unsigned: its code with
+    /// the cast back to the signed type, and without (see `expr::shift`).
+    unsigned_shift: Option<(String, expr::Code)>,
+    /// Statements to emit after the next line: a `Char` array lent a
+    /// `PChar` getting its characters back (see `expr::lent_pchar`).
+    after: Vec<String>,
+    /// The arrays lent a `PChar` for the next line, by their code, and the
+    /// copy's name, so each array has one copy per statement.
+    lent: Vec<(String, String)>,
+    /// The variables whose `Char` arrays the current statement lends to
+    /// `PChar`s: its other reads of them go through the copy too.
+    lent_roots: Vec<SymId>,
+    /// Calls being run ahead of a lend, into a `let` (`expr` recurses).
+    running_first: HashSet<NodeId>,
+    /// Procedural fields and elements being called (`R.Next` with no
+    /// parameters): inside the call, the same expression is the value.
+    calling: HashSet<NodeId>,
+    /// Procedural types whose signatures name themselves (see
+    /// `self_naming_classes`): structs rather than aliases.
+    newtypes: HashSet<ProcId>,
+    /// How a unit's module names the others: `crate`, or for a library
+    /// `super` (its modules may be nested inside the user's crate, as with
+    /// `ruscal_runtime::include_library!`; at a crate's root `super::` is
+    /// the same as `crate::`).
+    root: &'static str,
+    /// The goto blocks and loops we're inside, innermost last: a label
+    /// (lowercase), its Rust name, and whether it jumps forward.
+    goto_blocks: Vec<(String, String, bool)>,
+    /// The loops we're inside, innermost last: the labels `Break` and
+    /// `Continue` must use for a `repeat` that has a `Continue` in it (see
+    /// `repeat_loop`), or `None` for a loop where plain `break` and
+    /// `continue` do the right thing.
+    loops: Vec<Option<LoopLabels>>,
+    /// The parts of the source compiled with `{$I-}`, where I/O errors go
+    /// to `IOResult` instead of stopping the program.
+    io_unchecked: &'a [Span],
+    overflow_checked: &'a [Span],
+    /// The Rust files `{$L sound.rs}` names, as (module, file name):
+    /// where the `external` routines are.
+    rust_modules: &'a [(String, String)],
+    /// The runtime features the units need (`crt`, `dos`).
+    features: &'a [String],
+    /// While writing a trait's default method (see `object_traits`): how
+    /// the body reaches its own object's fields, `self.t_shape()`, since
+    /// `self` there is any object descended from it.
+    self_expr: Option<String>,
+    /// The Pascal comments, waiting to be written (see `comments.rs`).
+    comments: comments::Comments,
+    /// Where each variable was declared: its comments' anchor.
+    decl_starts: HashMap<SymId, usize>,
+}
+
+/// Labels for a loop where plain `break`/`continue` won't do: a `repeat
+/// ... until` whose body uses `Continue`, or a loop whose `Break` or
+/// `Continue` is inside a goto block.
+#[derive(Clone)]
+struct LoopLabels {
+    /// `Break` jumps out of the loop: `break 'repeat_loop;`. (Only if the
+    /// body uses `Break`: Rust warns about unused labels.)
+    loop_label: Option<String>,
+    /// `Continue` jumps to the `until` test: `break 'repeat_body;`. (`None`
+    /// for a loop where `Continue` is `continue 'label`.)
+    body_label: Option<String>,
+}
+
+impl<'a> Codegen<'a> {
+    /// True the first time it's called for `topic`.
+    fn first_time(&mut self, topic: &'static str) -> bool {
+        self.explained.insert(topic)
+    }
+
+    /// Write the Pascal comments that come before the construct at `at`.
+    fn leading_comments(&mut self, at: usize) {
+        for line in self.comments.take_leading(at) {
+            self.line(line);
+        }
+    }
+
+    /// Add the Pascal comment that ended the construct's line (at `at`) to
+    /// the end of the last line written.
+    fn trailing_comment(&mut self, at: usize) {
+        if let Some(comment) = self.comments.take_trailing(at) {
+            self.append_comment(&comment);
+        }
+    }
+
+    /// Add `comment` to the end of the last line written.
+    fn append_comment(&mut self, comment: &str) {
+        if self.out.ends_with('\n') {
+            self.out.pop();
+            self.out.push(' ');
+            self.out.push_str(comment);
+            self.out.push('\n');
+        }
+    }
+
+    /// Write the comments before the `end` that closes a block, and return
+    /// the comment after it (`end; {of Foo}`) for the caller to place.
+    fn block_end_comments(&mut self, span: Span) -> Option<String> {
+        let at = comments::end_keyword(self.map, span)?;
+        self.leading_comments(at);
+        self.comments.take_trailing(at)
+    }
+
+    /// The comments around a file's `program` (or `unit`) and `uses` lines.
+    fn header_comments(&mut self, at: usize) {
+        let mut lines = self.comments.take_leading(at);
+        lines.extend(self.comments.take_trailing(at));
+        if !lines.is_empty() {
+            self.blank();
+            for line in lines {
+                self.line(line);
+            }
+        }
+    }
+
+    /// Write one line at the current indentation.
+    fn line(&mut self, text: impl AsRef<str>) {
+        // The comment after a body's `end` goes on the `}` that closes it,
+        // or, if that line goes on (`} else {`), as the body's last line.
+        if let Some(comment) = self.end_comment.take() {
+            if text.as_ref() == "}" {
+                self.line(format!("}} {comment}"));
+                return;
+            }
+            self.indent += 1;
+            self.line(comment);
+            self.indent -= 1;
+        }
+        // Temporaries that the code on this line needs come first, and what
+        // must happen after it last.
+        self.lent.clear();
+        let after = std::mem::take(&mut self.after);
+        for line in std::mem::take(&mut self.pending).iter().chain([&text.as_ref().to_string()]).chain(&after) {
+            for _ in 0..self.indent {
+                self.out.push_str("    ");
+            }
+            self.out.push_str(line);
+            self.out.push('\n');
+        }
+    }
+
+    /// `code` for a line that opens a block (`if code {`): what must happen
+    /// after it can't go after the line, inside the block, so the value is
+    /// computed in a block expression first.
+    fn with_after(&mut self, code: String) -> String {
+        if self.after.is_empty() {
+            return code;
+        }
+        let after = std::mem::take(&mut self.after).join(" ");
+        format!("{{ let value = {code}; {after} value }}")
+    }
+
+    fn blank(&mut self) {
+        self.out.push('\n');
+    }
+
+    /// Source text for a span, with runs of whitespace collapsed, for doc
+    /// comments that quote the Pascal.
+    fn pascal_text(&self, span: crate::diag::Span) -> String {
+        let text = String::from_utf8_lossy(self.map.slice(span));
+        text.split_whitespace().collect::<Vec<_>>().join(" ").replace('`', "'")
+    }
+
+    fn file_name(&self) -> String {
+        self.map.file(self.file).name.clone()
+    }
+
+    /// `use` lines shared by every generated file.
+    fn imports(&mut self, current_module: Option<&str>) {
+        self.blank();
+        // A small unit may use nothing from the runtime, nor a program whose
+        // only uses of it are commented out as dead code.
+        if current_module.is_some() || self.a.has_dead_code {
+            self.line("#[allow(unused_imports)]");
+        }
+        self.line("use ruscal_runtime::prelude::*;");
+        let others: Vec<&str> =
+            self.a.units.iter().map(|u| u.module.as_str()).filter(|&m| Some(m) != current_module).collect();
+        // A unit's `external` routines are in the program's Rust files.
+        if current_module.is_some() {
+            for (module, _) in self.rust_modules {
+                self.line("#[allow(unused_imports)]");
+                self.line(format!("use {}::{module};", self.root));
+            }
+        }
+        if !others.is_empty() {
+            // Every module can see every unit. Pascal is stricter, but sema
+            // already checked visibility, and lifted procedures may need to
+            // name types from units their Pascal source never mentions.
+            for module in others {
+                self.line("#[allow(unused_imports)]");
+                self.line(format!("use {}::{module}::*;", self.root));
+            }
+        }
+    }
+
+    /// `use crate::Stats;` in a unit for the program's types that its
+    /// procedural types' routines use: a program routine kept in a unit's
+    /// `Handler` takes the program's globals, so the unit's signatures name
+    /// their types. (The program is the crate root, and a module sees its
+    /// parent's private items.)
+    fn program_types_used(&mut self) {
+        let unit_files: Vec<usize> = self.a.units.iter().map(|u| self.map.file_index(u.span.start)).collect();
+        let program_types: Vec<String> = self
+            .a
+            .type_defs
+            .iter()
+            .filter(|(_, span)| !unit_files.contains(&self.map.file_index(span.start)))
+            .map(|(ty, _)| ty.rust())
+            // Only names: `TInt = Integer` is `i16`.
+            .filter(|name| name.starts_with(|c: char| c.is_ascii_uppercase()))
+            .collect();
+        let mut used: Vec<String> = Vec::new();
+        for (ty, span) in &self.a.type_defs {
+            let Type::Proc(p) = ty else { continue };
+            if self.map.file_index(span.start) != self.file {
+                continue;
+            }
+            let signature = self.fn_pointer_type(p.class);
+            for word in signature.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
+                if program_types.iter().any(|t| t == word) && !used.iter().any(|u| u == word) {
+                    used.push(word.to_string());
+                }
+            }
+        }
+        if used.is_empty() {
+            return;
+        }
+        self.line("// The program's types that routines kept in this unit's procedural types use.");
+        match &used[..] {
+            [one] => self.line(format!("use crate::{one};")),
+            _ => self.line(format!("use crate::{{{}}};", used.join(", "))),
+        }
+    }
+
+    /// `lib.rs` of a unit made a library (`ruscal build --lib`): the
+    /// unit's modules, its interface, and, if the units have variables, a
+    /// struct holding them (`CounterContext`) whose methods are the unit's
+    /// interface routines with the variables passed in.
+    fn library(&mut self, unit: &Unit) {
+        self.file = self.map.file_index(unit.span.start);
+        let file_name = self.file_name();
+        let main_module = crate::sema::names::snake_case(&unit.name.name);
+        self.line(format!("//! Generated by Ruscal from `{file_name}`: the unit `{}` as a Rust", unit.name.name));
+        self.line("//! library. Call it through `ruscal_runtime::call`, which turns a Pascal");
+        self.line("//! runtime error into an `Err`.");
+        self.blank();
+        self.line("// Pascal programs often declare things they never use, or assign a");
+        self.line("// variable before reading it; that's fine, so don't warn about it. And");
+        self.line("// Turbo Pascal's integer arithmetic wraps around, as this library's does.");
+        self.line("#![allow(unused_variables, unused_assignments, dead_code, arithmetic_overflow)]");
+        self.blank();
+        // The unit's own module is private, and re-exported: a program's
+        // `use counter::*` would otherwise mean both the crate and the module.
+        self.line("// Each Pascal unit is a module; the units it uses are public, since the");
+        self.line("// unit's interface may name their types.");
+        for info in &self.a.units {
+            if info.module == main_module {
+                self.line(format!("mod {};", info.module));
+            } else {
+                self.line(format!("pub mod {};", info.module));
+            }
+        }
+        for (module, _) in self.rust_modules {
+            self.line(format!("pub mod {module};"));
+        }
+        self.blank();
+        self.line("// The unit's interface (and the runtime, with `PString`, `call` and the rest).");
+        self.line(format!("pub use {main_module}::*;"));
+        // An interface `external` is in a Rust file's module.
+        for decl in &unit.interface {
+            if let Decl::Proc(p) = decl
+                && let Some(&pid) = self.a.proc_decls.get(&p.name.span.start)
+                && self.a.procs[pid].rust_name.contains("::")
+            {
+                self.line(format!("pub use {};", self.a.procs[pid].rust_name));
+            }
+        }
+        self.line("pub use ruscal_runtime;");
+        // A Rust program that builds this with `include_library!` chooses the
+        // runtime's features itself: say clearly which ones it must turn on.
+        let needed: Vec<&String> = self.features.iter().filter(|f| *f != "graph").collect();
+        if !needed.is_empty() {
+            self.blank();
+            self.line("// The runtime features the units need, checked when this compiles.");
+        }
+        for feature in needed {
+            self.line(format!(
+                "const _: () = assert!(ruscal_runtime::FEATURE_{}, \"the Pascal unit `{}` needs ruscal_runtime's `{feature}` feature: add it to the dependency's `features`\");",
+                feature.to_ascii_uppercase(),
+                unit.name.name
+            ));
+        }
+        let vars: Vec<SymId> =
+            self.a.procs[MAIN].locals.iter().copied().filter(|v| !self.a.elided_vars.contains(v)).collect();
+        // (Always, even with no variables: `new()` runs the units'
+        // initialization parts.)
+        self.library_context(unit, &main_module, &vars);
+    }
+
+    /// The struct holding a library's unit variables, `new()`, and a method
+    /// per interface routine.
+    fn library_context(&mut self, unit: &Unit, main_module: &str, vars: &[SymId]) {
+        let type_names: Vec<String> = self.a.type_defs.iter().map(|(ty, _)| ty.rust()).collect();
+        let mut name = format!("{}Context", crate::sema::names::camel_case(&unit.name.name));
+        if type_names.contains(&name) {
+            name.push('2');
+        }
+        self.blank();
+        self.line("#[allow(unused_imports)]");
+        self.line("use ruscal_runtime::prelude::*;");
+        // (The unit's own module is in scope already, through `pub use`.)
+        for info in self.a.units.iter().filter(|u| u.module != main_module) {
+            self.line("#[allow(unused_imports)]");
+            self.line(format!("use {}::*;", info.module));
+        }
+        // Which unit each variable belongs to, by the file it's declared in.
+        let unit_of = |g: &Self, sym: SymId| {
+            let file = g.decl_starts.get(&sym).map(|&at| g.map.file_index(at));
+            g.a.units.iter().find(|u| Some(g.map.file_index(u.span.start)) == file).map(|u| u.name.clone())
+        };
+        self.blank();
+        self.line(format!("/// The variables of unit `{}` and of the units it uses: what a Pascal", unit.name.name));
+        self.line("/// program would have as globals. Its methods are the unit's interface");
+        self.line("/// routines, with the variables passed in.");
+        if vars.is_empty() {
+            self.line("/// (These units have none: it's there so `new` runs their initialization");
+            self.line("/// parts, and every library starts the same way.)");
+        }
+        self.line(format!("pub struct {name} {{"));
+        for &sym in vars {
+            let (pascal, ty) = (&self.a.sym(sym).name, &self.a.var(sym).ty);
+            let typed = if self.a.typed_consts.contains_key(&sym) { ", a typed constant" } else { "" };
+            match unit_of(self, sym) {
+                Some(u) if u != unit.name.name => {
+                    self.line(format!("    /// Pascal: `{pascal}: {ty}` (unit `{u}`{typed})"))
+                }
+                _ if typed.is_empty() => self.line(format!("    /// Pascal: `{pascal}: {ty}`")),
+                _ => self.line(format!("    /// Pascal: `{pascal}: {ty}` ({})", &typed[2..])),
+            }
+            self.line(format!("    pub {}: {},", self.a.sym(sym).rust_name, ty.rust()));
+        }
+        self.line("}");
+        self.blank();
+        self.line(format!("impl {name} {{"));
+        self.indent += 1;
+        // `new`: the variables as a Pascal program starts with them.
+        self.line("/// The variables as a Pascal program starts with them: declared, then the");
+        self.line("/// units' initialization parts run. Call it through `call`: they're");
+        self.line("/// Pascal code, which can fail.");
+        self.line(format!("pub fn new() -> {name} {{"));
+        self.indent += 1;
+        // An addition compiled here: it wraps, as in TP, only if Cargo's
+        // overflow checks are off for this code.
+        self.line("ruscal_runtime::warn_unless_wrapping(|| std::hint::black_box(i16::MAX) + 1);");
+        self.proc = MAIN;
+        self.locals(MAIN);
+        for info in &self.a.units {
+            if let Some(init) = info.init {
+                self.line(format!("// The initialization part of unit `{}`.", info.name));
+                let call = self.user_call(init, &[]);
+                self.line(format!("{}::{call};", info.module));
+            }
+        }
+        let fields: Vec<String> = vars.iter().map(|&v| self.a.sym(v).rust_name.clone()).collect();
+        self.line(format!("{name} {{ {} }}", fields.join(", ")));
+        self.indent -= 1;
+        self.line("}");
+        for decl in &unit.interface {
+            if let Decl::Proc(p) = decl
+                && p.owner.is_none()
+                && let Some(&pid) = self.a.proc_decls.get(&p.name.span.start)
+            {
+                self.library_method(main_module, p, pid);
+            }
+        }
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    /// An interface routine as a method of the library's context: its unit
+    /// variables are the struct's fields.
+    fn library_method(&mut self, main_module: &str, decl: &ProcDecl, pid: ProcId) {
+        let info = &self.a.procs[pid];
+        let parts = self.signature_parts(pid);
+        // (A value parameter the routine changes is `mut n` there; the method
+        // just passes it on.)
+        let params: Vec<(String, String)> = parts[info.captures.len()..]
+            .iter()
+            .map(|(name, ty)| (name.strip_prefix("mut ").unwrap_or(name).to_string(), ty.clone()))
+            .collect();
+        let mut args: Vec<String> = info
+            .captures
+            .iter()
+            .map(|cap| {
+                let field = &self.a.sym(cap.sym).rust_name;
+                match cap.mode {
+                    CaptureMode::RefMut => format!("&mut self.{field}"),
+                    CaptureMode::Ref => format!("&self.{field}"),
+                    CaptureMode::Value if self.a.var(cap.sym).ty.is_copy() => format!("self.{field}"),
+                    CaptureMode::Value => format!("self.{field}.clone()"),
+                }
+            })
+            .collect();
+        args.extend(params.iter().map(|(name, _)| name.clone()));
+        let receiver = if info.captures.iter().any(|c| c.mode == CaptureMode::RefMut) { "&mut self" } else { "&self" };
+        let mut sig = vec![receiver.to_string()];
+        sig.extend(params.iter().map(|(name, ty)| format!("{name}: {ty}")));
+        let ret = info.ret.as_ref().map(|t| format!(" -> {}", t.rust())).unwrap_or_default();
+        // The free function: in the unit's module, or (an `external`) in a
+        // Rust file's.
+        let (function, method) = match info.rust_name.split_once("::") {
+            Some((_, f)) => (info.rust_name.clone(), f.to_string()),
+            None => (format!("{main_module}::{}", info.rust_name), info.rust_name.clone()),
+        };
+        self.blank();
+        self.line(format!("/// Pascal: `{}`", self.pascal_text(decl.header_span)));
+        // `new` makes the struct.
+        let method = if method == "new" {
+            self.line("/// (`new_2`: `new` makes the struct.)");
+            "new_2".to_string()
+        } else {
+            method
+        };
+        self.line(format!("pub fn {method}({}){ret} {{", sig.join(", ")));
+        self.line(format!("    {function}({})", args.join(", ")));
+        self.line("}");
+    }
+
+    fn program(&mut self, program: &Program) {
+        self.file = self.map.file_index(program.block.body_span.start);
+        let file_name = self.file_name();
+        self.line(format!("//! Generated by Ruscal from `{file_name}`. Do not edit by hand."));
+        self.line(format!("//! Pascal: `program {};`", program.name.name));
+        if !program.block.decls.is_empty() || !self.a.units.is_empty() {
+            self.blank();
+            self.line("// Pascal programs often declare things they never use, or assign a");
+            self.line("// variable before reading it; that's fine, so don't warn about it. And");
+            self.line("// Turbo Pascal's integer arithmetic wraps around, as this program's does");
+            self.line("// (Cargo.toml turns overflow checks off), so a sum rustc can see wraps");
+            self.line("// (`b := 250; Inc(b, 10)`) is fine too.");
+            self.line("#![allow(unused_variables, unused_assignments, dead_code, arithmetic_overflow)]");
+        }
+        if !self.a.units.is_empty() {
+            self.blank();
+            self.line("// Each Pascal unit becomes a Rust module.");
+            for unit in &self.a.units {
+                self.line(format!("mod {};", unit.module));
+            }
+        }
+        if !self.rust_modules.is_empty() {
+            self.blank();
+            self.line("// The Rust files the program links with `{$L file.rs}`: its `external`");
+            self.line("// routines are there.");
+            for (module, _) in self.rust_modules {
+                self.line(format!("mod {module};"));
+            }
+        }
+        self.imports(None);
+        self.header_comments(program.name.span.start);
+
+        self.consts(&program.block.decls);
+        self.type_defs();
+        self.procs(&program.block.decls);
+        self.impls(&program.block.decls);
+
+        self.blank();
+        self.line(format!("/// The main program: the `begin ... end.` block of `{}`.", program.name.name));
+        self.line("/// Its local variables are the Pascal program's global variables.");
+        if !self.a.units.is_empty() {
+            self.line("/// (Including the global variables of every unit.)");
+        }
+        self.line("fn pascal_main() {");
+        self.indent += 1;
+        self.proc = MAIN;
+        self.locals(MAIN);
+        for unit in &self.a.units {
+            if let Some(init) = unit.init {
+                self.line(format!("// The initialization part of unit `{}`.", unit.name));
+                let call = self.user_call(init, &[]);
+                self.line(format!("{call};"));
+            }
+        }
+        self.stmts(&program.block.body);
+        let end_comment = self.block_end_comments(program.block.body_span);
+        self.indent -= 1;
+        self.line("}");
+        if let Some(comment) = end_comment {
+            self.append_comment(&comment);
+        }
+
+        self.blank();
+        self.line("fn main() {");
+        self.line("    // `run` turns Pascal runtime errors into Turbo Pascal style messages and");
+        self.line("    // exit codes.");
+        self.line("    ruscal_runtime::run(pascal_main);");
+        self.line("}");
+    }
+
+    /// A unit's Rust module.
+    fn unit(&mut self, unit: &Unit) {
+        self.file = self.map.file_index(unit.span.start);
+        let info = self.a.units.iter().find(|u| u.span == unit.span).expect("sema saw every unit");
+        let module = info.module.clone();
+        let file_name = self.file_name();
+        self.line(format!("//! Generated by Ruscal from `{file_name}`. Do not edit by hand."));
+        self.line(format!("//! Pascal: `unit {};`", unit.name.name));
+        self.imports(Some(&module));
+        self.program_types_used();
+        self.header_comments(unit.name.span.start);
+        self.vis = "pub ";
+        let decls: Vec<Decl> = unit.interface.iter().chain(&unit.implementation).cloned().collect();
+        self.consts(&decls);
+        self.type_defs();
+        self.procs(&decls);
+        self.impls(&decls);
+        if let Some(init) = info.init {
+            self.proc = init;
+            self.blank();
+            self.line(format!(
+                "/// The initialization part of unit `{}`, run before the main program.",
+                unit.name.name
+            ));
+            let params = self.signature_params(init);
+            self.line(format!("pub fn {}({params}) {{", self.a.procs[init].rust_name));
+            self.indent += 1;
+            self.stmts(&unit.init);
+            let end_comment = self.block_end_comments(unit.end);
+            self.indent -= 1;
+            self.line("}");
+            if let Some(comment) = end_comment {
+                self.append_comment(&comment);
+            }
+        } else if self.comments.has_any(unit.end.start) {
+            // No initialization code (`begin {none} end.`), but keep the
+            // comments at the end of the unit.
+            self.blank();
+            self.leading_comments(unit.end.start);
+            if let Some(comment) = self.comments.take_trailing(unit.end.start) {
+                self.line(comment);
+            }
+        }
+        self.vis = "";
+    }
+
+    /// `const` declarations become Rust `const` items.
+    fn consts(&mut self, decls: &[Decl]) {
+        // Constants declared inside procedures go here too, at module level:
+        // a procedure's nested procedures become separate functions, and
+        // they need to see the constants. Their names are already unique.
+        fn collect<'d>(decls: &'d [Decl], out: &mut Vec<&'d Decl>) {
+            for decl in decls {
+                match decl {
+                    Decl::Const(_) => out.push(decl),
+                    Decl::Proc(ProcDecl { body: ProcBody::Block(body), .. }) => collect(&body.decls, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut all = Vec::new();
+        collect(decls, &mut all);
+        let mut first = true;
+        for decl in all {
+            let Decl::Const(c) = decl else { continue };
+            if c.ty.is_some() {
+                continue; // typed constants are variables
+            }
+            let sym = self.a.decls[&c.name.span.start];
+            let SymKind::Const { value, ty } = &self.a.sym(sym).kind else {
+                continue;
+            };
+            if first {
+                self.blank();
+                first = false;
+            }
+            let rust_ty = match ty {
+                Type::StrLit(_) => {
+                    if value_is_ascii(value) {
+                        "&str".to_string()
+                    } else {
+                        "&[u8]".to_string()
+                    }
+                }
+                other => other.rust(),
+            };
+            // Worked out from other constants (`C = K * 2 + 1`): written as
+            // that expression, so the Rust still says where it comes from;
+            // where it can't be (`Chr(Ord('A') + K)`), its value, with the
+            // Pascal in a comment.
+            let limit = match &c.value {
+                crate::ast::ConstValue::Expr(e) => match self.type_limit(e) {
+                    // `const Top = High(Integer)` is `i16::MAX`.
+                    Some(expr::Limit::Named(code, from)) if from.rust() == ty.rust() => Some(code),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let (value, from) = match (&c.value, ty) {
+                _ if let Some(code) = limit => (code, None),
+                (crate::ast::ConstValue::Expr(e), _) if !self.names_constant(e) => (self.const_value(value, ty), None),
+                (crate::ast::ConstValue::Expr(e), Type::Int(kind)) if self.const_expr(e, *kind, true).is_some() => {
+                    (self.const_expr(e, *kind, true).unwrap().0, None)
+                }
+                (crate::ast::ConstValue::Expr(e), _) => (self.const_value(value, ty), Some(self.pascal_text(e.span))),
+                _ => (self.const_value(value, ty), None),
+            };
+            let name = &self.a.sym(sym).rust_name;
+            self.leading_comments(c.name.span.start);
+            self.line(format!("{}const {name}: {rust_ty} = {value};", self.vis));
+            if let Some(pascal) = from {
+                self.append_comment(&format!("// {pascal}"));
+            }
+            self.trailing_comment(c.name.span.start);
+        }
+    }
+
+    /// A field of a record or object struct, with the comments of its
+    /// declaration (`x, y: Integer; {position}`): those before it go before
+    /// the group's first field, the one after it on its last field's line.
+    fn field_line(&mut self, field: &crate::sema::types::Field, groups: &[(Vec<String>, usize)]) {
+        let group = groups.iter().find(|(names, _)| names.iter().any(|n| n.eq_ignore_ascii_case(&field.name)));
+        if let Some((names, at)) = group
+            && names[0].eq_ignore_ascii_case(&field.name)
+        {
+            self.indent += 1;
+            self.leading_comments(*at);
+            self.indent -= 1;
+        }
+        self.line(format!("    {}{}: {},", self.vis, field.rust_name, field.ty.rust()));
+        if let Some((names, at)) = group
+            && names.last().is_some_and(|n| n.eq_ignore_ascii_case(&field.name))
+        {
+            self.trailing_comment(*at);
+        }
+    }
+
+    /// Rust items for the program's enum, record and array types.
+    fn type_defs(&mut self) {
+        for (ty, span) in &self.a.type_defs {
+            if self.map.file_index(span.start) != self.file {
+                continue;
+            }
+            self.blank();
+            self.leading_comments(span.start);
+            // Quote short declarations whole; for records and objects, just
+            // the opening.
+            let text = self.pascal_text(*span);
+            let text = match ty {
+                Type::Record(r) if text.len() > 60 => format!("{} = record ... end", r.rust_name),
+                Type::Object(o) if text.len() > 60 => match &o.parent {
+                    Some(parent) => format!("{} = object({}) ... end", o.rust_name, parent.rust_name),
+                    None => format!("{} = object ... end", o.rust_name),
+                },
+                _ => text,
+            };
+            if let Some(comment) = self.comments.take_trailing(span.start) {
+                self.line(comment);
+            }
+            self.line(format!("/// Pascal: `{text}`"));
+            if let Type::Record(r) = ty
+                && r.variant.as_ref().is_some_and(|part| part.bytes)
+            {
+                self.line("///");
+                self.line("/// A variant part without a tag field: TP programs use one to read the same");
+                self.line("/// bytes as different types (set one variant's field, read another's). So");
+                self.line("/// the record keeps those bytes, in TP's layout, and each of the variants'");
+                self.line("/// fields reads or writes its slice of them.");
+            }
+            if let Type::Record(r) = ty
+                && let Some(part) = &r.variant
+                && let Some(tag) = part.tag
+            {
+                let (pascal, rust) = (&r.fields[tag].name, &r.fields[tag].rust_name);
+                self.line("///");
+                self.line(format!("/// The `case {pascal}: ... of` part is a tagged union: the program sets `{rust}`"));
+                self.line("/// to say which variant's fields are in use. Rust would use an `enum`, but");
+                self.line("/// Pascal lets a program set the fields before the tag, so every variant's");
+                self.line("/// fields are plain fields here; only `file of` looks at the tag.");
+            }
+            let groups = self.comments.field_groups.get(&span.start).cloned().unwrap_or_default();
+            match ty {
+                Type::Enum(e) => {
+                    self.line("#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]");
+                    self.line(format!("{}enum {} {{", self.vis, e.rust_name));
+                    for (i, variant) in e.variants.iter().enumerate() {
+                        if i == 0 {
+                            self.line("    #[default]");
+                        }
+                        self.line(format!("    {variant},"));
+                    }
+                    self.line("}");
+                    self.blank();
+                    self.line("// Pascal enumerations are ordinal types: they can index arrays, drive");
+                    self.line("// `for` loops and go through `Succ`/`Pred`. These impls connect the enum");
+                    self.line("// to the runtime's support for that.");
+                    self.line(format!("impl Ordinal for {} {{", e.rust_name));
+                    self.line("    fn ord(self) -> i64 {");
+                    self.line("        self as i64");
+                    self.line("    }");
+                    self.line("}");
+                    self.blank();
+                    self.line(format!("impl Enumerated for {} {{", e.rust_name));
+                    let values: Vec<String> = e.variants.iter().map(|v| format!("{}::{v}", e.rust_name)).collect();
+                    self.line(format!("    const VALUES: &'static [Self] = &[{}];", values.join(", ")));
+                    self.line("}");
+                }
+                Type::Record(r) => {
+                    let derives = if ty.is_copy() { "Clone, Copy, Debug, Default" } else { "Clone, Debug, Default" };
+                    self.line(format!("#[derive({derives})]"));
+                    self.line(format!("{}struct {} {{", self.vis, r.rust_name));
+                    for field in r.struct_fields() {
+                        self.field_line(field, &groups);
+                    }
+                    if r.variant.as_ref().is_some_and(|part| part.bytes) {
+                        let size = r.variant_area().unwrap_or(0);
+                        self.line(format!("    {}variants: VariantPart<{size}>,", self.vis));
+                        self.line("}");
+                        self.variant_accessors(r);
+                    } else {
+                        self.line("}");
+                    }
+                }
+                Type::Object(o) => {
+                    let derives = if ty.is_copy() { "Clone, Copy, Debug, Default" } else { "Clone, Debug, Default" };
+                    self.line(format!("#[derive({derives})]"));
+                    self.line(format!("{}struct {} {{", self.vis, o.rust_name));
+                    if let Some(parent) = &o.parent {
+                        if self.first_time("inheritance") {
+                            self.line(format!(
+                                "    /// The inherited part: `{}` descends from `{}`. Rust has no struct",
+                                o.rust_name, parent.rust_name
+                            ));
+                            self.line(
+                                "    /// inheritance, so the parent object is embedded as a field, and inherited",
+                            );
+                            self.line("    /// fields and methods are reached through it (`self.base.x`).");
+                        }
+                        self.line(format!("    {}base: {},", self.vis, parent.rust_name));
+                    }
+                    for field in &o.fields {
+                        self.field_line(field, &groups);
+                    }
+                    self.line("}");
+                }
+                Type::Pointer(p) => {
+                    let alias = p.alias.as_deref().expect("only named pointer types are emitted");
+                    if self.first_time("pointer") {
+                        self.line("///");
+                        self.line("/// A Pascal pointer becomes a `Ptr`, the runtime's safe handle to a shared");
+                        self.line("/// heap record (an `Rc<RefCell<...>>` inside): using `nil` or a disposed");
+                        self.line("/// record is a runtime error instead of undefined behaviour.");
+                    }
+                    let pointee = match p.target() {
+                        // Pointers into a hierarchy with virtual methods point
+                        // to its enum (see `object_enum`).
+                        Type::Object(o) if self.in_dispatch(&o) => enum_name(&o.lineage().last().unwrap().0),
+                        target => target.rust(),
+                    };
+                    self.line(format!("{}type {alias} = Ptr<{pointee}>;", self.vis));
+                }
+                Type::Array(a) => {
+                    let alias = a.alias.as_deref().expect("only named array types are emitted");
+                    self.line(format!("{}type {alias} = {};", self.vis, a.rust_unaliased()));
+                }
+                Type::Proc(p) => {
+                    let class = self.a.procs[p.class].rust_name.clone();
+                    if p.alias == class {
+                        if self.first_time("proc_type") {
+                            self.line("///");
+                            self.line("/// A procedural type is a function pointer that may be nil. Every routine");
+                            self.line("/// kept in one has this Rust signature, so the globals any of them uses are");
+                            self.line("/// parameters of them all (and of every call through one).");
+                        }
+                        let signature = self.fn_pointer_type(p.class);
+                        if self.newtypes.contains(&p.class) {
+                            self.proc_newtype(&class, &signature);
+                        } else {
+                            self.line(format!("{}type {class} = ProcVar<{signature}>;", self.vis));
+                        }
+                    } else {
+                        self.line(format!("{}type {} = {class};", self.vis, p.alias));
+                    }
+                }
+                _ => {}
+            }
+            if let Type::Proc(p) = ty
+                && self.newtypes.contains(&p.class)
+                && p.alias == self.a.procs[p.class].rust_name
+                && self.stored_in_files().contains(&p.alias)
+            {
+                self.blank();
+                self.line(format!("file_record!(newtype {});", p.alias));
+            } else if !matches!(ty, Type::Proc(_)) && self.stored_in_files().contains(&ty.rust()) {
+                self.file_record(ty);
+            }
+        }
+        // The types that made no item (`TInt = Integer`: Rust uses `i16`
+        // directly) still keep their comments.
+        for (at, span) in self.comments.type_decls.clone() {
+            if self.map.file_index(at) != self.file || !self.comments.has_any(at) {
+                continue;
+            }
+            self.blank();
+            self.leading_comments(at);
+            self.line(format!("// Pascal: `{}`", self.pascal_text(span)));
+            self.trailing_comment(at);
+        }
+    }
+
+    /// The Rust names of the record, object and enum types that some
+    /// `file of T` stores, directly or as part of `T`.
+    fn stored_in_files(&self) -> std::collections::HashSet<String> {
+        fn visit(ty: &Type, found: &mut std::collections::HashSet<String>) {
+            match ty {
+                Type::Record(r) => {
+                    if found.insert(r.rust_name.clone()) {
+                        r.fields.iter().for_each(|f| visit(&f.ty, found));
+                    }
+                }
+                Type::Object(o) => {
+                    if found.insert(o.rust_name.clone()) {
+                        o.fields.iter().for_each(|f| visit(&f.ty, found));
+                        if let Some(parent) = &o.parent {
+                            visit(&Type::Object(parent.clone()), found);
+                        }
+                    }
+                }
+                Type::Enum(e) => {
+                    found.insert(e.rust_name.clone());
+                }
+                Type::Array(a) => visit(&a.elem, found),
+                Type::Proc(p) => {
+                    found.insert(p.alias.clone());
+                }
+                _ => {}
+            }
+        }
+        let mut found = std::collections::HashSet::new();
+        // Types seen as bytes need the same encoding typed files use.
+        for ty in self.a.file_types.iter().chain(&self.a.view_types) {
+            visit(ty, &mut found);
+        }
+        // So do the fields kept in a variant part's bytes, which their
+        // accessors read and write through it (an enum, a record).
+        for (ty, _) in &self.a.type_defs {
+            if let Type::Record(r) = ty
+                && r.variant.as_ref().is_some_and(|part| part.bytes)
+            {
+                r.fields[r.fixed_fields().len()..].iter().for_each(|f| visit(&f.ty, &mut found));
+            }
+        }
+        found
+    }
+
+    /// The methods that stand for the fields kept in a variant part's bytes:
+    /// `lo()` to read, `set_lo(v)` to assign, `lo_mut()` to change in place.
+    fn variant_accessors(&mut self, r: &RecordType) {
+        self.blank();
+        self.line(format!("impl {} {{", r.rust_name));
+        let vis = self.vis;
+        // Every field after the fixed ones is in the bytes, those of nested
+        // variant parts (and their tags) too.
+        for (index, field) in r.fields.iter().enumerate().skip(r.fixed_fields().len()) {
+            let Some(offset) = r.byte_offset(index) else { continue };
+            let (name, ty) = (&field.rust_name, field.ty.rust());
+            // The last byte is `size - 1` after the first: a LongInt at 0
+            // is bytes 0 to 3.
+            let last = offset + tp_size(&field.ty).unwrap_or(1) - 1;
+            if last == offset {
+                self.line(format!("    // `{}` is byte {offset}", field.name));
+            } else {
+                self.line(format!("    // `{}` is bytes {offset} to {last}", field.name));
+            }
+            // A `string[n]` (or an array of them) needs its capacity: the
+            // `PString` doesn't know it.
+            match string_capacity(&field.ty) {
+                Some(cap) => {
+                    self.line(format!(
+                        "    {vis}fn {name}(&self) -> {ty} {{ self.variants.get_string({offset}, {cap}) }}"
+                    ));
+                    self.line(format!(
+                        "    {vis}fn set_{name}(&mut self, {name}: {ty}) {{ self.variants.set_string({offset}, {cap}, {name}) }}"
+                    ));
+                    self.line(format!(
+                        "    {vis}fn {name}_mut(&mut self) -> StringField<'_, {ty}> {{ self.variants.string_field({offset}, {cap}) }}"
+                    ));
+                }
+                None => {
+                    self.line(format!("    {vis}fn {name}(&self) -> {ty} {{ self.variants.get({offset}) }}"));
+                    self.line(format!(
+                        "    {vis}fn set_{name}(&mut self, {name}: {ty}) {{ self.variants.set({offset}, {name}) }}"
+                    ));
+                    self.line(format!(
+                        "    {vis}fn {name}_mut(&mut self) -> VariantField<'_, {ty}> {{ self.variants.field({offset}) }}"
+                    ));
+                }
+            }
+        }
+        self.line("}");
+    }
+
+    /// The `case` clause of a variant record's `file_record!`: in TP the
+    /// variants share the bytes after the fixed fields, so a file holds the
+    /// fields of the variant the tag selects, padded to the largest one.
+    fn file_record_variants(&mut self, r: &RecordType, part: &VariantPart) -> String {
+        let Some(tag) = part.tag else { return String::new() };
+        let area = r.variant_area().unwrap_or(0);
+        let tag_name = &r.fields[tag].rust_name;
+        self.line(format!("// A variant record keeps one variant in a file: the one `{tag_name}` selects,"));
+        self.line(format!("// padded with zeros to the {area} bytes the variants share in TP."));
+        format!("; {}", self.case_clause(r, part))
+    }
+
+    /// `case kind: 4 { Shape::Circle => [r], ... }`, with a variant's
+    /// nested part inside its brackets: `[w, h; case k: 2 { ... }]`.
+    fn case_clause(&self, r: &RecordType, part: &VariantPart) -> String {
+        let tag = part.tag.expect("a flattened variant part has a tag");
+        let area = part.area(&r.fields).unwrap_or(0);
+        let tag_name = &r.fields[tag].rust_name;
+        let mut arms: Vec<String> = Vec::new();
+        let mut covered = 0;
+        for variant in &part.variants {
+            if variant.labels.is_empty() {
+                continue;
+            }
+            let pattern: Vec<String> =
+                variant.labels.iter().map(|&n| self.ord_range_pattern(&part.tag_type, n, n)).collect();
+            covered += variant.labels.len() as i64;
+            let fields: Vec<String> = r.fields[variant.fields.clone()].iter().map(file_record_field).collect();
+            let nested = match &variant.nested {
+                Some(nested) => {
+                    // The nested part's tag is one of this variant's fields.
+                    let tag = file_record_field(&r.fields[nested.tag.expect("a nested flattened part has a tag")]);
+                    let separator = if fields.is_empty() { "" } else { ", " };
+                    format!("{separator}{tag}; {}", self.case_clause(r, nested))
+                }
+                None => String::new(),
+            };
+            arms.push(format!("{} => [{}{nested}]", pattern.join(" | "), fields.join(", ")));
+        }
+        // A tag value no variant has stores no fields. (Rust warns about a
+        // `_` arm when the others already cover every value.)
+        let domain = match &part.tag_type {
+            Type::Enum(e) => e.variants.len() as i64,
+            Type::Bool => 2,
+            Type::Char => 256,
+            Type::Int(kind) => kind.range().1 - kind.range().0 + 1,
+            _ => i64::MAX,
+        };
+        if covered < domain {
+            arms.push("_ => []".to_string());
+        }
+        format!("case {tag_name}: {area} {{ {} }}", arms.join(", "))
+    }
+
+    /// `file_record!(...)`: let a `file of T` store this type.
+    fn file_record(&mut self, ty: &Type) {
+        self.blank();
+        if self.first_time("file_record") {
+            self.line("// `file of` needs to turn records into bytes and back. This runtime macro");
+            self.line("// implements that (the `FileRecord` trait) field by field.");
+        }
+        match ty {
+            Type::Enum(e) => self.line(format!("file_record!(enum {});", e.rust_name)),
+            Type::Record(r) => {
+                let mut fields: Vec<String> = r.fixed_fields().iter().map(file_record_field).collect();
+                let variant = match &r.variant {
+                    // A part kept as bytes is stored as those bytes.
+                    Some(part) if part.bytes => {
+                        fields.push("variants".to_string());
+                        String::new()
+                    }
+                    Some(part) => self.file_record_variants(r, part),
+                    None => String::new(),
+                };
+                self.line(format!("file_record!({} {{ {}{variant} }});", r.rust_name, fields.join(", ")));
+            }
+            Type::Object(o) => {
+                let mut fields: Vec<String> = o.parent.iter().map(|_| "base".to_string()).collect();
+                fields.extend(o.fields.iter().map(file_record_field));
+                // TP's hidden VMT field follows the fields of the type that adds it.
+                let vmt = if o.adds_vmt { "; vmt" } else { "" };
+                self.line(format!("file_record!({} {{ {}{vmt} }});", o.rust_name, fields.join(", ")));
+            }
+            _ => {}
+        }
+    }
+
+    /// Every procedure in `decls`, then (recursively) the procedures nested
+    /// inside each one. Rust has no nested functions with access to their
+    /// parent's variables, so they all become top-level functions.
+    fn procs(&mut self, decls: &[Decl]) {
+        for decl in decls {
+            if let Decl::Proc(p) = decl
+                && let ProcBody::Block(body) = &p.body
+                && p.owner.is_none()
+            {
+                self.proc_fn(p, body);
+                self.procs(&body.decls);
+            }
+            if let Decl::Proc(p) = decl
+                && p.body == ProcBody::External
+            {
+                self.external_comment(p);
+            }
+        }
+    }
+
+    /// An `external` routine is a Rust function in a `{$L file.rs}` module:
+    /// nothing to write here but what it must look like there.
+    fn external_comment(&mut self, decl: &ProcDecl) {
+        let pid = self.a.proc_decls[&decl.name.span.start];
+        let info = &self.a.procs[pid];
+        let Some((module, name)) = info.rust_name.split_once("::") else { return };
+        let file = self.rust_modules.iter().find(|(m, _)| m == module).map_or(module, |(_, file)| file.as_str());
+        let ret = info.ret.as_ref().map(|t| format!(" -> {}", t.rust())).unwrap_or_default();
+        let params = self.signature_params(pid);
+        self.blank();
+        self.line(format!("// Pascal: `{}`", self.pascal_text(decl.header_span)));
+        self.line(format!("// Written in Rust, in `{file}`: `pub fn {name}({params}){ret}`"));
+    }
+
+    /// An `impl` block for each object type, holding its methods. Procedures
+    /// nested inside a method follow the block as free functions.
+    fn impls(&mut self, decls: &[Decl]) {
+        let methods: Vec<&ProcDecl> = decls
+            .iter()
+            .filter_map(|d| match d {
+                Decl::Proc(p) if p.owner.is_some() => Some(p),
+                _ => None,
+            })
+            .collect();
+        let mut owners: Vec<String> = Vec::new();
+        for m in &methods {
+            let key = m.owner.as_ref().unwrap().key();
+            if !owners.contains(&key) {
+                owners.push(key);
+            }
+        }
+        let mut with_traits = Vec::new();
+        for owner in owners {
+            let group: Vec<&&ProcDecl> = methods.iter().filter(|m| m.owner.as_ref().unwrap().key() == owner).collect();
+            let pid = self.a.proc_decls[&group[0].name.span.start];
+            let object = self.a.procs[pid].self_param.as_ref().unwrap().0.clone();
+            // Methods that must see the object's real type go in its trait.
+            let (dispatched, inherent): (Vec<&ProcDecl>, Vec<&ProcDecl>) = group
+                .iter()
+                .map(|m| **m)
+                .partition(|m| self.a.dispatched.contains(&self.a.proc_decls[&m.name.span.start]));
+            if !inherent.is_empty() {
+                self.blank();
+                if self.first_time("impl") {
+                    self.line("// A Pascal object's methods go in an `impl` block. Each takes `&mut self`,");
+                    self.line("// which is Pascal's implicit `Self` parameter.");
+                }
+                self.line(format!("impl {} {{", object.rust_name));
+                self.indent += 1;
+                for m in &inherent {
+                    if let ProcBody::Block(body) = &m.body {
+                        self.proc_fn(m, body);
+                    }
+                }
+                self.indent -= 1;
+                self.line("}");
+            }
+            if self.in_dispatch(&object) {
+                self.object_traits(&object, &dispatched);
+                with_traits.push(object.rust_name.clone());
+            }
+            for m in &group {
+                if let ProcBody::Block(body) = &m.body {
+                    self.procs(&body.decls);
+                }
+            }
+        }
+        // Objects in a hierarchy with virtual methods that have no method
+        // bodies of their own still need their trait and impls.
+        let others: Vec<_> = self
+            .a
+            .type_defs
+            .iter()
+            .filter(|(_, span)| self.map.file_index(span.start) == self.file)
+            .filter_map(|(ty, _)| match ty {
+                Type::Object(o) if self.in_dispatch(o) && !with_traits.contains(&o.rust_name) => Some(o.clone()),
+                _ => None,
+            })
+            .collect();
+        for object in others {
+            self.object_traits(&object, &[]);
+        }
+    }
+
+    /// Is `object` part of a hierarchy with virtual methods?
+    pub(super) fn in_dispatch(&self, object: &Rc<ObjectType>) -> bool {
+        self.a.dispatch_roots.contains(&object.lineage().last().unwrap().0.rust_name)
+    }
+
+    /// The trait for an object in a hierarchy with virtual methods, and its
+    /// impls (see `notes/virtual_methods.md`). `bodies` are the object's
+    /// methods that must see the real object; they become default methods,
+    /// so in them `self` is whatever object descended from this one the
+    /// method was called on, and `self.draw()` runs that object's `Draw`.
+    fn object_traits(&mut self, object: &Rc<ObjectType>, bodies: &[&ProcDecl]) {
+        let name = &object.rust_name;
+        let supertrait = match &object.parent {
+            Some(parent) => format!(": {}", trait_name(parent)),
+            None => String::new(),
+        };
+        self.blank();
+        if self.first_time("virtual") {
+            self.line("// Turbo Pascal finds a virtual method's version at run time, from the");
+            self.line("// object's real type. Here each object type in the hierarchy has a trait");
+            self.line("// like this one: its default methods are written once but run with `self`");
+            self.line("// being the real object, so a call to a virtual method inside them goes to");
+            self.line("// the right version. Each object implements the traits of its ancestors.");
+        }
+        self.line(format!("{}trait {}{supertrait} {{", self.vis, trait_name(object)));
+        self.indent += 1;
+        self.line(format!("/// The `{name}` part of the object, for its fields."));
+        self.line(format!("fn {}(&mut self) -> &mut {name};", accessor(object)));
+        if object.parent.is_none() && self.a.uses_type_of {
+            self.line("/// The name of the object's real type, for Pascal's `TypeOf`.");
+            self.line("fn type_name(&self) -> &'static str;");
+        }
+        for slot in self.slots_introduced(object) {
+            let (params, ret) = self.method_signature(slot);
+            self.line(format!("fn {}({params}){ret};", self.a.procs[slot].rust_name));
+        }
+        let saved = self.self_expr.replace(format!("self.{}()", accessor(object)));
+        for m in bodies {
+            if let ProcBody::Block(body) = &m.body {
+                self.proc_fn(m, body);
+            }
+        }
+        self.self_expr = saved;
+        self.indent -= 1;
+        self.line("}");
+        if object.parent.is_none() && self.has_pointers(object) {
+            self.object_enum(object);
+        }
+        // `impl AncestorMethods for Object` for this object and each ancestor.
+        for (ancestor, path) in object.lineage() {
+            self.blank();
+            self.line(format!("impl {} for {name} {{", trait_name(&ancestor)));
+            self.indent += 1;
+            let part = if path.is_empty() { "self".to_string() } else { format!("&mut self.{}", path.join(".")) };
+            self.line(format!("fn {}(&mut self) -> &mut {} {{", accessor(&ancestor), ancestor.rust_name));
+            self.line(format!("    {part}"));
+            self.line("}");
+            if ancestor.parent.is_none() && self.a.uses_type_of {
+                self.line("fn type_name(&self) -> &'static str {");
+                self.line(format!("    \"{name}\""));
+                self.line("}");
+            }
+            for slot in self.slots_introduced(&ancestor) {
+                // The nearest version of the method, from this object up.
+                let key = self.a.procs[slot].name.rsplit('.').next().unwrap().to_ascii_lowercase();
+                let version = object
+                    .lineage()
+                    .into_iter()
+                    .find_map(|(o, _)| self.a.methods.get(&(o.rust_name.clone(), key.clone())).copied())
+                    .unwrap_or(slot);
+                let (params, ret) = self.method_signature(slot);
+                let info = &self.a.procs[slot];
+                let mut args: Vec<String> =
+                    info.captures.iter().map(|c| self.a.var_name(slot, c.sym).to_string()).collect();
+                args.extend(info.params.iter().map(|&p| self.a.sym(p).rust_name.clone()));
+                self.line(format!("fn {}({params}){ret} {{", info.rust_name));
+                self.line(format!("    self.{}({})", self.body_name(version), args.join(", ")));
+                self.line("}");
+            }
+            self.indent -= 1;
+            self.line("}");
+        }
+    }
+
+    /// The objects of the hierarchy whose root is `root`, root first.
+    fn hierarchy(&self, root: &Rc<ObjectType>) -> Vec<(Rc<ObjectType>, Span)> {
+        self.a
+            .type_defs
+            .iter()
+            .filter_map(|(ty, span)| match ty {
+                Type::Object(o) if o.lineage().last().unwrap().0 == *root => Some((o.clone(), *span)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Does the program have a pointer type to an object of `root`'s hierarchy?
+    fn has_pointers(&self, root: &Rc<ObjectType>) -> bool {
+        self.a.type_defs.iter().any(|(ty, _)| match ty {
+            Type::Pointer(p) => matches!(p.target(), Type::Object(o) if o.lineage().last().unwrap().0 == *root),
+            _ => false,
+        })
+    }
+
+    /// The Rust path to an object type declared at `span`, from the file
+    /// being written: `TCircle`, or `crate::circles::TCircle` if it's in
+    /// another file.
+    fn type_path(&self, object: &ObjectType, span: Span) -> String {
+        let file = self.map.file_index(span.start);
+        if file == self.file {
+            return object.rust_name.clone();
+        }
+        match self.a.units.iter().find(|u| self.map.file_index(u.span.start) == file) {
+            Some(unit) => format!("{}::{}::{}", self.root, unit.module, object.rust_name),
+            None => format!("{}::{}", self.root, object.rust_name),
+        }
+    }
+
+    /// The enum that every pointer into `root`'s hierarchy points to, with
+    /// accessors for each object's part and the virtual methods, which
+    /// `match` on the variant to find the version to run.
+    fn object_enum(&mut self, root: &Rc<ObjectType>) {
+        let members = self.hierarchy(root);
+        let name = enum_name(root);
+        let vis = self.vis;
+        self.blank();
+        self.line(format!("/// Every object of the `{}` hierarchy, for pointers: a pointer to a", root.rust_name));
+        self.line(format!("/// `{}` may point to any object descended from it, so all of the", root.rust_name));
+        self.line("/// hierarchy's pointer types point to this enum. The variant says which object");
+        self.line("/// the record really is, as Turbo Pascal's hidden table pointer did.");
+        self.line("#[derive(Clone, Debug)]");
+        self.line(format!("{vis}enum {name} {{"));
+        for (o, span) in &members {
+            self.line(format!("    {}({}),", variant_name(o), self.type_path(o, *span)));
+        }
+        self.line("}");
+        self.blank();
+        self.line(format!("impl Default for {name} {{"));
+        self.line("    fn default() -> Self {");
+        self.line(format!("        {name}::{}({}::default())", variant_name(root), root.rust_name));
+        self.line("    }");
+        self.line("}");
+        self.blank();
+        self.line(format!("impl {name} {{"));
+        self.indent += 1;
+        // Accessors for the root and for each object a pointer type points
+        // to: those are the parts code can reach through a pointer.
+        let pointed_to: Vec<Rc<ObjectType>> = self
+            .a
+            .type_defs
+            .iter()
+            .filter_map(|(ty, _)| match ty {
+                Type::Pointer(p) => match p.target() {
+                    Type::Object(o) => Some(o),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        for (target, span) in members.iter().filter(|(o, _)| o == root || pointed_to.contains(o)) {
+            let target_path = self.type_path(target, *span);
+            // The variants that contain a `target`: it and its descendants.
+            let arms: Vec<(String, Vec<String>)> = members
+                .iter()
+                .filter_map(|(o, _)| {
+                    let (_, path) = o.lineage().into_iter().find(|(a, _)| a == target)?;
+                    Some((variant_name(o), path))
+                })
+                .collect();
+            let all = arms.len() == members.len();
+            for mutable in [false, true] {
+                let (suffix, amp) = if mutable { ("_mut", "&mut ") } else { ("", "&") };
+                if !mutable {
+                    self.line(format!("/// The `{}` part of the record.", target.rust_name));
+                }
+                let accessor = accessor(target);
+                self.line(format!("{vis}fn as_{accessor}{suffix}({amp}self) -> {amp}{target_path} {{"));
+                self.line("    match self {");
+                for (variant, path) in &arms {
+                    let part = if path.is_empty() { "o".to_string() } else { format!("{amp}o.{}", path.join(".")) };
+                    self.line(format!("        {name}::{variant}(o) => {part},"));
+                }
+                if !all {
+                    self.line(format!(
+                        "        _ => rte(204, \"Invalid pointer operation: the record isn't a {}\"),",
+                        target.rust_name
+                    ));
+                }
+                self.line("    }");
+                self.line("}");
+            }
+        }
+        self.indent -= 1;
+        self.line("}");
+        self.blank();
+        self.line(format!("impl {} for {name} {{", trait_name(root)));
+        self.indent += 1;
+        self.line(format!("fn {}(&mut self) -> &mut {} {{", accessor(root), root.rust_name));
+        self.line(format!("    self.as_{}_mut()", accessor(root)));
+        self.line("}");
+        if self.a.uses_type_of {
+            self.line("fn type_name(&self) -> &'static str {");
+            self.line("    match self {");
+            for (o, _) in &members {
+                self.line(format!("        {name}::{}(o) => o.type_name(),", variant_name(o)));
+            }
+            self.line("    }");
+            self.line("}");
+        }
+        let variants: Vec<String> = members.iter().map(|(o, _)| variant_name(o)).collect();
+        for slot in self.slots_introduced(root) {
+            self.enum_dispatch(&name, slot, &variants, members.len());
+        }
+        self.indent -= 1;
+        self.line("}");
+        // The enum implements the other members' traits too, so a pointer
+        // to a descendant (`pc^.Area`, or `pc^.Report` where `Report` calls
+        // virtual methods) works, and so does passing `pc^` to a
+        // `var c: TCircle` parameter. Each `match`es on the variants that
+        // are that object or descended from it.
+        for (target, span) in members.iter().skip(1) {
+            let arms: Vec<(String, Vec<String>)> = members
+                .iter()
+                .filter_map(|(o, _)| {
+                    let (_, path) = o.lineage().into_iter().find(|(a, _)| a == target)?;
+                    Some((variant_name(o), path))
+                })
+                .collect();
+            self.blank();
+            self.line(format!("impl {} for {name} {{", self.trait_path(target, *span)));
+            self.indent += 1;
+            let target_path = self.type_path(target, *span);
+            self.line(format!("fn {}(&mut self) -> &mut {target_path} {{", accessor(target)));
+            self.line("    match self {");
+            for (variant, path) in &arms {
+                let part = if path.is_empty() { "o".to_string() } else { format!("&mut o.{}", path.join(".")) };
+                self.line(format!("        {name}::{variant}(o) => {part},"));
+            }
+            self.line(format!(
+                "        _ => rte(204, \"Invalid pointer operation: the record isn't a {}\"),",
+                target.rust_name
+            ));
+            self.line("    }");
+            self.line("}");
+            let variants: Vec<String> = arms.into_iter().map(|(variant, _)| variant).collect();
+            for slot in self.slots_introduced(target) {
+                self.enum_dispatch(&name, slot, &variants, members.len());
+            }
+            self.indent -= 1;
+            self.line("}");
+        }
+    }
+
+    /// The path to an object's trait from the file being written, like
+    /// [`Codegen::type_path`]: `TCircleMethods` or `crate::circles::TCircleMethods`.
+    fn trait_path(&self, object: &ObjectType, span: Span) -> String {
+        let path = self.type_path(object, span);
+        format!("{}{}", path.strip_suffix(object.rust_name.as_str()).unwrap_or(""), trait_name(object))
+    }
+
+    /// A virtual method on the hierarchy's enum: run the version of the
+    /// object in the variant.
+    fn enum_dispatch(&mut self, name: &str, slot: ProcId, variants: &[String], total: usize) {
+        let (params, ret) = self.method_signature(slot);
+        let info = &self.a.procs[slot];
+        let mut args: Vec<String> = info.captures.iter().map(|c| self.a.var_name(slot, c.sym).to_string()).collect();
+        args.extend(info.params.iter().map(|&p| self.a.sym(p).rust_name.clone()));
+        let (method, args) = (info.rust_name.clone(), args.join(", "));
+        self.line(format!("fn {method}({params}){ret} {{"));
+        self.line("    match self {");
+        for variant in variants {
+            self.line(format!("        {name}::{variant}(o) => o.{method}({args}),"));
+        }
+        if variants.len() < total {
+            self.line(format!("        _ => rte(204, \"Invalid pointer operation: `{method}` on the wrong object\"),"));
+        }
+        self.line("    }");
+        self.line("}");
+    }
+
+    /// The virtual methods `object` declares that no ancestor has: the
+    /// trait methods every object in the hierarchy must provide.
+    fn slots_introduced(&self, object: &Rc<ObjectType>) -> Vec<ProcId> {
+        let mut slots: Vec<ProcId> = self
+            .a
+            .virtuals
+            .iter()
+            .copied()
+            .filter(|&p| {
+                let (owner, _) = self.a.procs[p].self_param.as_ref().unwrap();
+                let key = self.a.procs[p].name.rsplit('.').next().unwrap().to_ascii_lowercase();
+                owner == object
+                    && object.parent.as_ref().is_none_or(|parent| {
+                        !parent
+                            .lineage()
+                            .iter()
+                            .any(|(o, _)| self.a.methods.contains_key(&(o.rust_name.clone(), key.clone())))
+                    })
+            })
+            .collect();
+        slots.sort();
+        slots
+    }
+
+    /// The Rust name of a method's body: a virtual method's versions are
+    /// named after their object (`t_circle_draw`), since the trait method
+    /// `draw` picks one of them.
+    pub(super) fn body_name(&self, pid: ProcId) -> String {
+        let info = &self.a.procs[pid];
+        match &info.self_param {
+            Some((object, _)) if self.a.virtuals.contains(&pid) => format!("{}_{}", accessor(object), info.rust_name),
+            _ => info.rust_name.clone(),
+        }
+    }
+
+    /// A method's parameter list (with `&mut self`) and return type.
+    fn method_signature(&self, pid: ProcId) -> (String, String) {
+        let params = self.signature_params(pid);
+        let params = if params.is_empty() { "&mut self".to_string() } else { format!("&mut self, {params}") };
+        let ret = match &self.a.procs[pid].ret {
+            Some(ty) => format!(" -> {}", ty.rust()),
+            None => String::new(),
+        };
+        (params, ret)
+    }
+
+    fn proc_fn(&mut self, decl: &ProcDecl, body: &Block) {
+        let pid = self.a.proc_decls[&decl.name.span.start];
+        let info = &self.a.procs[pid];
+        self.proc = pid;
+
+        self.blank();
+        self.leading_comments(decl.span.start);
+        if let Some(comment) = self.comments.take_trailing(decl.span.start) {
+            self.line(comment);
+        }
+        self.line(format!("/// Pascal: `{}`", self.pascal_text(decl.header_span)));
+        if let Some(parent) = info.parent.filter(|&p| p != MAIN) {
+            self.line("///");
+            let parent = &self.a.procs[parent].name;
+            if self.first_time("nested") {
+                self.line(format!("/// Nested inside `{parent}` in the Pascal source. Rust functions can't see"));
+                self.line("/// their caller's local variables, so this one was \"lifted\" to the top level");
+                self.line("/// and any outer variables it uses are passed in as extra parameters.");
+            } else {
+                self.line(format!("/// Nested inside `{parent}`; lifted, with outer variables passed in."));
+            }
+        } else if let Some(&class) = self.a.proc_classes.iter().find(|&&class| self.a.procs[class].calls.contains(&pid))
+            && !info.captures.is_empty()
+        {
+            // Kept in a procedural variable: it takes the globals any
+            // routine of that type uses, whether it uses them or not.
+            let class = &self.a.procs[class].rust_name;
+            self.line("///");
+            self.line(format!("/// Kept in a `{class}`, so it takes the globals any `{class}` routine uses."));
+        } else if !info.captures.is_empty() {
+            self.line("///");
+            if self.first_time("globals") {
+                self.line("/// The global variables this procedure uses are passed in as parameters,");
+                self.line("/// because the globals are local variables of `pascal_main`.");
+            } else {
+                self.line("/// Uses globals, which are passed in as parameters.");
+            }
+        }
+
+        let mut aliases: Vec<_> = self
+            .a
+            .capture_aliases
+            .iter()
+            .filter(|((p, _), param)| *p == pid && self.a.used_aliases.contains(&(pid, **param)))
+            .collect();
+        aliases.sort();
+        for ((_, outer), param) in aliases {
+            self.line("///");
+            let (outer, param) = (&self.a.sym(*outer).name, &self.a.sym(*param).name);
+            self.line(format!("/// Every call passes `{outer}` itself as `{param}`, so where the Pascal code"));
+            self.line(format!("/// uses `{outer}` directly, this function uses `{param}`: they are the same"));
+            self.line("/// variable, and Rust doesn't allow two references to one variable.");
+        }
+
+        let mut params = self.signature_params(pid);
+        if info.self_param.is_some() {
+            params = if params.is_empty() { "&mut self".to_string() } else { format!("&mut self, {params}") };
+        }
+        let ret = match &info.ret {
+            Some(ty) => format!(" -> {}", ty.rust()),
+            None => String::new(),
+        };
+        // Trait methods take no `pub`.
+        let vis = if self.self_expr.is_some() { "" } else { self.vis };
+        self.line(format!("{vis}fn {}({params}){ret} {{", self.body_name(pid)));
+        self.indent += 1;
+        self.untyped_guards(pid);
+        self.locals(pid);
+        // An `Exit` that ends the routine changes nothing, and Rust would warn
+        // that the `result` after its `return result;` can't be reached. A bare
+        // one is left out (its comments kept).
+        let is_exit = |s: &Stmt| matches!(&s.kind, StmtKind::Call(e) if matches!(&e.kind, ExprKind::Name(id) if id.key() == "exit"));
+        let last = body.body.last();
+        let bare_exit = last.is_some_and(is_exit);
+        // A body that never gets to its end (a labeled `Exit`, a `while True`
+        // only `Exit` leaves) has no `result` to give after it.
+        let never_ends = !bare_exit && crate::sema::goto::list_jumps_away(&body.body);
+        if bare_exit {
+            self.stmts(&body.body[..body.body.len() - 1]);
+            let exit = &body.body[body.body.len() - 1];
+            self.leading_comments(exit.span.start);
+            if let Some(comment) = self.comments.take_trailing(exit.span.start) {
+                self.line(comment);
+            }
+        } else {
+            self.stmts(&body.body);
+        }
+        let end_comment = self.block_end_comments(body.body_span);
+        if info.result.is_some() && !never_ends {
+            self.line("result");
+        }
+        self.indent -= 1;
+        self.line("}");
+        if let Some(comment) = end_comment {
+            self.append_comment(&comment);
+        }
+    }
+
+    /// The parameter list of a procedure's Rust function: captured outer
+    /// variables first, then the Pascal parameters.
+    fn signature_params(&self, pid: ProcId) -> String {
+        let parts = self.signature_parts(pid);
+        parts.into_iter().map(|(name, ty)| format!("{name}: {ty}")).collect::<Vec<_>>().join(", ")
+    }
+
+    /// The function-pointer type of a procedural type's class: what every
+    /// routine kept in one is, `fn(&mut f64, f64) -> f64`.
+    /// A procedural type `State` whose routines use a `State` variable
+    /// can't be the alias `type State = ProcVar<fn(&mut State)>`: an alias
+    /// can't name itself. A struct can, so it's a struct around the
+    /// `ProcVar`, with the same `nil`/`of`, and `Deref` for the rest.
+    fn proc_newtype(&mut self, class: &str, signature: &str) {
+        let vis = self.vis;
+        self.line("///");
+        self.line(format!("/// A `{class}` routine uses a `{class}` variable, and a type alias can't name"));
+        self.line("/// itself, so this one is a struct around its `ProcVar`.");
+        self.line("#[derive(Clone, Copy, Debug, Default, PartialEq)]");
+        self.line(format!("{vis}struct {class}(ProcVar<{signature}>);"));
+        self.blank();
+        self.line(format!("impl {class} {{"));
+        self.line(format!("    {vis}const fn nil() -> {class} {{"));
+        self.line(format!("        {class}(ProcVar::nil())"));
+        self.line("    }");
+        self.blank();
+        self.line(format!("    {vis}const fn of(routine: {signature}, name: &'static str) -> {class} {{"));
+        self.line(format!("        {class}(ProcVar::of(routine, name))"));
+        self.line("    }");
+        self.line("}");
+        self.blank();
+        if self.first_time("proc_deref") {
+            self.line("// `Deref` lets the struct be used as the `ProcVar` inside it: `f.get()`,");
+            self.line("// `f.is_nil()` and `f.address()` reach the `ProcVar`'s methods.");
+        }
+        self.line(format!("impl std::ops::Deref for {class} {{"));
+        self.line(format!("    type Target = ProcVar<{signature}>;"));
+        self.blank();
+        self.line("    fn deref(&self) -> &Self::Target {");
+        self.line("        &self.0");
+        self.line("    }");
+        self.line("}");
+    }
+
+    /// The procedural types whose signatures name themselves through
+    /// aliases alone (a global of the type, an array of them, a pointer to
+    /// one, or another procedural type that names this one back). A record
+    /// or object between them is a struct, which breaks the cycle.
+    fn self_naming_classes(&self) -> HashSet<ProcId> {
+        fn named(ty: &Type, out: &mut Vec<ProcId>) {
+            match ty {
+                Type::Proc(p) => out.push(p.class),
+                Type::Array(a) => named(&a.elem, out),
+                Type::Pointer(p) => named(&p.target(), out),
+                Type::File(elem) => named(elem, out),
+                _ => {}
+            }
+        }
+        // Each class's signature: its globals, parameters and result.
+        let names = |class: ProcId| {
+            let info = &self.a.procs[class];
+            let mut out = Vec::new();
+            for cap in &info.captures {
+                named(&self.a.var(cap.sym).ty, &mut out);
+            }
+            for &param in &info.params {
+                named(&self.a.var(param).ty, &mut out);
+            }
+            if let Some(ret) = &info.ret {
+                named(ret, &mut out);
+            }
+            out
+        };
+        let mut found = HashSet::new();
+        for &class in &self.a.proc_classes {
+            // A walk from `class`: does it come back?
+            let mut seen = HashSet::new();
+            let mut todo = names(class);
+            while let Some(next) = todo.pop() {
+                if next == class {
+                    found.insert(class);
+                    break;
+                }
+                if seen.insert(next) {
+                    todo.extend(names(next));
+                }
+            }
+        }
+        found
+    }
+
+    fn fn_pointer_type(&self, class: ProcId) -> String {
+        let params: Vec<String> = self.signature_parts(class).into_iter().map(|(_, ty)| ty).collect();
+        match &self.a.procs[class].ret {
+            Some(ret) => format!("fn({}) -> {}", params.join(", "), ret.rust()),
+            None => format!("fn({})", params.join(", ")),
+        }
+    }
+
+    /// A routine's parameters, captured globals first, as (pattern, type).
+    fn signature_parts(&self, pid: ProcId) -> Vec<(String, String)> {
+        let info = &self.a.procs[pid];
+        let mut params = Vec::new();
+        for cap in &info.captures {
+            let name = self.a.var_name(pid, cap.sym).to_string();
+            let ty = self.a.var(cap.sym).ty.rust();
+            // An outer routine's untyped parameter: its `Bytes` guard.
+            if self.a.var(cap.sym).ty == Type::Untyped {
+                let reference = if cap.mode == CaptureMode::RefMut { "&mut" } else { "&" };
+                params.push((name, format!("{reference} Bytes<'_>")));
+                continue;
+            }
+            params.push(match cap.mode {
+                CaptureMode::RefMut => (name, format!("&mut {ty}")),
+                CaptureMode::Ref => (name, format!("&{ty}")),
+                CaptureMode::Value => (name, ty),
+            });
+        }
+        for &param in &info.params {
+            let name = self.a.sym(param).rust_name.clone();
+            let var = self.a.var(param);
+            let ty = var.ty.rust();
+            params.push(match (&var.role, &var.ty) {
+                // A `var` parameter of an object type with virtual methods
+                // takes any object descended from it.
+                (VarRole::Param(ParamMode::Var), Type::Object(o)) if self.in_dispatch(o) => {
+                    (name, format!("&mut dyn {}", trait_name(o)))
+                }
+                // An untyped `var Data`: any variable, as its bytes.
+                (VarRole::Param(ParamMode::Var), Type::Untyped) => (name, "&mut dyn ByteView".to_string()),
+                (VarRole::Param(ParamMode::Var), _) => (name, format!("&mut {ty}")),
+                _ if self.a.mutated.contains(&param) => (format!("mut {name}"), ty),
+                _ => (name, ty),
+            });
+        }
+        params
+    }
+
+    /// An untyped `var Data` parameter is the variable's bytes from here
+    /// on, written back into the variable when the function returns.
+    fn untyped_guards(&mut self, pid: ProcId) {
+        for &param in &self.a.procs[pid].params.clone() {
+            if self.a.var(param).ty != Type::Untyped {
+                continue;
+            }
+            if self.first_time("untyped") {
+                self.line("// An untyped parameter is the caller's variable as Turbo Pascal's bytes;");
+                self.line("// `Bytes` copies them, and when it's dropped (at any `return`) it");
+                self.line("// writes them back into the variable.");
+            }
+            let name = self.a.sym(param).rust_name.clone();
+            let mutable = if self.a.mutated.contains(&param) { "mut " } else { "" };
+            self.line(format!("let {mutable}{name} = Bytes::of({name});"));
+        }
+    }
+
+    /// `let` statements for a procedure's local variables.
+    fn locals(&mut self, pid: ProcId) {
+        for &sym in &self.a.procs[pid].locals {
+            let at = self.decl_starts.get(&sym).copied();
+            if self.a.elided_vars.contains(&sym) {
+                // No `let` (a `for` loop declares it), but keep its comments,
+                // which often describe the whole procedure.
+                if let Some(at) = at {
+                    self.leading_comments(at);
+                    let group = self.comments.var_group_of_last(at);
+                    if let Some(comment) = self.comments.take_decl_trailing(at) {
+                        // Say which variables the comment was about.
+                        match group {
+                            Some(span) => self.line(format!("// Pascal: `{}` {comment}", self.pascal_text(span))),
+                            None => self.line(comment),
+                        }
+                    }
+                }
+                continue;
+            }
+            let var = self.a.var(sym);
+            let name = &self.a.sym(sym).rust_name;
+            let mutable = if self.a.mutated.contains(&sym) { "mut " } else { "" };
+            let init = match self.a.typed_consts.get(&sym) {
+                Some(ConstDecl { value, .. }) => self.const_init(value, &var.ty),
+                _ => default_value(&var.ty),
+            };
+            let line = format!("let {mutable}{name}: {} = {init};", var.ty.rust());
+            if let Some(at) = at {
+                self.leading_comments(at);
+            }
+            self.line(line);
+            if let Some(at) = at
+                && let Some(comment) = self.comments.take_decl_trailing(at)
+            {
+                self.append_comment(&comment);
+            }
+        }
+    }
+
+    // ----- Statements ---------------------------------------------------------
+
+    fn stmts(&mut self, stmts: &[Stmt]) {
+        // Sema checked the jumps, so `plan` succeeds here.
+        let blocks = crate::sema::goto::plan(stmts).unwrap_or_default();
+        self.stmts_in(stmts, 0..stmts.len(), blocks);
+    }
+
+    /// The statements `range` of a list, with the goto blocks inside that
+    /// range (outermost first; they nest, so each one is either inside the
+    /// first or after it).
+    fn stmts_in(&mut self, stmts: &[Stmt], range: std::ops::Range<usize>, mut blocks: Vec<GotoBlock>) {
+        let dead = crate::sema::goto::dead(stmts);
+        let mut i = range.start;
+        while !blocks.is_empty() {
+            let block = blocks.remove(0);
+            while i < block.lo {
+                self.live_or_dead(stmts, i, &dead);
+                i += 1;
+            }
+            let (inside, after): (Vec<GotoBlock>, Vec<GotoBlock>) =
+                blocks.into_iter().partition(|b| b.lo >= block.lo && b.hi <= block.hi);
+            blocks = after;
+            // The label's statement: where a block ends, or a loop starts.
+            let at = if block.forward { block.hi } else { block.lo };
+            let label = crate::sema::goto::labels_of(&stmts[at])
+                .into_iter()
+                .find(|l| l.key() == block.label)
+                .expect("plan found the label here");
+            let name = goto_label(&label.name);
+            if block.forward {
+                if self.first_time("goto_forward") {
+                    self.line(format!(
+                        "// `goto {}` jumps forward: Rust can't jump, but it can leave a block",
+                        label.name
+                    ));
+                    self.line(format!("// early, so the statements it skips are in the block `{name}`, and the"));
+                    self.line(format!("// jump is `break {name}`."));
+                }
+                self.line(format!("{name}: {{"));
+            } else {
+                if self.first_time("goto_back") {
+                    self.line(format!(
+                        "// `goto {}` jumps back: the statements from the label on are a loop,",
+                        label.name
+                    ));
+                    self.line(format!("// and the jump is `continue {name}`. Otherwise the loop runs once."));
+                }
+                self.line(format!("{name}: loop {{"));
+            }
+            self.indent += 1;
+            self.goto_blocks.push((block.label.clone(), name.clone(), block.forward));
+            self.stmts_in(stmts, block.lo..block.hi, inside);
+            self.goto_blocks.pop();
+            // (Not after a `continue` that ends the loop: it would never run.)
+            // (Nor after any statement that always jumps away.)
+            let repeats = crate::sema::goto::jumps_away(&stmts[block.hi - 1]);
+            if !block.forward && !repeats {
+                self.line(format!("break {name};"));
+            }
+            self.indent -= 1;
+            self.line("}");
+            i = block.hi;
+        }
+        while i < range.end {
+            self.live_or_dead(stmts, i, &dead);
+            i += 1;
+        }
+    }
+
+    /// Statement `i` of a list, or, if it can never run (after a `goto` or
+    /// `Exit`), its Rust commented out: Rust would warn about code that
+    /// can't be reached.
+    fn live_or_dead(&mut self, stmts: &[Stmt], i: usize, dead: &[bool]) {
+        if !dead[i] {
+            return self.stmt(&stmts[i]);
+        }
+        if i == 0 || !dead[i - 1] {
+            self.line("// Never runs, in the Pascal either:");
+        }
+        // Write it as usual, then comment out what was written. (A teaching
+        // comment it used up is still owed to the live code.)
+        let explained = self.explained.clone();
+        let start = self.out.len();
+        self.stmt(&stmts[i]);
+        let code = self.out.split_off(start);
+        self.explained = explained;
+        // The comment marks go at the statement's own indentation, and the
+        // nesting inside it after them, so rustfmt keeps it.
+        let lines = code.lines().filter(|l| !l.trim().is_empty());
+        let base = lines.clone().map(|l| l.len() - l.trim_start().len()).min().unwrap_or(0);
+        for line in lines {
+            let indent = line.len() - line.trim_start().len();
+            self.out.push_str(&format!("{}// {}{}\n", &line[..base], " ".repeat(indent - base), line.trim_start()));
+        }
+    }
+
+    /// A statement as the body of `if`/`while`/...: always a `{ }` block in
+    /// Rust, and a Pascal `begin ... end` doesn't need a second pair.
+    fn block_body(&mut self, s: &Stmt) {
+        self.indent += 1;
+        match &s.kind {
+            StmtKind::Compound(body) => {
+                self.leading_comments(s.span.start);
+                self.stmts(body);
+                self.end_comment = self.block_end_comments(s.span);
+            }
+            // (As a list of one, which may hold a label: `if c then L: x`.)
+            _ => self.stmts(std::slice::from_ref(s)),
+        }
+        self.indent -= 1;
+    }
+
+    /// A statement, with its Pascal comments.
+    fn stmt(&mut self, s: &Stmt) {
+        if s.kind != StmtKind::Empty {
+            self.leading_comments(s.span.start);
+        }
+        // A `repeat`'s `until` comes after its body's statements, so each
+        // statement's lent arrays are put back when its children are done.
+        let roots = self.a.lent_roots.get(&s.span.start).cloned().unwrap_or_default();
+        let saved = std::mem::replace(&mut self.lent_roots, roots);
+        self.stmt_code(s);
+        self.lent_roots = saved;
+        // A `begin ... end` statement has no lines of its own in Rust.
+        if let StmtKind::Compound(body) = &s.kind
+            && let Some(comment) = self.block_end_comments(s.span)
+        {
+            // An empty `begin end` wrote nothing to put it after.
+            if body.is_empty() { self.line(comment) } else { self.append_comment(&comment) }
+        }
+        self.trailing_comment(s.span.start);
+    }
+
+    fn stmt_code(&mut self, s: &Stmt) {
+        match &s.kind {
+            StmtKind::Empty => {}
+            StmtKind::Assign { target, value } => {
+                let line = self.assignment(target, value);
+                self.line(line);
+            }
+            StmtKind::Call(e) => {
+                let (callee, args): (&Expr, &[Expr]) = match &e.kind {
+                    ExprKind::Call { callee, args } => (callee, args),
+                    _ => (e, &[]),
+                };
+                let code = self.call(callee, args);
+                // A function called as a statement: discard its result. A
+                // routine of the program or of a unit can just be called
+                // (nothing in the runtime is `#[must_use]`); a built-in may
+                // be a method of the standard library that is, hence
+                // `let _ =`.
+                let plain_call = matches!(
+                    self.a.refs.get(&callee.id).map(|&sym| &self.a.sym(sym).kind),
+                    Some(SymKind::Proc(_) | SymKind::UnitRoutine(_))
+                );
+                let is_function = matches!(self.a.type_of(e.id), t if *t != Type::Void) && !plain_call;
+                // A Pascal call that becomes nothing but a comment.
+                if code.starts_with("//") {
+                    self.line(code);
+                } else if is_function && !code.ends_with(';') && !code.ends_with('}') {
+                    self.line(format!("let _ = {code};"));
+                } else if code.ends_with(';') || code.ends_with('}') {
+                    self.line(code);
+                } else {
+                    self.line(format!("{code};"));
+                }
+            }
+            StmtKind::Compound(body) => {
+                // A nested `begin ... end` just groups statements; Rust
+                // doesn't need a block for that.
+                self.stmts(body);
+            }
+            StmtKind::If { .. } => self.if_chain(s, ""),
+            StmtKind::While { cond, body } => {
+                let cond = self.condition(cond);
+                let labels = self.goto_loop_labels(body, "while_loop");
+                let label = labels.as_ref().and_then(|l| l.loop_label.as_ref()).map(|l| format!("{l}: "));
+                // `while True do` is Rust's `loop` (it warns about `while true`).
+                if cond == "true" {
+                    self.line(format!("{}loop {{", label.unwrap_or_default()));
+                } else {
+                    self.line(format!("{}while {cond} {{", label.unwrap_or_default()));
+                }
+                self.loops.push(labels);
+                self.block_body(body);
+                self.loops.pop();
+                self.line("}");
+            }
+            StmtKind::Repeat { body, cond } => self.repeat_loop(body, cond),
+            StmtKind::For { var, start, end, down, body } => {
+                let labels = self.goto_loop_labels(body, "for_loop");
+                self.loops.push(labels);
+                self.for_loop(s, var, start, end, *down, body);
+                self.loops.pop();
+            }
+            StmtKind::Case { scrutinee, arms, else_body } => self.case(s.span, scrutinee, arms, else_body.as_deref()),
+            // The label itself is where `stmts` put the block's end or the
+            // loop's start.
+            StmtKind::Labeled { body, .. } => self.stmt(body),
+            // The innermost block or loop for the label: `break` leaves a
+            // block, `continue` repeats a loop.
+            StmtKind::Goto(label) => {
+                let key = label.key();
+                match self.goto_blocks.iter().rev().find(|(k, ..)| *k == key).cloned() {
+                    Some((_, name, forward)) => {
+                        let word = if forward { "break" } else { "continue" };
+                        self.line(format!("{word} {name};"));
+                    }
+                    // A `goto` in statements that never run has no block
+                    // (it's commented out with them).
+                    None => self.line(format!("goto {};", label.name)),
+                }
+            }
+            StmtKind::With { body, .. } => {
+                // `self.a` is a plain shared reference, so copying it out lets
+                // us borrow the rewritten body while `self` is borrowed mutably.
+                let a = self.a;
+                let rewritten = &a.with_bodies[&s.span.start];
+                // Sema puts the pointer copies (`with p^ do`) and the body in a
+                // `begin ... end` the size of the whole `with`.
+                let (copies, rewritten_body) = match &rewritten.kind {
+                    StmtKind::Compound(stmts) if rewritten.span == s.span => (stmts.len() - 1, stmts.last().unwrap()),
+                    _ => (0, rewritten),
+                };
+                if copies > 0 && self.first_time("with_pointer") {
+                    self.line("// TP finds a `with` record once, before the body runs: the pointer is");
+                    self.line("// copied first, so the body means that record even if it changes the pointer.");
+                }
+                // (Nothing to say when the body uses no field: `with r do goto L`.)
+                if rewritten_body != &**body && self.first_time("with") {
+                    self.line("// Pascal `with`: Rust has no equivalent, so each field is written out in full.");
+                }
+                self.stmt(rewritten);
+            }
+        }
+    }
+
+    /// The label a `while` or `for` loop needs when a goto block inside it
+    /// holds its `Break` or `Continue` (a plain `break` can't leave a
+    /// labeled block): `'while_loop`, then `break 'while_loop;`.
+    fn goto_loop_labels(&mut self, body: &Stmt, kind: &str) -> Option<LoopLabels> {
+        let (breaks, continues) = crate::sema::goto::exits_in_blocks(std::slice::from_ref(body));
+        if !(breaks || continues) {
+            return None;
+        }
+        self.explain_goto_loop_label();
+        Some(LoopLabels { loop_label: Some(format!("'{kind}{}", self.loop_label_suffix())), body_label: None })
+    }
+
+    fn explain_goto_loop_label(&mut self) {
+        if self.first_time("goto_loop_label") {
+            self.line("// A plain `break` can't leave a labeled block, so this loop has a label,");
+            self.line("// and its `Break` and `Continue` inside the goto block below use it.");
+        }
+    }
+
+    /// `""` for the outermost labeled loop, then `2`, `3`, ...
+    fn loop_label_suffix(&self) -> String {
+        let n = self.loops.iter().flatten().count();
+        if n == 0 { String::new() } else { (n + 1).to_string() }
+    }
+
+    /// `repeat ... until cond` becomes `loop { ...; if cond { break; } }`.
+    fn repeat_loop(&mut self, body: &[Stmt], cond: &Expr) {
+        self.line("// Pascal `repeat ... until`: the body always runs at least once.");
+        // Rust's `continue` would skip the `if cond { break; }` at the end of
+        // the loop, but Pascal's `Continue` goes on to the `until` test. So a
+        // body that uses `Continue` goes in a labeled block, and `Continue`
+        // leaves the block with `break 'repeat_body;`. Inside that block a
+        // plain `break` isn't allowed, so `Break` needs a label for the loop.
+        // (A `Break` inside a goto block needs the label too.)
+        let (break_in_block, _) = crate::sema::goto::exits_in_blocks(body);
+        let continues = self.uses(body, Builtin::Continue);
+        if break_in_block {
+            self.explain_goto_loop_label();
+        }
+        let labels = (continues || break_in_block).then(|| {
+            let suffix = self.loop_label_suffix();
+            LoopLabels {
+                loop_label: self.uses(body, Builtin::Break).then(|| format!("'repeat_loop{suffix}")),
+                body_label: continues.then(|| format!("'repeat_body{suffix}")),
+            }
+        });
+        let body_block = labels.as_ref().and_then(|l| l.body_label.clone());
+        if body_block.is_some() && self.first_time("repeat-continue") {
+            self.line("// `Continue` must still test the `until` condition, so it jumps out of");
+            self.line("// the labeled block below rather than back to the top of the loop.");
+        }
+        match labels.as_ref().and_then(|l| l.loop_label.as_ref()) {
+            Some(label) => self.line(format!("{label}: loop {{")),
+            None => self.line("loop {"),
+        }
+        if let Some(block) = &body_block {
+            self.indent += 1;
+            self.line(format!("{block}: {{"));
+        }
+        self.indent += 1;
+        self.loops.push(labels);
+        self.stmts(body);
+        self.loops.pop();
+        if body_block.is_some() {
+            self.indent -= 1;
+            self.line("}");
+        }
+        // A body that always leaves (`Break`, `Exit`, a `goto` out) never gets
+        // to the `until` test, and Rust would warn about it; `until False`
+        // has no test to write (only `Break` or `Exit` ends the loop).
+        let endless = crate::sema::goto::is_word(cond, "false");
+        if endless || body_block.is_none() && crate::sema::goto::list_jumps_away(body) {
+            self.indent -= 1;
+            self.line("}");
+            self.leading_comments(cond.span.start);
+            self.trailing_comment(cond.span.start);
+            return;
+        }
+        let at = cond.span.start;
+        self.leading_comments(at);
+        let cond = self.condition(cond);
+        self.line(format!("if {cond} {{"));
+        self.line("    break;");
+        self.line("}");
+        self.indent -= 1;
+        self.line("}");
+        // `until done; {comment}`.
+        self.trailing_comment(at);
+    }
+
+    /// Does `body` call `Break` or `Continue` (`b`) for the loop around it,
+    /// rather than for a loop nested inside?
+    fn uses(&self, body: &[Stmt], b: Builtin) -> bool {
+        body.iter().any(|s| match &s.kind {
+            StmtKind::Call(e) => {
+                let callee = match &e.kind {
+                    ExprKind::Call { callee, .. } => callee,
+                    _ => e,
+                };
+                self.a
+                    .refs
+                    .get(&callee.id)
+                    .is_some_and(|sym| matches!(self.a.sym(*sym).kind, SymKind::Builtin(found) if found == b))
+            }
+            // `std::slice::from_ref` views one statement as a one-element
+            // slice, without copying it.
+            StmtKind::Compound(stmts) => self.uses(stmts, b),
+            StmtKind::If { then_branch, else_branch, .. } => {
+                self.uses(std::slice::from_ref(then_branch), b)
+                    || else_branch.as_ref().is_some_and(|e| self.uses(std::slice::from_ref(e), b))
+            }
+            StmtKind::Case { arms, else_body, .. } => {
+                arms.iter().any(|arm| self.uses(std::slice::from_ref(&arm.body), b))
+                    || else_body.as_deref().is_some_and(|body| self.uses(body, b))
+            }
+            StmtKind::With { .. } => self.uses(std::slice::from_ref(&self.a.with_bodies[&s.span.start]), b),
+            StmtKind::Labeled { body, .. } => self.uses(std::slice::from_ref(body), b),
+            // A `Break` or `Continue` inside a nested loop belongs to that loop.
+            _ => false,
+        })
+    }
+
+    /// `case` becomes `match`.
+    fn case(&mut self, span: Span, scrutinee: &Expr, arms: &[CaseArm], else_body: Option<&[Stmt]>) {
+        let scrutinee_ty = self.a.type_of(scrutinee.id).concrete();
+        // A label that names a constant stays its name (`ESC =>`, not
+        // `b'\x1b' =>`), so the Rust still says where the value comes from.
+        // A pattern's constant must have the scrutinee's type: a Byte
+        // compared with Integer constants is widened, as `in` does.
+        let widen_to = self.case_widening(&scrutinee_ty, arms);
+        let pattern_rust = match widen_to {
+            Some(kind) => kind.rust().to_string(),
+            None => scrutinee_ty.rust(),
+        };
+        let scrutinee_code = match widen_to {
+            Some(kind) => {
+                let code = self.coerce(scrutinee, &Type::Int(kind));
+                code.0
+            }
+            None => self.expr(scrutinee).0,
+        };
+        let scrutinee_code = self.with_after(scrutinee_code);
+        self.line(format!("match {scrutinee_code} {{"));
+        // A label worked out from a constant (`K + 1`) can't be a pattern;
+        // its arm tests it in a guard, `value if value == K + 1`, keeping
+        // the name. (The type the guard compares in is the scrutinee's.)
+        let guard_ty = match widen_to {
+            Some(kind) => Type::Int(kind),
+            None => scrutinee_ty.clone(),
+        };
+        let binding = self.temp_name("value");
+        let mut guarded = false;
+        self.indent += 1;
+        // Turbo Pascal doesn't object to a label appearing twice; the first
+        // arm wins. Rust warns about the unreachable second one, so drop it.
+        let mut seen = Covered::default();
+        // The labels dropped whole or trimmed, for a note before the next
+        // arm: after the last one, rustfmt would take it for that arm's.
+        let (mut all_dropped, mut all_trimmed): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+        for arm in arms {
+            let mut labels = Vec::new();
+            let mut guards = Vec::new();
+            let mut dropped = Vec::new();
+            let mut trimmed = Vec::new();
+            for label in &arm.labels {
+                let (lo, hi) = match label {
+                    CaseLabel::Value(e) => (self.label_ord(e), self.label_ord(e)),
+                    CaseLabel::Range(lo, hi) => (self.label_ord(lo), self.label_ord(hi)),
+                };
+                // Only the values no earlier label has: Rust warns about a
+                // pattern, or the end of a range, that can never match.
+                let pieces = seen.uncovered(lo, hi);
+                if pieces.is_empty() {
+                    dropped.push(self.ord_range_pattern(&scrutinee_ty, lo, hi));
+                } else if pieces != [(lo, hi)] {
+                    trimmed.push(self.ord_range_pattern(&scrutinee_ty, lo, hi));
+                }
+                // A label no earlier one trims keeps its constants' names.
+                // (Not if its Rust is just a number anyway: `Length(Word4)`
+                // with a string constant is `4`.)
+                let needs_guard = |cg: &mut Self, e: &Expr| {
+                    cg.names_constant(e)
+                        && cg.named_label(e, &pattern_rust).is_none()
+                        && !is_literal(&cg.coerce(e, &guard_ty).0)
+                };
+                let guard = match label {
+                    _ if pieces != [(lo, hi)] => None,
+                    CaseLabel::Value(e) if needs_guard(self, e) => {
+                        Some(format!("{binding} == {}", self.coerce(e, &guard_ty).0))
+                    }
+                    CaseLabel::Range(l, h) if needs_guard(self, l) || needs_guard(self, h) => {
+                        let (l, h) = (self.coerce(l, &guard_ty), self.coerce(h, &guard_ty));
+                        Some(format!(
+                            "({}..={}).contains(&{binding})",
+                            expr::paren(l, expr::prec::OR),
+                            expr::paren(h, expr::prec::OR)
+                        ))
+                    }
+                    _ => None,
+                };
+                let named = match label {
+                    _ if pieces != [(lo, hi)] || guard.is_some() => None,
+                    CaseLabel::Value(e) => self.named_label(e, &pattern_rust),
+                    CaseLabel::Range(l, h) => {
+                        match (self.named_label(l, &pattern_rust), self.named_label(h, &pattern_rust)) {
+                            (None, None) => None,
+                            (l_name, h_name) => {
+                                let l_code = l_name.unwrap_or_else(|| self.ord_range_pattern(&scrutinee_ty, lo, lo));
+                                let h_code = h_name.unwrap_or_else(|| self.ord_range_pattern(&scrutinee_ty, hi, hi));
+                                Some(format!("{l_code}..={h_code}"))
+                            }
+                        }
+                    }
+                };
+                match (guard, named) {
+                    (Some(guard), _) => guards.push(guard),
+                    (None, Some(pattern)) => labels.push(pattern),
+                    (None, None) => {
+                        for (start, end) in pieces {
+                            labels.push(self.ord_range_pattern(&scrutinee_ty, start, end));
+                        }
+                    }
+                }
+                seen.add(lo, hi);
+            }
+            for label in dropped {
+                if !all_dropped.contains(&label) {
+                    all_dropped.push(label);
+                }
+            }
+            all_trimmed.extend(trimmed);
+            if labels.is_empty() && guards.is_empty() {
+                continue;
+            }
+            for note in label_notes(&mut all_dropped, &mut all_trimmed) {
+                self.line(note);
+            }
+            if guards.is_empty() {
+                self.line(format!("{} => {{", labels.join(" | ")));
+            } else {
+                // The arm's other labels join the guard: `value == 1`,
+                // `matches!(value, 3..=5)`.
+                guarded = true;
+                let mut tests: Vec<String> = labels
+                    .iter()
+                    .map(|p| {
+                        if p.contains("..=") || p.contains(" | ") {
+                            format!("matches!({binding}, {p})")
+                        } else {
+                            format!("{binding} == {p}")
+                        }
+                    })
+                    .collect();
+                tests.extend(guards);
+                self.line(format!("{binding} if {} => {{", tests.join(" || ")));
+            }
+            self.block_body(&arm.body);
+            self.line("}");
+        }
+        // Rust knows when a `match` covers every value of the type, and then
+        // warns about a `_` arm.
+        let domain = match &scrutinee_ty {
+            // (A widened scrutinee's type is the wider one.)
+            _ if widen_to.is_some() => widen_to.map(IntKind::range),
+            Type::Enum(e) => Some((0, e.variants.len() as i64 - 1)),
+            Type::Bool => Some((0, 1)),
+            Type::Char => Some((0, 255)),
+            Type::Int(kind) => Some(kind.range()),
+            _ => None,
+        };
+        // (Rust doesn't count an arm with a guard toward covering every value.)
+        let exhaustive = !guarded && domain.is_some_and(|(lo, hi)| seen.covers(lo, hi));
+        // Comments before the case's `end` can't go after the last arm, where
+        // rustfmt would take them for that arm's: they go at the end of the
+        // `else` arm, or before the `_ => {}` that stands for no `else`.
+        let end_at = comments::end_keyword(self.map, span);
+        // With a `_` arm to come, the waiting notes go before it.
+        if else_body.is_some() || !exhaustive {
+            for note in label_notes(&mut all_dropped, &mut all_trimmed) {
+                self.line(note);
+            }
+        }
+        match else_body {
+            Some(body) => {
+                if exhaustive {
+                    // Rust warns about an arm that can't be reached; it's
+                    // kept because the Pascal has it.
+                    self.line("#[allow(unreachable_patterns)]");
+                }
+                self.line("_ => {");
+                if exhaustive {
+                    self.line("    // The arms above cover every value, so Pascal's `else` never runs.");
+                }
+                self.indent += 1;
+                self.stmts(body);
+                if let Some(at) = end_at {
+                    self.leading_comments(at);
+                }
+                self.indent -= 1;
+                self.line("}");
+            }
+            // Pascal's `case` does nothing when no label matches; Rust's
+            // `match` must cover every value, so say so explicitly. (Unless
+            // the labels already cover every value, as they can for an enum.)
+            None if !exhaustive => {
+                if let Some(at) = end_at {
+                    self.leading_comments(at);
+                }
+                self.line("_ => {}");
+            }
+            None => {}
+        }
+        // With every value covered, there's no arm to put the comments
+        // before `end` in front of, so they join the closing brace's.
+        let mut end_comment = None;
+        if exhaustive
+            && else_body.is_none()
+            && let Some(at) = end_at
+        {
+            let mut lines = label_notes(&mut all_dropped, &mut all_trimmed);
+            lines.extend(self.comments.take_leading(at));
+            if !lines.is_empty() {
+                end_comment = Some(lines.join(" ").replace(" // ", " "));
+            }
+        }
+        let end_comment = match (end_comment, self.block_end_comments(span)) {
+            (Some(before), Some(after)) => {
+                let joint = if before.ends_with('.') { " " } else { "; " };
+                Some(format!("{before}{joint}{}", after.trim_start_matches("// ")))
+            }
+            (before, after) => before.or(after),
+        };
+        self.indent -= 1;
+        self.line("}");
+        if let Some(comment) = end_comment {
+            self.append_comment(&comment);
+        }
+    }
+
+    /// A `case` label end that names a constant whose Rust type is
+    /// `rust_ty`: the constant's name, which a pattern can use as it is.
+    fn named_label(&self, e: &Expr, rust_ty: &str) -> Option<String> {
+        // `case i of High(Integer):` is `i16::MAX =>`.
+        if let Some(expr::Limit::Named(code, from)) = self.type_limit(e)
+            && from.rust() == rust_ty
+        {
+            return Some(code);
+        }
+        let ExprKind::Name(_) = e.kind else { return None };
+        let sym = self.a.sym(*self.a.refs.get(&e.id)?);
+        match &sym.kind {
+            SymKind::Const { ty: ty @ (Type::Int(_) | Type::Char), .. } if ty.rust() == rust_ty => {
+                Some(sym.rust_name.clone())
+            }
+            _ => None,
+        }
+    }
+
+    /// The integer type a `case` on a narrower integer is widened to, so
+    /// its labels can name constants (`case b of K:`, `K` an Integer
+    /// constant: `match i16::from(b) { K => ...`). `None` if no label
+    /// names a constant of a wider type, or they don't agree on one.
+    fn case_widening(&self, scrutinee_ty: &Type, arms: &[CaseArm]) -> Option<IntKind> {
+        let Type::Int(kind) = scrutinee_ty else { return None };
+        let mut wider = None;
+        for arm in arms {
+            for label in &arm.labels {
+                let ends = match label {
+                    CaseLabel::Value(e) => vec![e],
+                    CaseLabel::Range(lo, hi) => vec![lo, hi],
+                };
+                for e in ends {
+                    let ExprKind::Name(_) = e.kind else { continue };
+                    let Some(&sym) = self.a.refs.get(&e.id) else { continue };
+                    let SymKind::Const { ty: Type::Int(k), .. } = &self.a.sym(sym).kind else { continue };
+                    if k == kind {
+                        continue;
+                    }
+                    if !k.holds(*kind) || wider.is_some_and(|w| w != *k) {
+                        return None;
+                    }
+                    wider = Some(*k);
+                }
+            }
+        }
+        wider
+    }
+
+    /// The pattern for the ordinals `lo..=hi` of a `case` on `ty`. Rust
+    /// ranges only work on numbers and chars, so an enum's or a Boolean's
+    /// values are listed (`Day::Mon | Day::Tue`).
+    fn ord_range_pattern(&self, ty: &Type, lo: i64, hi: i64) -> String {
+        let one = |n: i64| match ty {
+            Type::Enum(e) => format!("{}::{}", e.rust_name, e.variants[n as usize]),
+            Type::Bool => (n != 0).to_string(),
+            _ => self.const_value(&crate::sema::ConstVal::Int(n), ty),
+        };
+        match ty {
+            _ if lo == hi => one(lo),
+            Type::Enum(_) | Type::Bool => (lo..=hi).map(one).collect::<Vec<_>>().join(" | "),
+            _ => format!("{}..={}", one(lo), one(hi)),
+        }
+    }
+
+    /// Can a call in `e` reach the variable `root` names without naming
+    /// it: a method call (every method takes all of `self`), or a function
+    /// that receives the variable as a global or outer variable?
+    pub(super) fn call_reaches(&self, e: &Expr, root: &Expr) -> bool {
+        if self.a.method_calls.contains_key(&e.id) {
+            return true;
+        }
+        let root_sym = self.a.refs.get(&root.id).copied();
+        let receives = |callee: &Expr| match self.a.refs.get(&callee.id).map(|&sym| &self.a.sym(sym).kind) {
+            Some(SymKind::Proc(p)) => self.a.procs[*p].captures.iter().any(|c| Some(c.sym) == root_sym),
+            _ => false,
+        };
+        let item = |elem: &SetElem| match elem {
+            SetElem::Single(x) => self.call_reaches(x, root),
+            SetElem::Range(lo, hi) => self.call_reaches(lo, root) || self.call_reaches(hi, root),
+        };
+        match &e.kind {
+            ExprKind::Call { callee, args } => receives(callee) || args.iter().any(|a| self.call_reaches(a, root)),
+            ExprKind::Name(_) => receives(e),
+            ExprKind::Field(base, _) | ExprKind::Deref(base) => self.call_reaches(base, root),
+            ExprKind::Index(base, indexes) => {
+                self.call_reaches(base, root) || indexes.iter().any(|i| self.call_reaches(i, root))
+            }
+            ExprKind::Unary { operand, .. } => self.call_reaches(operand, root),
+            ExprKind::Binary { lhs, rhs, .. } => self.call_reaches(lhs, root) || self.call_reaches(rhs, root),
+            ExprKind::Set(elems) => elems.iter().any(item),
+            _ => false,
+        }
+    }
+
+    /// Does `e` call a function or method anywhere (with or without
+    /// parentheses)?
+    fn has_call(&self, e: &Expr) -> bool {
+        if self.a.folded.contains_key(&e.id) {
+            return false; // written as its value
+        }
+        if self.a.method_calls.contains_key(&e.id) {
+            return true;
+        }
+        let item = |elem: &SetElem| match elem {
+            SetElem::Single(x) => self.has_call(x),
+            SetElem::Range(lo, hi) => self.has_call(lo) || self.has_call(hi),
+        };
+        match &e.kind {
+            // Builtins (`Chr`, `Succ`) and casts (`Byte(c)`) only see their
+            // arguments.
+            ExprKind::Call { callee, args }
+                if self
+                    .a
+                    .refs
+                    .get(&callee.id)
+                    .is_some_and(|&sym| matches!(self.a.sym(sym).kind, SymKind::Builtin(_) | SymKind::TypeName(_))) =>
+            {
+                args.iter().any(|a| self.has_call(a))
+            }
+            ExprKind::Call { .. } => true,
+            // A function named without arguments (`Second`) is a call too.
+            ExprKind::Name(_) => self
+                .a
+                .refs
+                .get(&e.id)
+                .is_some_and(|&sym| matches!(self.a.sym(sym).kind, SymKind::Proc(_) | SymKind::UnitRoutine(_))),
+            ExprKind::Field(base, _) | ExprKind::Deref(base) => self.has_call(base),
+            ExprKind::Index(base, indexes) => self.has_call(base) || indexes.iter().any(|i| self.has_call(i)),
+            ExprKind::Unary { operand, .. } => self.has_call(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.has_call(lhs) || self.has_call(rhs),
+            ExprKind::Set(elems) => elems.iter().any(item),
+            _ => false,
+        }
+    }
+
+    /// A case label's ordinal value, for spotting duplicates. (Sema
+    /// checked that every label is a constant.)
+    fn label_ord(&self, e: &Expr) -> i64 {
+        match &self.a.consts[&e.id] {
+            crate::sema::ConstVal::Int(n) => *n,
+            crate::sema::ConstVal::Str(s) => s.first().copied().unwrap_or(0) as i64,
+            crate::sema::ConstVal::Bool(b) => *b as i64,
+            crate::sema::ConstVal::Real(_) | crate::sema::ConstVal::Set(_) => 0,
+        }
+    }
+
+    /// A loop condition. If it needed temporaries, they go in a block
+    /// expression (`{ let n = ...; f(&mut x, n) }`): a loop condition is
+    /// evaluated every time round, so they can't be hoisted above the loop.
+    fn condition(&mut self, cond: &Expr) -> String {
+        let code = self.expr(cond).0;
+        if self.pending.is_empty() {
+            return self.with_after(code);
+        }
+        self.lent.clear();
+        // A teaching comment can't go inside the one-line block (it would
+        // swallow the rest of the line), so it goes on the lines before.
+        let (comments, lets): (Vec<String>, Vec<String>) =
+            std::mem::take(&mut self.pending).into_iter().partition(|line| line.starts_with("//"));
+        let after = std::mem::take(&mut self.after);
+        for comment in comments {
+            self.line(comment);
+        }
+        self.after = after;
+        if lets.is_empty() {
+            return self.with_after(code);
+        }
+        let lets = lets.join(" ");
+        if self.after.is_empty() {
+            return format!("{{ {lets} {code} }}");
+        }
+        let after = std::mem::take(&mut self.after).join(" ");
+        format!("{{ {lets} let value = {code}; {after} value }}")
+    }
+
+    /// `if`, with `else if` chains flattened the way a person would write
+    /// them.
+    fn if_chain(&mut self, s: &Stmt, prefix: &str) {
+        let StmtKind::If { cond, then_branch, else_branch } = &s.kind else { unreachable!() };
+        // Unlike a loop's condition, an `if` condition is evaluated once, so
+        // `line` can put its temporaries on the lines before it. (Except in
+        // an `else if`, where there's no line before it to put them on.)
+        let cond = if prefix.is_empty() {
+            let code = self.expr(cond).0;
+            self.with_after(code)
+        } else {
+            self.condition(cond)
+        };
+        self.line(format!("{prefix}if {cond} {{"));
+        if !prefix.is_empty() {
+            // Comments before `else if`: there's no line for them between
+            // `}` and `else`, so they start the block.
+            self.indent += 1;
+            self.leading_comments(s.span.start);
+            self.indent -= 1;
+        }
+        self.block_body(then_branch);
+        match else_branch.as_deref() {
+            None => self.line("}"),
+            Some(e @ Stmt { kind: StmtKind::If { .. }, .. }) => self.if_chain(e, "} else "),
+            Some(e) => {
+                self.line("} else {");
+                self.block_body(e);
+                self.line("}");
+            }
+        }
+    }
+
+    fn for_loop(&mut self, s: &Stmt, var: &Ident, start: &Expr, end: &Expr, down: bool, body: &Stmt) {
+        let sym = self.a.decls[&var.span.start];
+        let ty = self.a.var(sym).ty.clone();
+        // With two literal bounds (`for i := 10 to 12`), nothing would tell
+        // Rust that a fresh loop variable is 16 bits, and it would pick
+        // `i32`; then `i * 3000` wouldn't wrap as it does in TP. A suffix on
+        // the first bound (`10_i16..=12`) settles it.
+        // (A loop variable that's used outside the loop is declared with its
+        // type already.)
+        let scoped = self.a.scoped_for_loops.contains(&s.span.start);
+        let literal = |e: &Expr| matches!(self.a.type_of(e.id), Type::IntLit(_));
+        let suffix = match &ty {
+            Type::Int(kind) if scoped && literal(start) && literal(end) => format!("_{}", kind.rust()),
+            _ => String::new(),
+        };
+        let lo_hi = |g: &mut Self| {
+            let (start_code, end_code) = (g.coerce(start, &ty).0, g.coerce(end, &ty).0);
+            let start = g.bound_before_loop(start, start_code, "first");
+            let end = g.bound_before_loop(end, end_code, "last");
+            // The suffix goes on whichever bound comes first in the range, if
+            // it's a number there (`a.low() as i16` has its type already).
+            let suffixed = |code: String| if is_literal(&code) { format!("{code}{suffix}") } else { code };
+            let (start, end) = if down { (start, suffixed(end)) } else { (suffixed(start), end) };
+            match (&ty, down) {
+                // Rust ranges only work for numbers (and `u8` chars); the
+                // runtime's `enum_range` steps through enum values instead.
+                (Type::Enum(_), false) => format!("enum_range({start}, {end})"),
+                (Type::Enum(_), true) => format!("enum_range({end}, {start}).rev()"),
+                (_, true) => format!("({end}..={start}).rev()"),
+                (_, false) => format!("{start}..={end}"),
+            }
+        };
+        let range = lo_hi(self);
+        let range = self.with_after(range);
+        let name = self.a.sym(sym).rust_name.clone();
+        if scoped {
+            // Pascal's `for i := 1 to n` evaluates both bounds once and does
+            // nothing if `n < 1`, exactly like Rust's inclusive range `1..=n`.
+            let label = self.loops.last().cloned().flatten().and_then(|l| l.loop_label).map(|l| format!("{l}: "));
+            self.line(format!("{}for {name} in {range} {{", label.unwrap_or_default()));
+            self.block_body(body);
+            self.line("}");
+        } else {
+            // The loop variable is used outside the loop too (Pascal leaves it
+            // holding the last value), so keep the variable and update it on
+            // every iteration.
+            let place = self.var_place(sym);
+            if self.first_time("for-variable") {
+                self.line(format!("// `{name}` is also used outside this loop (Pascal leaves it holding the"));
+                self.line("// last value), so the loop updates it on every pass instead of declaring");
+                self.line("// a fresh loop variable.");
+            }
+            let label = self.loops.last().cloned().flatten().and_then(|l| l.loop_label).map(|l| format!("{l}: "));
+            self.line(format!("{}for {name}_value in {range} {{", label.unwrap_or_default()));
+            self.line(format!("    {place} = {name}_value;"));
+            self.block_body(body);
+            self.line("}");
+        }
+    }
+
+    /// A `for` bound that reads through a pointer (`for i := 1 to p^.Count`)
+    /// goes into a `let` before the loop: Rust keeps whatever a `for`'s range
+    /// borrows (here `p.get()`) borrowed for the whole loop, so a body that
+    /// changes `p^` would be runtime error 204. Pascal works out the bounds
+    /// once, before the loop, too.
+    fn bound_before_loop(&mut self, bound: &Expr, code: String, fallback: &str) -> String {
+        if !contains_deref(bound) {
+            return code;
+        }
+        let name = match &bound.kind {
+            ExprKind::Field(_, field) => self.temp_name(&crate::sema::names::snake_case(&field.name)),
+            _ => self.temp_name(fallback),
+        };
+        if self.first_time("bound_before_loop") {
+            self.line("// Worked out before the loop: a `for` range reading through a pointer");
+            self.line("// would keep it borrowed for the whole loop.");
+        }
+        self.line(format!("let {name} = {code};"));
+        name
+    }
+
+    /// An index in a place that's written (`a[Pick] := ...`, `Inc(a[Pick])`,
+    /// a `var` argument) that calls a function is worked out first, into a
+    /// `let`: the function may need the array itself (as a global it
+    /// receives), which the place `a[...]` has borrowed, and Free Pascal
+    /// works out the target's index before the value too.
+    pub(super) fn hoist_target_indexes(&mut self, target: &Expr) {
+        match &target.kind {
+            ExprKind::Index(base, indexes) => {
+                self.hoist_target_indexes(base);
+                // `p.B[p.B[0]] := 9`: the place holds `p.b_mut()`'s guard,
+                // so an index reading `p` is worked out first too.
+                let guarded = self.through_byte_field(base);
+                for index in indexes {
+                    let reads_guarded = guarded && expr::mentions(index, &expr::root_key(base));
+                    if (self.has_call(index) || reads_guarded) && !self.hoisted.contains_key(&index.id) {
+                        let code = self.expr(index).0;
+                        let name = self.temp_name("index");
+                        self.pending.push(format!("let {name} = {code};"));
+                        self.hoisted.insert(index.id, name);
+                    }
+                }
+            }
+            ExprKind::Field(base, _) | ExprKind::Deref(base) => self.hoist_target_indexes(base),
+            _ => {}
+        }
+    }
+
+    /// `x := x + n` reads better as Rust's compound assignment `x += n`,
+    /// when it means the same.
+    fn compound_assignment(&mut self, target: &Expr, value: &Expr, place: &str) -> Option<String> {
+        let target_ty = self.a.type_of(target.id).clone();
+        if let ExprKind::Binary { op: op @ (BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul), lhs, rhs } = &value.kind
+            && *self.a.type_of(value.id) == target_ty
+            && *self.a.type_of(lhs.id) == target_ty
+            && !matches!(target_ty, Type::Str { .. })
+            // (`{$Q+}` checks the arithmetic: `x = x.checked_add(n)...`.)
+            && !(matches!(target_ty, Type::Int(_)) && self.overflow_checked_at(value.span))
+            && self.same_place(lhs, target)
+            // `n += f()` calls `f` before it reads `n`, but Pascal (as Free
+            // Pascal does it) reads `n` first, which matters when `f` can
+            // change `n`: when `n` is passed to it, or it's a global or outer
+            // variable the function receives. Then it stays `n = n + f(...)`,
+            // which Rust works out left to right. (For a set, `s |= f(&mut s)`
+            // wouldn't even borrow-check.)
+            // And a call can't be followed through pointers (another pointer
+            // may point to the same record), so a target through a pointer
+            // keeps the long form whenever the right side calls anything.
+            && !(self.has_call(rhs)
+                && (mentions(rhs, &root_name(target))
+                    || self.call_reaches(rhs, root_expr(target))
+                    || contains_deref(target)))
+            // `s[i] |= s[1]` borrows `s` mutably for the place before reading
+            // `s[1]` (the operator is a trait method, unlike `+=` on
+            // numbers), which the borrow checker rejects.
+            && !(matches!(target_ty, Type::Set(..)) && mentions(rhs, &root_name(target)))
+        {
+            // For sets, Pascal's `+` and `*` are Rust's `|` and `&`.
+            let set = matches!(target_ty, Type::Set(..));
+            let rust_op = match op {
+                BinaryOp::Add if set => "|=",
+                BinaryOp::Mul if set => "&=",
+                BinaryOp::Add => "+=",
+                BinaryOp::Sub => "-=",
+                _ => "*=",
+            };
+            return Some(format!("{place} {rust_op} {};", self.coerce(rhs, &target_ty).0));
+        }
+        None
+    }
+
+    pub(super) fn assignment(&mut self, target: &Expr, value: &Expr) -> String {
+        self.hoist_target_indexes(target);
+        let target_ty = self.a.type_of(target.id).clone();
+        // `TRec(Data) := r`: an untyped parameter's bytes, set from a `TRec`.
+        if let Some(bytes) = self.view_cast_guard(target) {
+            // `&(t + "z")`: the borrow is of the whole value.
+            let value = expr::paren(self.coerce(value, &target_ty), expr::prec::UNARY);
+            return match string_capacity(&target_ty) {
+                Some(cap) => format!("{bytes}.write_string(&{value}, {cap});"),
+                None => format!("{bytes}.write(&{value});"),
+            };
+        }
+        // `p.Lo := 5` for a field kept in a variant part's bytes:
+        // `p.set_lo(5)`.
+        if let ExprKind::Field(base, field) = &target.kind
+            && let Type::Record(r) = self.a.type_of(base.id).clone()
+            && let Some((f, _)) = r.byte_field(&field.name)
+        {
+            // A value that reads the same record (`p.I2.Hi := p.I2.Hi + 1`)
+            // is worked out first: the receiver may hold a guard on it.
+            let value_code = self.coerce(value, &f.ty).0;
+            let value_code = if expr::mentions(value, &expr::root_key(target)) && self.through_byte_field(base) {
+                self.pending.push(format!("let value = {value_code};"));
+                "value".to_string()
+            } else {
+                value_code
+            };
+            let saved = std::mem::replace(&mut self.mutable_place, true);
+            let receiver = self.selector_base(base);
+            self.mutable_place = saved;
+            return format!("{receiver}.set_{}({value_code});", f.rust_name);
+        }
+        // `P[i] := C` and `P^ := C` set a character through a `PChar`.
+        if let ExprKind::Index(base, _) | ExprKind::Deref(base) = &target.kind
+            && *self.a.type_of(base.id) == Type::PChar
+        {
+            let receiver = self.pchar_operand(base);
+            let index = match &target.kind {
+                ExprKind::Index(_, indexes) => self.expr(&indexes[0]).0,
+                _ => "0".to_string(),
+            };
+            return format!("{receiver}.set({index}, {});", self.coerce(value, &Type::Char).0);
+        }
+        // `RandSeed := 42` → `set_rand_seed(42);`.
+        if let Some(&sym) = self.a.refs.get(&target.id)
+            && let SymKind::RuntimeVar { set, .. } = self.a.sym(sym).kind
+        {
+            return format!("{set}({});", self.coerce(value, &target_ty).0);
+        }
+        // `p := p^.next` would borrow `p` (through `p.get()`) while assigning
+        // to it, which the borrow checker rejects. Computing the value into
+        // a temporary first ends that borrow before the assignment.
+        if borrows_while_writing(value, target) {
+            // `p^.x := p^.x + 1` can still be `p.get_mut().x += 1`: only the
+            // place reads the pointer, so there's one borrow. That needs the
+            // added part to read no pointer itself.
+            if let ExprKind::Binary { rhs, .. } = &value.kind
+                && !contains_deref(rhs)
+            {
+                let place = self.place(target);
+                if let Some(code) = self.compound_assignment(target, value, &place) {
+                    return code;
+                }
+            }
+            // `p^.n := p^.n + F`: `p^.n` is read into its own `let` first,
+            // since `F` may change the record (through another pointer) and
+            // the read's borrow would still be alive during the call.
+            if let ExprKind::Binary { lhs, rhs, .. } = &value.kind
+                && contains_deref(lhs)
+                && self.has_call(rhs)
+            {
+                let code = self.expr(lhs).0;
+                let name = self.temp_name(&value_temp_base(lhs));
+                self.pending.push(format!("let {name} = {code};"));
+                self.hoisted.insert(lhs.id, name);
+            }
+            let temp = self.temp_name(&value_temp_base(value));
+            let value_code = self.coerce(value, &target_ty).0;
+            let place = self.place(target);
+            return format!("let {temp} = {value_code};\n{}{place} = {temp};", "    ".repeat(self.indent));
+        }
+        let place = self.place(target);
+        if let Some(code) = self.compound_assignment(target, value, &place) {
+            return code;
+        }
+        let mut value_code = self.coerce(value, &target_ty).0;
+        // A `string[n]` variable silently truncates longer values in Turbo
+        // Pascal.
+        if let Type::Str { cap } = target_ty
+            && cap < 255
+        {
+            let short_literal = matches!(self.a.type_of(value.id), Type::StrLit(n) if *n <= cap as usize)
+                || *self.a.type_of(value.id) == Type::Char;
+            if !short_literal {
+                value_code = format!("{}.truncated({cap})", self.postfix(value, &target_ty));
+            }
+        }
+        format!("{place} = {value_code};")
+    }
+
+    /// Is `e` the place `place` (so `place := e + n` can be `place += n`)?
+    /// Generating `e` just to compare may make temporaries for its calls;
+    /// they're thrown away, as the code that would use them is.
+    /// Do `a` and `b` name the same place: the same variable, field,
+    /// element (with the same index variables or literals) or pointer
+    /// target? Compared in the Pascal, since the Rust differs between
+    /// reading and writing (`p.get().x`, `p.get_mut().x`).
+    fn same_place(&self, a: &Expr, b: &Expr) -> bool {
+        match (&a.kind, &b.kind) {
+            // A function named without arguments (`a[Next]`) is a call, and
+            // each call can give something else.
+            (ExprKind::Name(x), ExprKind::Name(y)) => {
+                !self.has_call(a)
+                    && x.key() == y.key()
+                    && self.a.refs.get(&a.id) == self.a.refs.get(&b.id)
+                    && self.a.self_fields.get(&a.id) == self.a.self_fields.get(&b.id)
+            }
+            (ExprKind::Int(x), ExprKind::Int(y)) => x == y,
+            (ExprKind::Str(x), ExprKind::Str(y)) => x == y,
+            // `a[i + 1]`, `a[-i]`: the same arithmetic on the same values.
+            (ExprKind::Unary { op: x_op, operand: x }, ExprKind::Unary { op: y_op, operand: y }) => {
+                x_op == y_op && self.same_place(x, y)
+            }
+            (ExprKind::Binary { op: x_op, lhs: xl, rhs: xr }, ExprKind::Binary { op: y_op, lhs: yl, rhs: yr }) => {
+                x_op == y_op && self.same_place(xl, yl) && self.same_place(xr, yr)
+            }
+            // `a[Ord(c)]`, `a[Succ(i)]`: a builtin or a cast gives the same
+            // answer for the same arguments (a user function might not).
+            (ExprKind::Call { callee: x_callee, args: x_args }, ExprKind::Call { callee: y_callee, args: y_args }) => {
+                !self.has_call(a)
+                    && self.a.refs.get(&x_callee.id) == self.a.refs.get(&y_callee.id)
+                    && x_args.len() == y_args.len()
+                    && x_args.iter().zip(y_args).all(|(x, y)| self.same_place(x, y))
+            }
+            (ExprKind::Field(a_base, a_field), ExprKind::Field(b_base, b_field)) => {
+                a_field.key() == b_field.key() && self.same_place(a_base, b_base)
+            }
+            (ExprKind::Index(a_base, a_indexes), ExprKind::Index(b_base, b_indexes)) => {
+                self.same_place(a_base, b_base)
+                    && a_indexes.len() == b_indexes.len()
+                    && a_indexes.iter().zip(b_indexes).all(|(x, y)| self.same_place(x, y))
+            }
+            (ExprKind::Deref(x), ExprKind::Deref(y)) => self.same_place(x, y),
+            _ => false,
+        }
+    }
+
+    /// The Rust place expression for writing variable `sym` in the current
+    /// function: `x` for a variable it owns, `*x` for one it holds by
+    /// reference.
+    fn var_place(&self, sym: SymId) -> String {
+        let name = self.a.var_name(self.proc, sym);
+        match self.a.access(self.proc, sym) {
+            Access::Direct => name.to_string(),
+            Access::Reference => format!("*{name}"),
+        }
+    }
+
+    /// The initial value of a typed constant: `PArray::new([1, 2, 3])`,
+    /// `Point { x: 1, y: 2, ..Default::default() }` or a plain expression.
+    fn const_init(&mut self, value: &ConstValue, ty: &Type) -> String {
+        match (value, ty) {
+            (ConstValue::Expr(e), _) => self.coerce(e, ty).0,
+            (ConstValue::List(items, _), Type::Array(a)) => {
+                let items: Vec<String> = items.iter().map(|item| self.const_init(item, &a.elem)).collect();
+                format!("PArray::new([{}])", items.join(", "))
+            }
+            (ConstValue::Record(fields, _), Type::Record(r)) => {
+                let mut parts = Vec::new();
+                // Fields kept in a variant part's bytes are set through
+                // their setters, in a block: `{ let mut value = ...;
+                // value.set_l(5); value }`.
+                let mut setters = Vec::new();
+                for (name, value) in fields {
+                    let field = r.field(&name.name).expect("sema checked the field names");
+                    let init = self.const_init(value, &field.ty);
+                    if r.byte_field(&name.name).is_some() {
+                        setters.push(format!("value.set_{}({init});", field.rust_name));
+                    } else {
+                        parts.push(format!("{}: {init}", field.rust_name));
+                    }
+                }
+                if !setters.is_empty() {
+                    parts.push("..Default::default()".to_string());
+                    return format!(
+                        "{{ let mut value = {} {{ {} }}; {} value }}",
+                        r.rust_name,
+                        parts.join(", "),
+                        setters.join(" ")
+                    );
+                }
+                if parts.len() < r.struct_fields().len() {
+                    // Struct update syntax: take the remaining fields from
+                    // the default value.
+                    parts.push("..Default::default()".to_string());
+                }
+                format!("{} {{ {} }}", r.rust_name, parts.join(", "))
+            }
+            _ => unreachable!("sema checked the initializer's shape"),
+        }
+    }
+}
+
+/// The notes about `case` labels that repeat earlier ones (TP allows it, and
+/// the first one wins), taking the labels.
+fn label_notes(dropped: &mut Vec<String>, trimmed: &mut Vec<String>) -> Vec<String> {
+    let mut notes = Vec::new();
+    if !dropped.is_empty() {
+        notes.push(format!("// {} appeared before; the first one wins.", std::mem::take(dropped).join(", ")));
+    }
+    if !trimmed.is_empty() {
+        notes.push(format!(
+            "// {} overlapped a label before; the first one wins, so only the rest is here.",
+            std::mem::take(trimmed).join(", ")
+        ));
+    }
+    notes
+}
+
+/// The values a `case`'s labels cover so far, as sorted, separate ranges.
+/// (Ranges, not every value: `1..1000000000:` is a fine label.)
+#[derive(Default)]
+struct Covered {
+    ranges: Vec<(i64, i64)>,
+}
+
+impl Covered {
+    /// Is every value in `lo..=hi` already covered?
+    fn covers(&self, lo: i64, hi: i64) -> bool {
+        self.ranges.iter().any(|&(start, end)| start <= lo && hi <= end)
+    }
+
+    /// The parts of `lo..=hi` not covered yet.
+    fn uncovered(&self, lo: i64, hi: i64) -> Vec<(i64, i64)> {
+        let mut pieces = Vec::new();
+        let mut next = lo;
+        for &(start, end) in &self.ranges {
+            if end < next || start > hi {
+                continue;
+            }
+            if start > next {
+                pieces.push((next, start - 1));
+            }
+            next = end.saturating_add(1);
+        }
+        if next <= hi {
+            pieces.push((next, hi));
+        }
+        pieces
+    }
+
+    fn add(&mut self, lo: i64, hi: i64) {
+        self.ranges.push((lo, hi));
+        self.ranges.sort();
+        // Merge ranges that overlap or touch (`1..3` and `4..6`).
+        let mut merged: Vec<(i64, i64)> = Vec::new();
+        for &(start, end) in &self.ranges {
+            match merged.last_mut() {
+                Some(last) if start <= last.1.saturating_add(1) => last.1 = last.1.max(end),
+                _ => merged.push((start, end)),
+            }
+        }
+        self.ranges = merged;
+    }
+}
+
+/// A field in `file_record!`: a `string[n]` (or an array of them) says its
+/// capacity, so it takes n+1 bytes in the file, and a set smaller than 32
+/// bytes says its size, as in TP (and as `SizeOf` says).
+fn file_record_field(field: &crate::sema::types::Field) -> String {
+    if let Some(cap) = string_capacity(&field.ty) {
+        return format!("{}: string {cap}", field.rust_name);
+    }
+    match size_hint(&field.ty) {
+        Some((bytes, 0)) => format!("{}: set {bytes}", field.rust_name),
+        Some((bytes, first)) => format!("{}: set {bytes} from {first}", field.rust_name),
+        None => field.rust_name.clone(),
+    }
+}
+
+/// The size a type gives the strings or small sets in it that their Rust
+/// types don't say (`FileRecord::encode_sized`): a `string[n]`'s n, or a
+/// set's bytes when it keeps fewer than 32, and the first of them in the
+/// bitmap (0 for a string); also for an array of them. `None` when the
+/// default encoding is right.
+pub(super) fn size_hint(ty: &Type) -> Option<(usize, usize)> {
+    match ty {
+        Type::Str { cap } if *cap < 255 => Some((usize::from(*cap), 0)),
+        Type::Set(..) => {
+            let (first, bytes) = crate::sema::types::set_bytes(ty);
+            (bytes < 32).then_some((bytes, first))
+        }
+        Type::Array(a) => size_hint(&a.elem),
+        _ => None,
+    }
+}
+
+/// The capacity of a `string[n]`, or of the strings in an array of them,
+/// which their bytes depend on.
+pub(super) fn string_capacity(ty: &Type) -> Option<u8> {
+    match ty {
+        Type::Str { cap } => Some(*cap),
+        Type::Array(a) => string_capacity(&a.elem),
+        _ => None,
+    }
+}
+
+/// Does the expression dereference a pointer anywhere?
+pub(super) fn contains_deref(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Deref(_) => true,
+        ExprKind::Field(base, _) => contains_deref(base),
+        ExprKind::Index(base, indexes) => contains_deref(base) || indexes.iter().any(contains_deref),
+        ExprKind::Unary { operand, .. } => contains_deref(operand),
+        ExprKind::Binary { lhs, rhs, .. } => contains_deref(lhs) || contains_deref(rhs),
+        ExprKind::Call { args, .. } => args.iter().any(contains_deref),
+        // `Str(p^.v:2, s)`.
+        ExprKind::Format { value, width, decimals } => {
+            contains_deref(value) || contains_deref(width) || decimals.as_deref().is_some_and(contains_deref)
+        }
+        _ => false,
+    }
+}
+
+/// Does `e` use the variable `name` (lowercase) anywhere?
+fn mentions(e: &Expr, name: &str) -> bool {
+    let item = |elem: &SetElem| match elem {
+        SetElem::Single(x) => mentions(x, name),
+        SetElem::Range(lo, hi) => mentions(lo, name) || mentions(hi, name),
+    };
+    match &e.kind {
+        ExprKind::Name(id) => id.key() == name,
+        ExprKind::Field(base, _) | ExprKind::Deref(base) => mentions(base, name),
+        ExprKind::Index(base, indexes) => mentions(base, name) || indexes.iter().any(|i| mentions(i, name)),
+        ExprKind::Unary { operand, .. } => mentions(operand, name),
+        ExprKind::Binary { lhs, rhs, .. } => mentions(lhs, name) || mentions(rhs, name),
+        ExprKind::Call { args, .. } => args.iter().any(|a| mentions(a, name)),
+        ExprKind::Set(elems) => elems.iter().any(item),
+        _ => false,
+    }
+}
+
+/// The variable names (lowercase) at the root of each pointer dereference.
+fn deref_roots(e: &Expr) -> Vec<String> {
+    let mut roots = Vec::new();
+    fn walk(e: &Expr, roots: &mut Vec<String>) {
+        match &e.kind {
+            ExprKind::Deref(base) => {
+                roots.push(root_name(base));
+                walk(base, roots);
+            }
+            ExprKind::Field(base, _) => walk(base, roots),
+            ExprKind::Index(base, indexes) => {
+                walk(base, roots);
+                indexes.iter().for_each(|i| walk(i, roots));
+            }
+            ExprKind::Unary { operand, .. } => walk(operand, roots),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                walk(lhs, roots);
+                walk(rhs, roots);
+            }
+            ExprKind::Call { args, .. } => args.iter().for_each(|a| walk(a, roots)),
+            ExprKind::Format { value, width, decimals } => {
+                walk(value, roots);
+                walk(width, roots);
+                decimals.iter().for_each(|d| walk(d, roots));
+            }
+            _ => {}
+        }
+    }
+    walk(e, &mut roots);
+    roots
+}
+
+/// The name of the variable a place expression starts from.
+/// The variable at the root of a place: `a` in `a[i].x`.
+pub(super) fn root_expr(e: &Expr) -> &Expr {
+    match &e.kind {
+        ExprKind::Field(base, _) | ExprKind::Index(base, _) | ExprKind::Deref(base) => root_expr(base),
+        _ => e,
+    }
+}
+
+/// True if reading `value` borrows a heap record (or the pointer) that
+/// writing `target` borrows too: `p := p^.next`, `p^.name := p^.name + 'x'`.
+/// Then the value is worked out into a `let` first.
+pub(super) fn borrows_while_writing(value: &Expr, target: &Expr) -> bool {
+    contains_deref(value) && (contains_deref(target) || deref_roots(value).contains(&root_name(target)))
+}
+
+/// A label's Rust name: `'done` for `Done`, `'label_10` for `10`.
+fn goto_label(name: &str) -> String {
+    if name.starts_with(|c: char| c.is_ascii_digit()) {
+        format!("'label_{name}")
+    } else {
+        format!("'{}", crate::sema::names::snake_case(name))
+    }
+}
+
+fn root_name(e: &Expr) -> String {
+    match &e.kind {
+        ExprKind::Name(id) => id.key(),
+        ExprKind::Field(base, _) | ExprKind::Index(base, _) | ExprKind::Deref(base) => root_name(base),
+        _ => String::new(),
+    }
+}
+
+/// A name for a hoisted temporary: the last field name (`next` for
+/// `p^.next`), or `value`.
+pub(super) fn value_temp_base(e: &Expr) -> String {
+    match &e.kind {
+        ExprKind::Field(_, field) => crate::sema::names::snake_case(&field.name),
+        _ => "value".to_string(),
+    }
+}
+
+/// The value a Pascal variable of type `ty` starts with. Turbo Pascal
+/// leaves local variables uninitialized (whatever was on the stack); Rust
+/// insists on initialization, and zero is the safe choice.
+fn default_value(ty: &Type) -> String {
+    match ty {
+        Type::Int(_) | Type::IntLit(_) | Type::Char => "0".to_string(),
+        Type::Real(_) => "0.0".to_string(),
+        Type::Bool => "false".to_string(),
+        Type::Str { .. } | Type::StrLit(_) => "PString::new()".to_string(),
+        // An enum starts at its first value, which is what Pascal's
+        // zero-filled memory would hold too.
+        Type::Enum(e) => format!("{}::{}", e.rust_name, e.variants[0]),
+        Type::Array(a) if a.alias.is_none() => "PArray::default()".to_string(),
+        Type::Array(_) | Type::Record(_) | Type::Object(_) => format!("{}::default()", ty.rust()),
+        Type::Pointer(_) => "Ptr::nil()".to_string(),
+        Type::AnyPointer => "AnyPtr::nil()".to_string(),
+        Type::PChar => "PChar::nil()".to_string(),
+        Type::Proc(_) => format!("{}::nil()", ty.rust()),
+        Type::Text => "PText::default()".to_string(),
+        Type::File(elem) if **elem == Type::Untyped => "PBlockFile::default()".to_string(),
+        // `file of string[10]`: its records take 11 bytes, which the
+        // `PString` type alone doesn't say.
+        Type::File(elem) => match size_hint(elem) {
+            Some((size, 0)) => format!("PFile::sized({size})"),
+            Some((size, first)) => format!("PFile::sized_from({size}, {first})"),
+            None => "PFile::default()".to_string(),
+        },
+        Type::TypeInfo => "\"\"".to_string(),
+        Type::Set(..) => "PSet::new()".to_string(),
+        Type::Nil | Type::Untyped | Type::Void | Type::Error => "()".to_string(),
+    }
+}
+
+fn value_is_ascii(value: &crate::sema::ConstVal) -> bool {
+    match value {
+        crate::sema::ConstVal::Str(s) => s.iter().all(|&b| b.is_ascii()),
+        _ => true,
+    }
+}
+
+/// The trait of an object in a hierarchy with virtual methods: `TShapeMethods`.
+pub(super) fn trait_name(object: &ObjectType) -> String {
+    format!("{}Methods", object.rust_name)
+}
+
+/// The trait method that reaches an object's part of `self`: `t_shape`.
+pub(super) fn accessor(object: &ObjectType) -> String {
+    crate::sema::names::snake_case(&object.rust_name)
+}
+
+/// An object's name without TP's customary `T` prefix: `Circle` for `TCircle`.
+fn variant_name(object: &ObjectType) -> String {
+    let name = &object.rust_name;
+    match name.strip_prefix('T') {
+        Some(rest) if rest.starts_with(|c: char| c.is_ascii_uppercase()) => rest.to_string(),
+        _ => name.clone(),
+    }
+}
+
+/// The enum every pointer into the hierarchy rooted at `root` points to:
+/// `AnyShape` for `TShape`.
+pub(super) fn enum_name(root: &ObjectType) -> String {
+    format!("Any{}", variant_name(root))
+}
+
+/// Is this Rust code just a number or a byte literal (`4`, `-1`, `b'a'`)?
+fn is_literal(code: &str) -> bool {
+    code.parse::<i64>().is_ok() || code.starts_with("b'") && code.ends_with('\'')
+}

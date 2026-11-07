@@ -1,7 +1,7 @@
 program GraphPolygons;
 { DrawPoly and FillPoly with arrays of PointType, GetArcCoords, and the
   Get*Settings records, checked with GetPixel (the tests run with
-  PASCRUST_GRAPH=headless). Self-checking: Free Pascal's Graph unit needs
+  RUSCAL_GRAPH=headless). Self-checking: Free Pascal's Graph unit needs
   a real screen, so this .out is built from the checks, by hand. }
 uses Graph;
 type

@@ -1,4 +1,4 @@
-# PascRust TODO
+# Ruscal TODO
 
 Plan written by Fable (the architect pass). Opus takes over from here. The
 core decisions live in `docs/architecture.md`; the language tiers in
@@ -16,37 +16,37 @@ planned. The goal is to get to done.
 Claude can't watch a window, press keys in a real terminal, or run the real
 Turbo Pascal. These need you; tell Claude what you find, and it fixes it.
 
-- [x] Play each interactive example by hand with `cargo run -p pascrust -- run <file>` and note anything that looks or behaves differently from how you remember it:
+- [x] Play each interactive example by hand with `cargo run -p ruscal -- run <file>` and note anything that looks or behaves differently from how you remember it:
   - [x] Text mode (Crt). Done: `database/filesys.pas` (the user, 2026-11-06: "working"), `airport/airport4.pas` (the user, 2026-11-06: "works fine"), `blkjack.pas` (the user, 2026-11-05: "It's great!"), `life.pas` ("Life works"), `gmscode.pas` ("works"), `paper.pas` ("works :)"), `magic_square.pas` (works), `menu.pas` ("menu works", with its games built into `A:\SHANNON` as the README's Examples section shows).
   - [x] Graphics (a window opens). Done: `clock/` (the user, 2026-11-06: "works"), a whole game of `tictac/` against the computer ("tictac works").
-  - [x] PascRust's own examples in `examples/pascrust/`. Done: `rust_calls_pascal/` (the user, 2026-11-06: works, but what it does wasn't clear; the README says now), `calls_rust.pas` (the user, 2026-11-06: "works"), `turtles.pas` (the user, 2026-11-06: "works. Nice job!").
+  - [x] Ruscal's own examples in `examples/ruscal/`. Done: `rust_calls_pascal/` (the user, 2026-11-06: works, but what it does wasn't clear; the README says now), `calls_rust.pas` (the user, 2026-11-06: "works"), `turtles.pas` (the user, 2026-11-06: "works. Nice job!").
 - [ ] Read README.md and docs/ as a newcomer would, and say what's confusing or missing.
 - [ ] Decide whether to do the `SizeOf` plan (you asked, 2026-11-06, and left it for later; Fable reviewed it the same day). Today `SizeOf(r)` is a bare number in the Rust (`13`), and constant folding flattens it further (`K = SizeOf(Rec) * 3` is `const K: i16 = 39`), so someone who keeps editing the Rust can't tell where it came from or update it. The first idea, a `TP_SIZE_OF` constant on the runtime's `FileRecord` trait summed by the `file_record!` macro, doesn't work: only records stored in files get `file_record!`; the macro sees field names, not their types or array lengths, so it can't add them up; and `Text`/file fields, the runtime's unit records (`DateTime`, `Registers`) and some variant records can't implement the trait at all. The revised plan (Fable's): codegen gives each record or object that `SizeOf` is used on an inherent constant built from sema's `tp_size`, one term per field: `impl Rec { pub const TP_SIZE_OF: usize = 2 + tp_string_size(10) + 3 * Point::TP_SIZE_OF; }` (an object adds its parent's and the VMT's 2 bytes). `SizeOf(r)` is `Rec::TP_SIZE_OF` (cast where an Integer is wanted), kept through constant folding the way `High(a)` and named constants are, so it works in array bounds (`{ Rec::TP_SIZE_OF * 2 }`) and constants too. Strings use a runtime `const fn tp_string_size(capacity)`: `SizeOf(fooBar)` for a `string[10]` is `tp_string_size(10)`, or `tp_string_size(NAME_LEN)` (a Rust type alias wouldn't help: it's the same type as `PString`). Basic types stay numbers (`SizeOf(Integer)` is `2`), as do small sets, file types and the runtime's unit records. `FileRecord::record_size()` and typed files' `record_size(&self)` stay as they are: they're right for `file of array[1..2] of string[5]`, which a "hint, else the constant" rule would get wrong. About 250-350 lines; the sizes it must match are right now (the VMT field and >256-value enums are fixed).
-- [x] An object with a constructor, destructor or virtual method takes 2 more bytes, TP's VMT field (you decided, 2026-11-07: be as accurate to TP's file format as possible). The TP 7 Language Guide and Free Pascal agree: the field follows the fields of the first type in the line with a constructor, destructor or virtual method, and descendants' fields come after it. `SizeOf` and `file of` count it (PascRust writes zeros there and reads past it); `to-json` now reads such objects, and `from-json` refuses them, since it can't know the address TP stored. The database example's files hold only records, so they were never affected.
+- [x] An object with a constructor, destructor or virtual method takes 2 more bytes, TP's VMT field (you decided, 2026-11-07: be as accurate to TP's file format as possible). The TP 7 Language Guide and Free Pascal agree: the field follows the fields of the first type in the line with a constructor, destructor or virtual method, and descendants' fields come after it. `SizeOf` and `file of` count it (Ruscal writes zeros there and reads past it); `to-json` now reads such objects, and `from-json` refuses them, since it can't know the address TP stored. The database example's files hold only records, so they were never affected.
 
-- [ ] Rename the project "Ruscal" per Julie's suggestion. Julie's artwork for it: https://chatgpt.com/s/m_6aeea40a95dc8191bdc0e0822d186814
-- [ ] Announce PascRust to the Pascal community (the user, 2026-11-06: theirs to do): find which Pascal compiler projects are still alive (Free Pascal, Lazarus, and others), their mailing lists or forums and what each allows for announcements, and send a short announcement to each (what PascRust is, that it's MIT, a link to the repository). Claude can help draft them if asked.
+- [x] Rename the project "Ruscal" per Julie's suggestion (done 2026-11-07: the repository, crates, command, environment variables (`RUSCAL_*`) and docs). Julie's artwork for it, at the top of the README: https://chatgpt.com/s/m_6aeea40a95dc8191bdc0e0822d186814
+- [ ] Announce Ruscal to the Pascal community (the user, 2026-11-06: theirs to do): find which Pascal compiler projects are still alive (Free Pascal, Lazarus, and others), their mailing lists or forums and what each allows for announcements, and send a short announcement to each (what Ruscal is, that it's MIT, a link to the repository). Claude can help draft them if asked.
 
 ## Check with a real Turbo Pascal
 
 Free Pascal (`fpc -Mtp`) gives most expected outputs, but it works in 32 or
 64 bits, pads records, and differs from TP 7 in some corners. If you still
 have Turbo Pascal 7 (in DOSBox, say), these settle what it can't. Tell
-Claude what TP does, and it makes PascRust match.
+Claude what TP does, and it makes Ruscal match.
 
-- [ ] `w + 1` with `w: Word = 65535`: 0 (PascRust) or 65536?
-- [ ] With `{$Q+}`, is `Inc(b)` at 255 for a Byte (or `w + 1` at 65535 for a Word) error 215, as PascRust says, or 0? (TP's `INTO` tests the signed overflow flag, so it may only catch `Inc(b)` at 127, says Fable.)
+- [ ] `w + 1` with `w: Word = 65535`: 0 (Ruscal) or 65536?
+- [ ] With `{$Q+}`, is `Inc(b)` at 255 for a Byte (or `w + 1` at 65535 for a Word) error 215, as Ruscal says, or 0? (TP's `INTO` tests the signed overflow flag, so it may only catch `Inc(b)` at 127, says Fable.)
 - [ ] `s := s + Bump` where the function `Bump` changes `s`: which runs first?
-- [ ] `type Small = 0..10; const X = Small(300);`: an error, or 44 (PascRust)?
+- [ ] `type Small = 0..10; const X = Small(300);`: an error, or 44 (Ruscal)?
 - [ ] Graph: does `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners?
-- [ ] `SizeOf` of a subrange of an enum of more than 256 values (`V10..V20`): PascRust says 2 (the host enum's), FPC -Mtp says 1 (the bounds fit a byte). What TP 7 does is unknown; it matters for such a field in a typed file.
+- [ ] `SizeOf` of a subrange of an enum of more than 256 values (`V10..V20`): Ruscal says 2 (the host enum's), FPC -Mtp says 1 (the bounds fit a byte). What TP 7 does is unknown; it matters for such a field in a typed file.
 - [ ] `const W = Word(-1)`, then `i := W` (an Integer) is a compile error, "the constant 65535 is out of range for Integer" (also `i := K - W`). Free Pascal accepts it (-1). What did TP 7 do?
-- [ ] An object with a constructor but no virtual methods: does TP 7 give it the 2-byte VMT field (`SizeOf` 6, not 4, for X, Y: Integer and `constructor Init`)? PascRust does, as Free Pascal does and the TP 7 Language Guide says as far as Claude remembers it (it couldn't read the Guide to check).
+- [ ] An object with a constructor but no virtual methods: does TP 7 give it the 2-byte VMT field (`SizeOf` 6, not 4, for X, Y: Integer and `constructor Init`)? Ruscal does, as Free Pascal does and the TP 7 Language Guide says as far as Claude remembers it (it couldn't read the Guide to check).
 
 ## Original TODOs
 
 - [x] Figure out a name:
-  - [x] PascRust
+  - [x] PascRust (renamed Ruscal, 2026-11-07, as Julie suggested)
 - [x] Write a TODO.md file.
 - [x] Have Fable fill out the TODO.md with the plan and make the core architectural decisions.
 - [x] Opus can then read the plan and fill in the details.
@@ -70,7 +70,7 @@ Claude what TP does, and it makes PascRust match.
 - [x] Start building a battery of tests to verify we're compiling it correctly:
   - [x] Are there existing tests in other open source projects that we can use for inspiration? (Free Pascal `tests/`, p2c `examples/`, Pascal Validation Suite; `notes/p2c.md` §3-4.)
   - [x] There should be tests that test what Pascal constructs translate into what Rust constructs. (`tests/translate`, snapshotted.)
-- [x] How do we build at least a small standard library, including things like printing to stdout? (`crates/pascrust_runtime`.)
+- [x] How do we build at least a small standard library, including things like printing to stdout? (`crates/ruscal_runtime`.)
   - [x] There should be tests that compile Pascal to Rust and then run the Rust to generate expected output. (`tests/run`, expected output from `fpc -Mtp`.)
 - [x] Is there an official standard library for Pascal or Turbo Pascal that has an interface that we can match? (The TP `System` unit plus `Crt`/`Dos`/`Graph`; list in `notes/p2c.md` §5.)
 - [x] If possible, copy all the code in ~/Dropbox/programming/turbo_pascal to an examples directory and get them working.
@@ -80,15 +80,15 @@ Claude what TP does, and it makes PascRust match.
 ## Phase 0: Scaffolding (half a day)
 
 - [x] Review `notes/open_questions.md` with the user; record answers at the top of that file.
-- [x] Create the Cargo workspace: `crates/pascrust` (bin + lib) and `crates/pascrust_runtime` (lib with features `crt`, `dos`, `graph`). Edition 2024.
+- [x] Create the Cargo workspace: `crates/ruscal` (bin + lib) and `crates/ruscal_runtime` (lib with features `crt`, `dos`, `graph`). Edition 2024.
 - [x] Write `CLAUDE.md`: project goals, the "intermediate Rust with teaching comments" style rule, where decisions live, how to run tests, the rule that every new Pascal construct needs a translate test and a run test.
 - [x] Add `.gitignore` entries for `out/` and `target/`; add `rustfmt.toml`; add a GitHub Actions workflow (fmt, clippy, test).
 - [x] Add `tests/README.md` describing the three test layers from `docs/architecture.md` §21.
-- [x] `pascrust --help` prints usage; `pascrust emit`, `build`, `run` subcommands stubbed with `clap`.
+- [x] `ruscal --help` prints usage; `ruscal emit`, `build`, `run` subcommands stubbed with `clap`.
 
 ## Phase 1: Hello world end to end (first thing that runs)
 
-Goal: `pascrust run tests/run/hello.pas` prints `Hello, world!` by going
+Goal: `ruscal run tests/run/hello.pas` prints `Hello, world!` by going
 lexer → parser → AST → sema → codegen → Cargo project → `cargo run`.
 
 - [x] `token.rs`: token enum (keywords, identifiers, integer/real/string/char literals, operators, punctuation) with `Span`.
@@ -98,8 +98,8 @@ lexer → parser → AST → sema → codegen → Cargo project → `cargo run`.
 - [x] `parser/`: recursive descent for `program`, `const`/`var` sections, `begin ... end`, procedure calls with arguments, string and integer literals, `writeln`. Error type with Pascal file:line:col.
   - [x] `insta` snapshot tests of the AST for hello world and a few malformed inputs (error messages).
 - [x] `sema/` skeleton: symbol table with case-insensitive lookup, builtin `writeln`, types `Integer`/`String`; annotates the AST with types.
-- [x] `codegen/`: indenting writer; emits `use pascrust_runtime::prelude::*;`, `fn pascal_main()`, `fn main() { pascrust_runtime::run(pascal_main) }`, `pwriteln!(...)`.
-- [x] `pascrust_runtime`: `prelude`, `run()` (plain version: call the closure, map panics to exit code 1 for now), `pwrite!`/`pwriteln!` macros over a `PasWrite` trait implemented for `&str`, integers, `f64`, `bool`, `u8`.
+- [x] `codegen/`: indenting writer; emits `use ruscal_runtime::prelude::*;`, `fn pascal_main()`, `fn main() { ruscal_runtime::run(pascal_main) }`, `pwriteln!(...)`.
+- [x] `ruscal_runtime`: `prelude`, `run()` (plain version: call the closure, map panics to exit code 1 for now), `pwrite!`/`pwriteln!` macros over a `PasWrite` trait implemented for `&str`, integers, `f64`, `bool`, `u8`.
 - [x] `driver.rs`: writes `out/<name>/Cargo.toml` (path dependency on the runtime, `overflow-checks = false`) and `src/main.rs`; runs `rustfmt` if present; `build`/`run` shell out to `cargo`.
 - [x] Test harness v1: `tests/run_tests.rs` finds `tests/run/*.pas`, transpiles each, builds, runs with `*.in` as stdin, diffs against `*.out`. Build all test programs into one scratch workspace so a single `cargo build` covers them.
 - [x] Translate test harness v1: `tests/translate_tests.rs` snapshots the generated Rust for `tests/translate/*.pas` with `insta`.
@@ -157,7 +157,7 @@ chosen so each step is testable with the previous ones.
 - [x] Route all `write` output through the runtime (raw-mode `\r\n`, CP437).
   - [x] PUNT: `Window` clipping and scrolling of output (currently `Window` only affects `ClrScr`/`GotoXY`/`WhereX`).
 - [x] CP437 → Unicode output mapping; reverse mapping on input.
-- [x] Plain mode when stdout is not a TTY or `PASCRUST_TERM=plain`: cursor ops are no-ops, `ReadKey` reads stdin bytes, `Delay` honours `PASCRUST_FAST`.
+- [x] Plain mode when stdout is not a TTY or `RUSCAL_TERM=plain`: cursor ops are no-ops, `ReadKey` reads stdin bytes, `Delay` honours `RUSCAL_FAST`.
 - [x] Scripted-input run tests: in plain mode `ReadKey` reads the test's `.in` file; compare stdout (`tests/run/crt_plain.pas`).
 - [x] Get working, one at a time, fixing transpiler bugs as found: `gmscode.pas`, `paper.pas`, `magic_square.pas`, `life.pas`, `blkjack.pas`, `menu.pas` (needs `Dos.Exec`, which may fail gracefully), `airport/` (four units). All transpile and build warning-free; `magic_square`, `paper`, `airport4` and `database/filesys` verified with scripted sessions.
   - [x] PUNT: Turn those scripted sessions into run tests (`examples/` acceptance tests in CI).
@@ -172,7 +172,7 @@ chosen so each step is testable with the previous ones.
 - [x] README: an "Inspiration" section.
 - [x] BGI graphics (Phase 5 below). `clock/` and `tictac/` run. The clock's hands go round anticlockwise on purpose: it's a playful backwards clock.
 - [x] Consistent identifier casing in the examples.
-- [x] Consistent spacing in the examples: `pascrust fmt` (`crates/pascrust/src/fmt/`), a re-indenter that reuses the lexer; the examples are kept formatted by `tests/fmt_tests.rs`. Prototyped in Python, then ported.
+- [x] Consistent spacing in the examples: `ruscal fmt` (`crates/ruscal/src/fmt/`), a re-indenter that reuses the lexer; the examples are kept formatted by `tests/fmt_tests.rs`. Prototyped in Python, then ported.
 - [x] DOS and UNIX line endings both work: source, standard input and text files (`tests/run/crlf.pas`, stored with CRLF; see `.gitattributes`), and `fmt`.
 - [x] Code review by Fable (two reviewers: transpiler; runtime and `fmt`). Fixed: `Continue` in `repeat` skipped the `until` test; hoisted temporaries could collide or shadow variables; scoped `for` loops with literal bounds became `i32`; `-b` on `Byte`/`Word`; big subranges; `Ord`/`Abs` in constants; `Write` of an enum; `Boolean(n)`; `^Name` resolved too early; `shr` was arithmetic; `Read` into `string[n]`; directives silently ignored (now warnings, includes an error); pointer comparisons cloned; `get_mut` on every `^` in a path; `if` temporaries in a block; Crt left the terminal raw after a normal end or runtime error; `Val` crashed on non-ASCII; reals rounded ties to even and `Inf` crashed; Graph-only programs built with warnings; `fmt` and numeric labels; `Eof` at an unterminated last line; doc drift. Still open from the review:
   - [x] `var p: ^T;` with a one-letter type name lexed as the control character `^T`. Now, as in Free Pascal, `^` is the pointer symbol wherever a type can appear (`type` and `var` sections, a typed constant's type); the lexer tracks which section it is in. Like FPC, `set of ^A..^Z` in a `type` section is then a pointer, not characters.
@@ -187,17 +187,17 @@ chosen so each step is testable with the previous ones.
   - [x] `LastMode` (done with the Crt variables).
   - [x] `Val` corner cases: a number that doesn't fit wraps with code 0, as in Free Pascal (TP left it undefined); a minus sign is an error for a Byte or Word; after an error the variable is 0.
   - [x] PUNT: Graph: should `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners in the real BGI? `FExpand` ignores `ChDir`.
-  - [x] `i16::MIN div -1` panicked (runtime error 255). TP doesn't wrap: its 16-bit divide traps, which it reported as runtime error 200, and so does PascRust now.
+  - [x] `i16::MIN div -1` panicked (runtime error 255). TP doesn't wrap: its 16-bit divide traps, which it reported as runtime error 200, and so does Ruscal now.
   - Not changed: `Round(2.5)` is 3. The reviewer suggested ties-to-even to match Free Pascal, but Turbo Pascal's documentation says halves round away from zero. `Eof` on a text file being written stays runtime error 104, as in Free Pascal (the reviewer thought TP returns True).
 
 ## Requests from the user, 2026-10-28
 
-- [x] PUNT: Evaluation order where a function has side effects (the user: follow Free Pascal). Done: `Write(F, G)` writes F before running G; `n := n + Bump` reads `n` first. Not yet, and worth asking whether to chase: on aarch64 Free Pascal calls the function first for reals, strings and sets (`t := t + Ext` where `Ext` changes `t` gives `ayz`, PascRust `az`), and works out an assignment's target index before the right side (now done: such an index goes into a `let` first). These are Free Pascal code-generator details, and may differ on x86.
-- [x] Rename the project to "PascRust" wherever a friendly name fits: the README, the other docs, `Cargo.toml` descriptions, the GitHub repo description, CLI help text and messages, comments and generated-code headers. The directory, the crates, the binary (`pascrust`), the repo name and other identifiers stay `pascrust`.
+- [x] PUNT: Evaluation order where a function has side effects (the user: follow Free Pascal). Done: `Write(F, G)` writes F before running G; `n := n + Bump` reads `n` first. Not yet, and worth asking whether to chase: on aarch64 Free Pascal calls the function first for reals, strings and sets (`t := t + Ext` where `Ext` changes `t` gives `ayz`, Ruscal `az`), and works out an assignment's target index before the right side (now done: such an index goes into a `let` first). These are Free Pascal code-generator details, and may differ on x86.
+- [x] Rename the project to "PascRust" wherever a friendly name fits: the README, the other docs, `Cargo.toml` descriptions, the GitHub repo description, CLI help text and messages, comments and generated-code headers. The directory, the crates, the binary (`pascrust`), the repo name and other identifiers stay `pascrust`. (Later renamed Ruscal, 2026-11-07.)
 
 ## Requests from the user, 2026-11-03
 
-- [x] A Rust project that embeds Pascal code: how does its `cargo build` know to run PascRust on the Pascal? Done: `pascrust::build::library` in its `build.rs` and `pascrust_runtime::include_library!` (`examples/pascrust/rust_calls_pascal`, docs/embedding.md). (The user's question.) Likely answer: a `build.rs` build script, with PascRust as a build dependency, that translates the unit into Cargo's `OUT_DIR` (`cargo:rerun-if-changed=unit.pas` so a change in the Pascal is noticed) and an `include!` of it; a helper such as `pascrust::build::library("unit.pas")` would make that `build.rs` two lines. Document it in docs/embedding.md, and test it with the BSTUnit host.
+- [x] A Rust project that embeds Pascal code: how does its `cargo build` know to run Ruscal on the Pascal? Done: `ruscal::build::library` in its `build.rs` and `ruscal_runtime::include_library!` (`examples/ruscal/rust_calls_pascal`, docs/embedding.md). (The user's question.) Likely answer: a `build.rs` build script, with Ruscal as a build dependency, that translates the unit into Cargo's `OUT_DIR` (`cargo:rerun-if-changed=unit.pas` so a change in the Pascal is noticed) and an `include!` of it; a helper such as `ruscal::build::library("unit.pas")` would make that `build.rs` two lines. Document it in docs/embedding.md, and test it with the BSTUnit host.
 
 - [x] Overflow (decided with the user, 2026-11-04): integer arithmetic keeps wrapping, as TP's default `{$Q-}` did; forbidding it would break correct programs (hashes, checksums, random number generators, `Byte` sums TP cut to fit). A library gets wrap-around only if the Rust program turns overflow checks off, so the docs give the `Cargo.toml` line and the runtime warns once when checks are on (part of the `build.rs` plan, `notes/build_rs.md`).
 - [x] `{$Q+}` turns integer overflow into runtime error 215, as in TP: checked arithmetic in the regions it covers (the user, 2026-11-05: "if it isn't too hard").
@@ -206,17 +206,17 @@ chosen so each step is testable with the previous ones.
 
 In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffea..HEAD`:
 
-- [x] PUNT: PascRust's own units, named with a `PR` prefix (`PRJson`, `PRTurtle`), as Turbo Pascal's types start with `T`. The user's choice (2026-11-02): the units are `PR...`, and their types follow TP's own convention inside them (`TJsonValue`, `PJsonValue = ^TJsonValue`), as `Dos`'s `SearchRec` does.
+- [x] PUNT: Ruscal's own units, named with a `PR` prefix (`PRJson`, `PRTurtle`), as Turbo Pascal's types start with `T`. The user's choice (2026-11-02): the units are `PR...`, and their types follow TP's own convention inside them (`TJsonValue`, `PJsonValue = ^TJsonValue`), as `Dos`'s `SearchRec` does.
   - [x] `PRJson`: read and write JSON from Turbo Pascal (written in Pascal, the user's choice; JSON strings up to 255 characters).
   - [x] `PRTurtle`: turtle graphics on top of `Graph`, with Graph3's own routine names (the user's choice: `Forwd`, `Back`, `TurnLeft`, `TurnRight`, `SetHeading`, `Heading`, `SetPosition`, `Xcor`, `Ycor`, `Home`, `PenUp`, `PenDown`, `ShowTurtle`, `HideTurtle`, `Wrap`, `NoWrap`, `SetPenColor`), so a Graph3 turtle program ports by changing its `uses` line and its graphics setup.
-    - [x] An example of an interesting turtle graphics program in `examples/` (`examples/pascrust/turtles.pas`: a Koch snowflake, a tree, a spiral) (the user's request, 2026-11-02): something that's fun to watch draw, such as a recursive tree or a Koch snowflake.
+    - [x] An example of an interesting turtle graphics program in `examples/` (`examples/ruscal/turtles.pas`: a Koch snowflake, a tree, a spiral) (the user's request, 2026-11-02): something that's fun to watch draw, such as a recursive tree or a Koch snowflake.
 - [x] Document how Turbo Pascal code can call existing Rust code (and make it work: see the "FFI to Rust" item in Phase 8). (`docs/calling_rust.md`.)
 
 ## Requests from the user, 2026-10-29
 
 - [x] PUNT: `Single`/`Double`/`Extended`/`Comp` on disk in their TP sizes (4/8/10/8 bytes; today all are 6-byte `Real`), in translated programs and `to-json` (the user, 2026-11-05: later; `to-json` refuses them meanwhile). See notes/file_json.md.
 - [x] An enum of more than 256 values: `tp_size` says 2 bytes (as TP), the runtime writes 1. (Now 2 bytes in files too: `tests/run/big_enum.pas`.)
-- [x] (Prioritized by the user, 2026-11-05; plan in notes/file_json.md: done as `pascrust to-json` and `from-json`, docs/data_files.md.) A command like `fmt` that turns a binary file written by a Turbo Pascal program (`file of T`) into JSON: an input file and an output file. A binary file doesn't say what its records look like, so it also needs the record type: probably the Pascal source that declares it and the type's name (`pascrust json founit.pas People mark.dat mark.json`), or the only `file of` type the program uses. It can reuse the runtime's TP-exact layout (`FileRecord`), decoding through the type's fields; one JSON object per record, in an array.
+- [x] (Prioritized by the user, 2026-11-05; plan in notes/file_json.md: done as `ruscal to-json` and `from-json`, docs/data_files.md.) A command like `fmt` that turns a binary file written by a Turbo Pascal program (`file of T`) into JSON: an input file and an output file. A binary file doesn't say what its records look like, so it also needs the record type: probably the Pascal source that declares it and the type's name (`ruscal json founit.pas People mark.dat mark.json`), or the only `file of` type the program uses. It can reuse the runtime's TP-exact layout (`FileRecord`), decoding through the type's fields; one JSON object per record, in an array.
 
 ## Phase 5: Dos and Graph, then the graphics examples
 
@@ -226,11 +226,11 @@ In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffe
 - [x] Bitmap text: the public-domain 8x8 VGA font (ASCII); `OutText`/`OutTextXY`/`SetTextJustify`/`SetTextStyle` (default font, integer scale; stroked fonts approximated with it)/`TextWidth`/`TextHeight`.
   - [x] PUNT: CP437 characters 128-255 in the font (box drawing, accented letters).
 - [x] `InitGraph`/`Detect`/`DetectGraph`/`CloseGraph`/`GraphResult`/`GraphErrorMsg`/`SetGraphMode`/`GetGraphMode`/`RestoreCrtMode`/`GetMaxX`/`GetMaxY`/`GetMaxColor`/`GetAspectRatio`.
-- [x] Tests: `PASCRUST_GRAPH=headless` draws without a window; `tests/run/graph_basics.pas` checks drawings with `GetPixel` (instead of golden images; see docs/architecture.md §19). `PASCRUST_GRAPH_SAVE=file.bmp` saves the screen for a look by eye.
+- [x] Tests: `RUSCAL_GRAPH=headless` draws without a window; `tests/run/graph_basics.pas` checks drawings with `GetPixel` (instead of golden images; see docs/architecture.md §19). `RUSCAL_GRAPH_SAVE=file.bmp` saves the screen for a look by eye.
 - [x] `minifb` window backend: present the framebuffer, forward key events to `ReadKey`/`KeyPressed` while graphics mode is active, window serviced by the main thread (macOS needs that) while the program runs on its worker thread.
 - [x] Get working: `clock/` (menu unit, clock unit, tester), `tictac/` (five units, `Ollie`, `CompUnit` AI). Checked headless with scripted keys and saved screenshots; the window opens on macOS.
   - [x] Transpiler fixes they needed: method call arguments that use the receiver (`obj.Prompt(obj.WhoseTurn)`) are computed first (`tests/run/method_args.pas`); two anonymous record types for same-named variables are `EndPoint` and `EndPoint2`, not `EndPoint_2` (`tests/run/anon_records.pas`).
-  - [x] DOS drives: C: is the file system's root and other drives exist only when `PASCRUST_DRIVE_x` maps them (7d058ff; before, an unmapped drive was the directory the program started in) (`tictac` does `ChDir('a:\TicTac')` before every game), and names match files on disk case-insensitively.
+  - [x] DOS drives: C: is the file system's root and other drives exist only when `RUSCAL_DRIVE_x` maps them (7d058ff; before, an unmapped drive was the directory the program started in) (`tictac` does `ChDir('a:\TicTac')` before every game), and names match files on disk case-insensitively.
   - [x] Play a whole game against the computer in the window, by hand (the user, 2026-11-06).
 - [x] Milestone: every program in `examples/` transpiles, builds without warnings, and runs. Mark the original "Get them working" TODO done.
 
@@ -239,11 +239,11 @@ In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffe
 - [x] Have Claude Fable review every commit since its last code review (`git log 38138d3..HEAD`): three reviewers (language features, the rest of the transpiler, the runtime), every finding reproduced. Fixed:
   - Wrong output: virtual dispatch for `p^` passed to a `var` parameter of an ancestor type; `Random(n)` returned negative values for ranges over 32767 (it's a `Word`); `High`/`Low` of a subrange-typed variable; `FileMode := $40` opened files read-write; `GetDir` above drive C:'s root; printer output lost on Ctrl-C or a signal.
   - Didn't compile or panicked: `Output`/`Input`/`Lst` passed as `var Text`; a static method calling virtual ones, declared below the root, through a pointer; two `var` arguments in one heap record through an index (`arr[i]^.x, arr[i]^.y`; runtime error 204); a pointer and a field behind it as two `var` arguments; sets in `file of` records; `FillChar(b, SizeOf(b), True)`; `Swap($ABCD)`.
-  - Missing checks: `New`/`Dispose` with a method that isn't a constructor/destructor; a `with` field as a `for` variable; descendant objects by value (now allowed, copying the ancestor part); `pascrust emit game.pas` without a directory; `SetTextBuf` made its file `mut` (a warning).
+  - Missing checks: `New`/`Dispose` with a method that isn't a constructor/destructor; a `with` field as a `for` variable; descendant objects by value (now allowed, copying the ancestor part); `ruscal emit game.pas` without a directory; `SetTextBuf` made its file `mut` (a warning).
   - Tests: run tests and a new examples test now build generated code with `-D warnings`, so warnings fail the suite.
   - Decided with the user: a value outside a set's range is never in it, `300 in s` is False for a constant and a variable alike (FPC truncates the variable).
   - Open: `SizeOf` of a subrange variable (2 here, 1 in TP), of a small set (32 here), and of an object with virtual methods (TP adds 2); a `{$I-}` error still waiting isn't raised by later `{$I+}` I/O (documented in docs/architecture.md); `x shl 32` is 0 where TP masks the count to 5 bits.
-- [x] PUNT: Open from the Fable reviews of the fix commits (2026-10-28). Done: a call in an index (`arr[Pick] := ...` where `Pick` reads `arr`, `items[Count]` in a method) is worked out into a `let` first, so it borrow-checks, and the target's index comes before the value, as in Free Pascal; `a[F] := a[F] + 1` runs F twice, as in TP. Still open: And: in `s := s + Bump` where `Bump` changes `s`, FPC calls `Bump` first and PascRust reads `s` first (TP's order unverified); `i in [-3..-1]` (set elements outside 0..255) depends on whether the ends are literals or named constants; `b in [True]` is `matches!(b, true)`, which clippy flags. Cosmetic: an enum value named like a runtime type gets a needless `_` (`Kind::Ptr_`); a long record's `/// Pascal:` line quotes the Rust name (`FileRecord_ = record ... end`). Two Pascal names that become the same Rust name in different scopes (a variable `enum_range` and a function `EnumRange`) clash.
+- [x] PUNT: Open from the Fable reviews of the fix commits (2026-10-28). Done: a call in an index (`arr[Pick] := ...` where `Pick` reads `arr`, `items[Count]` in a method) is worked out into a `let` first, so it borrow-checks, and the target's index comes before the value, as in Free Pascal; `a[F] := a[F] + 1` runs F twice, as in TP. Still open: And: in `s := s + Bump` where `Bump` changes `s`, FPC calls `Bump` first and Ruscal reads `s` first (TP's order unverified); `i in [-3..-1]` (set elements outside 0..255) depends on whether the ends are literals or named constants; `b in [True]` is `matches!(b, true)`, which clippy flags. Cosmetic: an enum value named like a runtime type gets a needless `_` (`Kind::Ptr_`); a long record's `/// Pascal:` line quotes the Rust name (`FileRecord_ = record ... end`). Two Pascal names that become the same Rust name in different scopes (a variable `enum_range` and a function `EnumRange`) clash.
 - [x] Add an "Acknowledgements" section to the README thanking the projects we learned from and compared against. Our code is our own, but being able to run their tools and compare output helped a great deal: Free Pascal (`fpc -Mtp` produces most of our expected test output), daelsepara's turbo-pascal-assembly (the System unit disassembly behind `Random`), J R Stockton's Pascal pages, Borland's Turbo Pascal manuals, p2c (design ideas), and the Rust crates we build on (`clap`, `crossterm`, `minifb`, `insta`, ...). Also Claude Fable, for the code and design reviews.
 - [x] `tpc`: a command-line compiler with Turbo Pascal's `TPC.EXE` options (`-$`, `-E`, `-U`, `-Q`; the rest accepted and ignored). Not an `fpc` look-alike, which would hide the real one.
 - [x] PUNT: Under `{$I-}`, run each `Write`/`Writeln` argument as its own unchecked call, as TP does: in `WriteLn('x', IOResult)` with an error waiting, TP skips the `'x'` but prints the result (FPC prints `2`; we print nothing).
@@ -280,7 +280,7 @@ Crt, the variables
 - [x] Fake: `DirectVideo`, `CheckSnow` and `CheckEOF` are accepted and ignored; `CheckBreak` decides whether Ctrl-Break ends the program (as now, by default).
 
 Printer and Overlay
-- [x] Fake `Printer`: `Lst` is a `Text` file appended to `printer.txt` (or the file named by `PASCRUST_PRINTER`), so printed reports can be read. `PASCRUST_PRINTER='|lp'` pipes it to a command instead, for a real printer.
+- [x] Fake `Printer`: `Lst` is a `Text` file appended to `printer.txt` (or the file named by `RUSCAL_PRINTER`), so printed reports can be read. `RUSCAL_PRINTER='|lp'` pipes it to a command instead, for a real printer.
 - [x] Fake `Overlay`: `OvrInit`, `OvrInitEMS`, `OvrSetBuf`, `OvrGetBuf`, `OvrClearBuf` do nothing and `OvrResult` is 0 (`ovrOk`); `{$O+}` and `{$F+}` are ignored silently. Overlays only existed to fit in 640 KB.
 
 Sets (a language feature, but `Include`/`Exclude` and `in` are everywhere in old code)
@@ -303,7 +303,7 @@ Graph, the rest
 - [x] Fake: `InstallUserFont` and `SetGraphBufSize` succeed and change nothing (there are no `.CHR` files to load). `RegisterBGIdriver`, `RegisterBGIfont` and `InstallUserDriver` are refused instead, with the reason: they take `@DriverProc` (code linked in from an `.OBJ` file) or a driver file, and the call can simply go.
 
 Last: raw bytes and C strings
-- [x] PUNT: From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
+- [x] PUNT: From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where Ruscal gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to f29ca45 (batches A-T). Not yet reviewed: `f29ca45..HEAD`. Keep this range up to date.
 - [x] Findings of review batch T (d0b1780..f29ca45):
   - [x] An object's field as an untyped argument (`Move(C.R, W, 2)`, `BlockWrite(f, C.R, 2)`) started at the object's first byte: only records' field offsets were counted. Objects have `ObjectType::field_offset` now (the parent's part, with its VMT field, first).
@@ -399,7 +399,7 @@ Last: raw bytes and C strings
   - [x] `--lib`: an interface `external` isn't re-exported; a unit's variables are parameters the host must own. The user's decision (2026-11-03): bundle a unit's variables into one generated record for `--lib` now.
   - [x] PRTurtle: `Wrap` in a zero-size `TurtleWindow` hangs.
   - [x] `while True do` gives rustc's `while_true` warning: it should be `loop`.
-  - [x] `tpc unit.pas`: decided, check the unit compiles and say how units are used (the program that uses it, or `pascrust build --lib`), naming `tpc`.
+  - [x] `tpc unit.pas`: decided, check the unit compiles and say how units are used (the program that uses it, or `ruscal build --lib`), naming `tpc`.
   - [x] Small: `with r do goto L` emits the `with` comment for nothing.
 - [x] Findings of review batch H (86ec036..a132173), fixed:
   - [x] A labeled main loop with a forward `goto` out of it (`Main: begin ... goto Finish ... goto Main end; Finish:`) loops forever: the loop is put outside the block.
@@ -451,7 +451,7 @@ Last: raw bytes and C strings
   - [x] Move between two fields of one heap record of different types is still runtime error 204.
   - [x] A cast on the left of `<` doesn't compile (`i shr 1 < 50`, `Word(i) < w`).
   - [x] A `string[n]` field of a tagless part writes cap+1 bytes and clamps the length; TP touches Length+1 bytes (the `S[0] := #3` overlay idiom).
-  - [x] Untyped var arguments skip the aliasing check (a rustc error instead of PascRust's message).
+  - [x] Untyped var arguments skip the aliasing check (a rustc error instead of Ruscal's message).
   - [x] Smaller: `Str(1234:5, s)` into a `string[3]` isn't cut; `New(PNode(q))` through a Pointer; a typed constant whose tag selects another variant than its fields; the accessor comment's "bytes 0 to 4".
 - [x] Untyped memory, as planned in `notes/untyped_memory.md` (agreed with Fable's review; the user said go ahead). Done: step 0 (TP-exact typed files), step 1 (untyped `var` parameters, byte views, `Move`/`FillChar` between types), step 2 (untyped files, `BlockRead`/`BlockWrite`), step 3 (the untyped `Pointer`, `GetMem`/`FreeMem`), step 4 (`GetImage`/`PutImage` in TP's layout), step 5 (`PChar` and `Strings`, with `Char` arrays lent a copy for one statement).
 - [x] Question for the user (from a Fable review): is the directory the program starts in a drive's root? Answered by 7d058ff: no, C: is the file system's root, so the start directory is just the current directory, and `FindFirst` lists `.`/`..` there.
@@ -460,14 +460,14 @@ Last: raw bytes and C strings
 - [x] `WinDos`: the `Dos` routines, and wrappers with `PChar` strings.
 - [x] `Write`/`Read`/`Str`/`Val`/`Assign`/`Rename` on `Char` arrays and `PChar`s (TP 7's extended syntax).
 - [x] Packed strings: a string constant assigned to a `Char` array, and one used as a string (assigned, compared, joined, passed).
-- [x] Skipped, on purpose: `Graph3` and `Turbo3`, TP 7's units for running Turbo Pascal 3.0 programs (TP 3's turtle and point graphics, and its `Kbd` file, integer `MemAvail` and the like). The examples are TP 5.5/6.0 code; `uses Graph3` or `Turbo3` says it's a TP 3.0 compatibility unit PascRust doesn't provide. Graph3 on top of our Graph was estimated (2026-10-31: CGA modes and palettes, `Write` on the graphics screen, turtle graphics, no FPC to compare with) and punted by the user until a program needs it.
+- [x] Skipped, on purpose: `Graph3` and `Turbo3`, TP 7's units for running Turbo Pascal 3.0 programs (TP 3's turtle and point graphics, and its `Kbd` file, integer `MemAvail` and the like). The examples are TP 5.5/6.0 code; `uses Graph3` or `Turbo3` says it's a TP 3.0 compatibility unit Ruscal doesn't provide. Graph3 on top of our Graph was estimated (2026-10-31: CGA modes and palettes, `Write` on the graphics screen, turtle graphics, no FPC to compare with) and punted by the user until a program needs it.
 
 ## Phase 8: Tier 3 and FFI (as interest dictates)
 
 - [x] Variant records and procedural types, as in `notes/variant_records_and_procedural_types.md`: step 1 (tagged variant parts, flattened, with TP's layout in files), step 2 (tagless parts as TP's bytes, behind accessors), step 3 (nested parts), steps 4-6 (procedural types: values, calls, globals through them, as bytes).
 - [x] PUNT: Left for later, if a program needs it: `Func(P)`, a `Pointer` turned back into a routine.
-- [x] PUNT: Argument order in `Inc(a[Pick], Bump)`: PascRust runs `Pick` before `Bump`, Free Pascal `Bump` first (from the Fable review of 99e4f09). TP doesn't document it; obscure.
-- [ ] Hex constants as TP reads them: a 32-bit `$AABBCCDD` is a `LongInt` bit pattern (`$FFFFFFFF` is -1); PascRust says it's out of range.
+- [x] PUNT: Argument order in `Inc(a[Pick], Bump)`: Ruscal runs `Pick` before `Bump`, Free Pascal `Bump` first (from the Fable review of 99e4f09). TP doesn't document it; obscure.
+- [ ] Hex constants as TP reads them: a 32-bit `$AABBCCDD` is a `LongInt` bit pattern (`$FFFFFFFF` is -1); Ruscal says it's out of range.
 - [ ] An anonymous record type is named `Record` in Rust (`fn pair(&self) -> Record`); naming it after its field (`Pair`) would read better.
 - [x] Field names needn't avoid the runtime's function names (done: `names::field_name` escapes only Rust keywords): a field `W` becomes `w_` because `w` is the runtime's width helper, but a struct field can't clash with a function.
 - [x] Virtual methods, constructors, destructors: a trait per object in the hierarchy for dispatch, an enum per hierarchy for pointers (`notes/virtual_methods.md`, docs/architecture.md §16), and `TypeOf`.
@@ -478,7 +478,7 @@ Last: raw bytes and C strings
 - [x] PUNT: The per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
 - [x] PUNT: Bundled-globals option (`struct Globals` per unit) for programs with very many globals. (By hand, a unit can do it already: `PRTurtle` keeps its state in one record, `TTurtleContext`.)
 - [x] FFI to Rust: `external` routines in a Rust file named by `{$L file.rs}` (the user's choice, as TP linked `.OBJ` files), with crates from `//! cargo:` lines; `tests/run/rust_externals.pas` is the worked example.
-- [x] Embedding: `pascrust build --lib unit.pas` and `pascrust_runtime::call(...) -> Result`, with a host example that calls `BSTUnit` from Rust (`tests/embed/bst_host.rs`, docs/embedding.md). Rust calling back into a Pascal program through a procedural value works too (`tests/run/rust_callback.pas`).
+- [x] Embedding: `ruscal build --lib unit.pas` and `ruscal_runtime::call(...) -> Result`, with a host example that calls `BSTUnit` from Rust (`tests/embed/bst_host.rs`, docs/embedding.md). Rust calling back into a Pascal program through a procedural value works too (`tests/run/rust_callback.pas`).
 - [x] PUNT: FFI to C: `external 'C'` → `extern "C"` block with `#[repr(C)]` records, `build.rs` with `cc`.
 - [x] PUNT: Ideas only, for already-compiled Pascal: Free Pascal `{$mode tp}` C-ABI library, or DOSBox bridge. Not scheduled.
 - [x] PUNT: `--integer-width 32` flag if the user wants it.

@@ -1,5 +1,5 @@
 program TempNames;
-{ Temporaries that PascRust introduces mustn't clash with each other or
+{ Temporaries that Ruscal introduces mustn't clash with each other or
   with the program's own variables. }
 type
    NodePtr = ^Node;

@@ -2,7 +2,7 @@
 
 Many DOS games got a steady clock from the PC's timer: they installed their
 own handler for interrupt `$1C` (or `$08`), which DOS called 18.2 times a
-second, and counted ticks in it. PascRust has no interrupts, so
+second, and counted ticks in it. Ruscal has no interrupts, so
 `SetIntVec($1C, @Tick)` keeps the handler but never calls it, and the
 translation warns about it.
 

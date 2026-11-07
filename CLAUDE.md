@@ -1,4 +1,4 @@
-# PascRust
+# Ruscal
 
 A Turbo Pascal → Rust transpiler, written in Rust. It's a learning project:
 the user is an intermediate Rust programmer who's fascinated by language
@@ -12,7 +12,7 @@ implementation. The opening prompt is in `README.md` before it was removed
   deviate from it, update it in the same commit (and say why).
 - `docs/language_spec.md`: which Pascal constructs are supported, by tier.
 - `notes/`: research (p2c, Free Pascal) and answered questions for the user.
-- `README.md`: what a user needs: what PascRust is, how to run it (`pascrust`,
+- `README.md`: what a user needs: what Ruscal is, how to run it (`ruscal`,
   `tpc`, `fmt`), the environment variables, what's supported, the examples.
 - `docs/`: longer user documentation the README links to (printing, timer
   interrupts), so the README stays short. `docs/rust_limits.md` explains
@@ -27,41 +27,41 @@ feature, a command, an option or a limitation, update `README.md`,
 
 ## Layout
 
-- `crates/pascrust`: the transpiler (lexer → parser → sema → codegen → driver), bin + lib.
-  `fmt/` is `pascrust fmt`, a source formatter that reuses the lexer.
-- `crates/pascrust_runtime`: the library every generated program depends on
+- `crates/ruscal`: the transpiler (lexer → parser → sema → codegen → driver), bin + lib.
+  `fmt/` is `ruscal fmt`, a source formatter that reuses the lexer.
+- `crates/ruscal_runtime`: the library every generated program depends on
   (Pascal strings, I/O, `run()`, later `Crt`/`Dos`/`Graph` behind features).
 - `tests/run/*.pas`: execution tests (`.out` expected stdout, optional `.in`, `.exitcode`).
 - `tests/translate/*.pas`: snapshot tests of the generated Rust.
 - `tests/errors/*.pas`: programs that must be rejected; snapshots of the messages.
 - `examples/`: the user's own Turbo Pascal programs from the 90s, the acceptance test.
-  `examples/pascrust/` holds PascRust's own examples (formatted on their own).
+  `examples/ruscal/` holds Ruscal's own examples (formatted on their own).
 
 ## Commands
 
 ```sh
 cargo test                                   # everything
-cargo test -p pascrust --test run_tests      # execution tests only
-PASCRUST_TEST=hello cargo test --test run_tests   # one execution test
+cargo test -p ruscal --test run_tests      # execution tests only
+RUSCAL_TEST=hello cargo test --test run_tests   # one execution test
 INSTA_UPDATE=always cargo test --test translate_tests   # accept new snapshots, then review the git diff
-cargo run -p pascrust -- emit file.pas       # print generated Rust
-cargo run -p pascrust -- run file.pas        # transpile, build and run (project goes in out/)
-cargo run -p pascrust -- fmt $(find examples -name '*.pas' -not -path '*/pascrust/*')   # the user's examples, together (checked by fmt_tests)
-cargo run -p pascrust -- fmt tests/run/foo.pas  # format each new test program on its own (checked by fmt_tests)
+cargo run -p ruscal -- emit file.pas       # print generated Rust
+cargo run -p ruscal -- run file.pas        # transpile, build and run (project goes in out/)
+cargo run -p ruscal -- fmt $(find examples -name '*.pas' -not -path '*/ruscal/*')   # the user's examples, together (checked by fmt_tests)
+cargo run -p ruscal -- fmt tests/run/foo.pas  # format each new test program on its own (checked by fmt_tests)
 tests/gen_expected.sh tests/run/foo.pas      # expected output from Free Pascal (fpc -Mtp)
 cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ## Licensing
 
-PascRust is MIT. Don't copy code or tests from GPL projects (Free Pascal,
+Ruscal is MIT. Don't copy code or tests from GPL projects (Free Pascal,
 p2c, GNU Pascal): read them for ideas only. Running `fpc` as an external
 program to produce expected output (`tests/gen_expected.sh`) is fine.
 
 ## Who it's for
 
-PascRust balances six uses; a change for one shouldn't cost another without
-a good reason (docs/architecture.md, "Who PascRust is for"):
+Ruscal balances six uses; a change for one shouldn't cost another without
+a good reason (docs/architecture.md, "Who Ruscal is for"):
 
 1. Running an old Turbo Pascal program on a modern computer, not caring
    about the Rust in between.
@@ -70,10 +70,10 @@ a good reason (docs/architecture.md, "Who PascRust is for"):
 4. A Rust program calling Pascal code.
 5. Reading and writing data that Turbo Pascal programs made long ago
    (`to-json`, `from-json`).
-6. Improving the Pascal code itself (`pascrust fmt`).
+6. Improving the Pascal code itself (`ruscal fmt`).
 
 So the generated Rust must stay readable by a human (use 2). Calling
-helper functions in `pascrust_runtime` is fine when a Pascal construct
+helper functions in `ruscal_runtime` is fine when a Pascal construct
 needs support code; what matters is that a reader can follow the
 translated program, and can go on editing it: a named Pascal constant
 stays a name, not a number worked out ahead of time.
@@ -89,8 +89,8 @@ stays a name, not a number worked out ahead of time.
   needed an unusual translation.
 - Generated code must compile without warnings.
 - Every new Pascal construct needs a translate test *and* a run test.
-- Write Pascal test programs the way `pascrust fmt` formats them:
-  3 spaces a level, as in the user's examples. Run `pascrust fmt` on each
+- Write Pascal test programs the way `ruscal fmt` formats them:
+  3 spaces a level, as in the user's examples. Run `ruscal fmt` on each
   new test program.
 - Commit as you go, with focused commits.
 

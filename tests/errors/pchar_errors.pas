@@ -1,5 +1,5 @@
 program PCharErrors;
-{ A PChar into a Char array can't outlive the statement: PascRust lends
+{ A PChar into a Char array can't outlive the statement: Ruscal lends
   the array a copy of its characters for that statement only. }
 uses Strings;
 type

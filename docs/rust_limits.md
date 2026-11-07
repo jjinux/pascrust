@@ -1,12 +1,12 @@
 # Rewriting code that Rust can't express
 
-PascRust translates Turbo Pascal into safe Rust, and a few things that are
+Ruscal translates Turbo Pascal into safe Rust, and a few things that are
 fine in Pascal break one of Rust's rules. Rust allows only one mutable
-reference to a variable at a time, and PascRust can't point into an
-ordinary variable. When a program runs into one of these, PascRust stops
+reference to a variable at a time, and Ruscal can't point into an
+ordinary variable. When a program runs into one of these, Ruscal stops
 with an error that links to the section here explaining it. Each section
 shows the Pascal that's refused and a rewrite that means the same and that
-PascRust translates. The rewrites are plain Turbo Pascal, so the program
+Ruscal translates. The rewrites are plain Turbo Pascal, so the program
 still compiles in TP.
 
 <a id="two-var-arguments"></a>
@@ -63,7 +63,7 @@ SwapItems(a, i, j);
 
 For an untyped parameter, pass the variable once and offsets into it, or
 copy one part into a local variable first. (`Move(a[1], a[2], 2)` itself
-is fine: PascRust copies the bytes within the one variable.)
+is fine: Ruscal copies the bytes within the one variable.)
 
 For two fields of one record, pass the record (and say which fields in
 another parameter if needed), or copy one field into a local variable,
@@ -79,7 +79,7 @@ directly; Rust doesn't allow two references to the same variable when one
 of them is mutable
 ```
 
-PascRust passes the globals a routine uses as parameters too, so `count`
+Ruscal passes the globals a routine uses as parameters too, so `count`
 would arrive twice: once as the `var` parameter, and once as the global
 that `Add` (or a routine it calls) uses.
 
@@ -124,11 +124,11 @@ local variable, pass the local, and copy it back after the call.
 ## A `with` statement that changes its own record's selector
 
 ```text
-error: the `with` body changes `i`, which chooses this record; PascRust
+error: the `with` body changes `i`, which chooses this record; Ruscal
 writes the record out at every use, so it would pick a different one
 ```
 
-Rust has no `with`, so PascRust writes `items[i].Qty` out at each use. In
+Rust has no `with`, so Ruscal writes `items[i].Qty` out at each use. In
 Pascal, `with items[i] do` picks the record once, so a body that changes
 `i` keeps working on the first one; written out, it would move to another.
 
@@ -158,12 +158,12 @@ end;
 ## Keeping a `PChar` into a `Char` array
 
 ```text
-error: this keeps a PChar into a Char array, which PascRust can't do (it
+error: this keeps a PChar into a Char array, which Ruscal can't do (it
 lends a PChar to an array only for one statement); use a PChar from StrNew
 or GetMem instead
 ```
 
-PascRust can't point into an ordinary array, so where a zero-based `Char`
+Ruscal can't point into an ordinary array, so where a zero-based `Char`
 array is used as a `PChar`, the statement gets a copy of its characters,
 written back after it (see [the architecture](architecture.md), the
 `PChar` part). A `PChar` that outlives the statement would point at the
@@ -195,13 +195,13 @@ StrDispose(p);
 
 ```text
 error: `Node` has a variant part without a tag field that holds a pointer
-(or a file), so PascRust keeps each variant separately and can't tell
+(or a file), so Ruscal keeps each variant separately and can't tell
 which one to store as bytes
 ```
 
 A variant part without a tag field keeps Turbo Pascal's bytes, so that
 reading one variant as another works, but a pointer has no bytes in
-PascRust. Such a record keeps its variants separately, and then a file (or
+Ruscal. Such a record keeps its variants separately, and then a file (or
 `Move`, or an untyped parameter) can't know which variant to store.
 
 Refused:
@@ -237,7 +237,7 @@ type
 
 ```text
 error: `Fill` may change `buf`, which this statement uses as a PChar;
-PascRust lends a PChar a copy of the array for the statement, so the
+Ruscal lends a PChar a copy of the array for the statement, so the
 change would be undone after it; call `Fill` in a statement of its own
 ```
 
@@ -268,7 +268,7 @@ WriteLn(n, ' ', Fill);
 
 ```text
 error: this `goto Start` jumps into a statement it isn't in; Rust can
-only leave a block or repeat a loop, so PascRust jumps only forward or
+only leave a block or repeat a loop, so Ruscal jumps only forward or
 back within a statement list the `goto` is in
 ```
 

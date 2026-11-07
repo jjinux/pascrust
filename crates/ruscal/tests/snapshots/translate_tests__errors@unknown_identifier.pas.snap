@@ -1,0 +1,8 @@
+---
+source: crates/ruscal/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/unknown_identifier.pas
+---
+unknown_identifier.pas:3:12: error: unknown identifier `undefinedThing`
+   writeln(undefinedThing);
+           ^^^^^^^^^^^^^^

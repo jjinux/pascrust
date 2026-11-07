@@ -65,8 +65,8 @@ begin
    Check(DosError = 3, 'SetCurDir of a missing directory: DosError 3');
    Check(GetArgCount = ParamCount, 'GetArgCount');
    Check(StrLen(GetArgStr(buf, 0, 3)) = 3, 'GetArgStr with MaxLen');
-   Check(GetEnvVar('PASCRUST_NO_SUCH_VARIABLE') = nil, 'GetEnvVar, not set');
-   Check(StrComp(GetEnvVar('PASCRUST_DRIVE_C'), '.') = 0, 'GetEnvVar');
+   Check(GetEnvVar('RUSCAL_NO_SUCH_VARIABLE') = nil, 'GetEnvVar, not set');
+   Check(StrComp(GetEnvVar('RUSCAL_DRIVE_C'), '.') = 0, 'GetEnvVar');
    dt.Year := 1994;
    dt.Month := 3;
    dt.Day := 17;

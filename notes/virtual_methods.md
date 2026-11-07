@@ -171,14 +171,14 @@ trait can't do case 3 without a `?Sized` `Ptr` and downcasts.
 1. **Lifted globals and fixed signatures (the biggest hidden cost).** A
    method receives the globals it uses as extra parameters (`fn add(&mut
    self, log: &mut i16, item: i16)` in the `objects.pas` translate
-   snapshot; the fixed point is in `crates/pascrust/src/sema/lift.rs`). A
+   snapshot; the fixed point is in `crates/ruscal/src/sema/lift.rs`). A
    trait method has one signature, so a virtual method must take the
    *union* of what all its overrides need, and a virtual call must pass that
    union on to its caller's needs. The closed world makes this computable.
    An override that doesn't use one of them names it `_log` to stay
    warning-free.
 2. **Units.** Codegen emits a type only in the file that declares it
-   (`type_defs` in `crates/pascrust/src/codegen/mod.rs`), and units are
+   (`type_defs` in `crates/ruscal/src/codegen/mod.rs`), and units are
    `pub mod` + `use crate::x::*`. A descendant can be declared in a later
    unit than its root, so the enum (and `impl Shape for AnyShape`, and the
    pointer aliases) go in the root's module, next to the trait, with `use

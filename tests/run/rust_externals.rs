@@ -1,6 +1,6 @@
 //! The Rust half of rust_externals.pas.
 
-use pascrust_runtime::prelude::*;
+use ruscal_runtime::prelude::*;
 
 /// A var parameter is a `&mut`.
 pub fn double_it(n: &mut i16) {

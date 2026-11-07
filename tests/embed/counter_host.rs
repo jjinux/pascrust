@@ -1,9 +1,9 @@
 //! A Rust program that uses `tests/embed/counter.pas`, a unit with
-//! variables, built with `pascrust build --lib`. The unit's variables, and
+//! variables, built with `ruscal build --lib`. The unit's variables, and
 //! those of `helper.pas` that it uses, are the fields of `CounterContext`,
 //! and its interface routines are its methods.
 
-use counter::pascrust_runtime::{RuntimeError, call};
+use counter::ruscal_runtime::{RuntimeError, call};
 use counter::{CounterContext, TTally};
 
 fn main() -> Result<(), RuntimeError> {

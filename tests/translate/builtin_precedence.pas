@@ -2,7 +2,7 @@
   larger one: Succ(i) * 2 is (i + 1) * 2, Odd(a) = Odd(b) compares two
   comparisons, a cast before < gets parentheses. Output from fpc -Mtp
   except Hi(i * 300) * 2: Free Pascal works out i * 300 in 32 bits
-  (high byte 0), TP and PascRust in 16 (5). }
+  (high byte 0), TP and Ruscal in 16 (5). }
 program BuiltinPrecedence;
 var
    i, j: Integer;

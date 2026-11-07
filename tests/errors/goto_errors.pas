@@ -1,4 +1,4 @@
-{ The jumps PascRust can't make into blocks or loops, and labels used
+{ The jumps Ruscal can't make into blocks or loops, and labels used
   wrongly. }
 program GotoErrors;
 var

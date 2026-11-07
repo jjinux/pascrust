@@ -1,7 +1,7 @@
 program GraphPalette;
 { Graph's palettes, GraphDefaults, the mode queries, SetAspectRatio,
   SetUserCharSize, the font and buffer fakes, and the two pages (the tests run with
-  PASCRUST_GRAPH=headless). Self-checking: Free Pascal's Graph unit needs
+  RUSCAL_GRAPH=headless). Self-checking: Free Pascal's Graph unit needs
   a real screen, so this .out is built from the checks, by hand. }
 uses Graph;
 var

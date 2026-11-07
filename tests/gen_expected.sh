@@ -10,8 +10,8 @@ trap 'rm -rf "$build"' EXIT
 for src in "$@"; do
     name=$(basename "$src" .pas)
     dir=$(dirname "$src")
-    # (`-Fu`: PascRust's own units, `PRJson` and friends, are Pascal too.)
-    if ! fpc -Mtp -v0 -Fu"$(dirname "$0")/../crates/pascrust/units" -FE"$build" -o"$build/$name" "$src" > "$build/fpc.log" 2>&1; then
+    # (`-Fu`: Ruscal's own units, `PRJson` and friends, are Pascal too.)
+    if ! fpc -Mtp -v0 -Fu"$(dirname "$0")/../crates/ruscal/units" -FE"$build" -o"$build/$name" "$src" > "$build/fpc.log" 2>&1; then
         grep -v "macosx_version_min\|multiply_defined" "$build/fpc.log" >&2
         echo "$src: fpc failed" >&2
         exit 1

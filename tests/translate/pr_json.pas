@@ -1,4 +1,4 @@
-{ PRJson, PascRust's own unit for JSON: parsing, looking at values,
+{ PRJson, Ruscal's own unit for JSON: parsing, looking at values,
   building them, writing them compactly and indented, a round trip
   through a file, and errors. Output from fpc -Mtp (PRJson is Turbo
   Pascal). }

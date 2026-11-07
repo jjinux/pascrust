@@ -1,4 +1,4 @@
-{ PRTurtle, PascRust's turtle graphics on top of Graph, drawn without a
+{ PRTurtle, Ruscal's turtle graphics on top of Graph, drawn without a
   window and checked with GetPixel. The expected output is worked out by
   hand (Free Pascal has no PRTurtle). The screen is 640 x 480, so the
   turtle's home (0, 0) is pixel (320, 240), and y goes up. }

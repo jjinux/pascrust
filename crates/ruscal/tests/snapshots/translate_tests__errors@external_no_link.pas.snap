@@ -1,0 +1,8 @@
+---
+source: crates/ruscal/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/external_no_link.pas
+---
+external_no_link.pas:3:11: error: `Beep` is `external`, but no `{$L file.rs}` before it says which Rust file has it
+procedure Beep(Hz: Word); external;
+          ^^^^

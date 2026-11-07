@@ -1,8 +1,8 @@
 //! A Rust program that uses BSTUnit, the binary search tree in Turbo Pascal
 //! from `examples/database/bstunit.pas`, built as a library with
-//! `pascrust build --lib examples/database/bstunit.pas`.
+//! `ruscal build --lib examples/database/bstunit.pas`.
 
-use bstunit::pascrust_runtime::{RuntimeError, call};
+use bstunit::ruscal_runtime::{RuntimeError, call};
 use bstunit::{Bst, BstUnitContext, PeopleKey};
 
 fn main() -> Result<(), RuntimeError> {

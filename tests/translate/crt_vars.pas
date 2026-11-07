@@ -1,5 +1,5 @@
 program CrtVars;
-{ Crt's variables: TextAttr, LastMode, CheckBreak and the switches PascRust
+{ Crt's variables: TextAttr, LastMode, CheckBreak and the switches Ruscal
   fakes, and AssignCrt. Self-checking. (Free Pascal's Unix Crt differs from
   TP 7 here: its TextMode doesn't set LastMode, CheckBreak starts False, and
   AssignCrt can't read; so this .out is built from the checks, by hand.) }

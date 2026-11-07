@@ -1,6 +1,6 @@
 //! The Rust half of rustlink.pas: its `external` routines.
 
-use pascrust_runtime::prelude::*;
+use ruscal_runtime::prelude::*;
 
 /// The greatest common divisor, by Euclid's algorithm.
 pub fn gcd(a: i32, b: i32) -> i32 {

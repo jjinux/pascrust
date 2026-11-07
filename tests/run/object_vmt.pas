@@ -4,7 +4,7 @@ program ObjectVmt;
   methods (VMT). It follows the fields of the first type in the line to need
   one, before a descendant's own fields. SizeOf counts it, and so does a
   typed file. (Expected output by hand: 64-bit Free Pascal's VMT field is an
-  8-byte pointer. TP writes the VMT's address; PascRust writes zeros.) }
+  8-byte pointer. TP writes the VMT's address; Ruscal writes zeros.) }
 type
    TPlain = object
       X, Y: Integer;

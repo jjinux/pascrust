@@ -1,6 +1,6 @@
-# PascRust architecture
+# Ruscal architecture
 
-This document records the core architectural decisions for PascRust, a
+This document records the core architectural decisions for Ruscal, a
 Turbo Pascal to Rust transpiler, with the rationale for each and the
 alternatives that were rejected. It answers every question in the "Make the
 core architectural decisions" section of `TODO.md`. The language subset is in
@@ -18,12 +18,12 @@ Guiding priorities, in order (from the opening prompt, in `README.md` as of comm
 3. **Learning value.** When two options are close, prefer the one that teaches
    more about compilers or Rust.
 
-### Who PascRust is for
+### Who Ruscal is for
 
 The user's six uses (2026-11-06), which the design balances:
 
 1. **Just run it.** Someone wants an old Turbo Pascal program to run on a
-   modern computer and doesn't care about the Rust in between: `pascrust
+   modern computer and doesn't care about the Rust in between: `ruscal
    run`, `tpc`, and the runtime's faithful `Crt`/`Dos`/`Graph`.
 2. **Translate once, keep the Rust.** Someone translates a program and
    works on the Rust from then on. This is why readable output (priority 2)
@@ -37,8 +37,8 @@ The user's six uses (2026-11-06), which the design balances:
 5. **Old data**: files written by Turbo Pascal programs long ago, read and
    written byte for byte (TP's sizes and `Real48`), and `to-json` /
    `from-json` to move them in and out of other tools.
-6. **Better Pascal**: improving the Pascal itself, with `pascrust fmt` and
-   with PascRust's error messages, which say what TP would have said.
+6. **Better Pascal**: improving the Pascal itself, with `ruscal fmt` and
+   with Ruscal's error messages, which say what TP would have said.
 
 A change that helps one use shouldn't cost another without a good reason;
 when they pull apart, prefer correctness (use 1), then maintainable Rust
@@ -60,7 +60,7 @@ for other old programs.)
 
 ```
 foo.pas (+ units)                                   out/foo/
-   │                                                 ├── Cargo.toml   (depends on pascrust_runtime by path)
+   │                                                 ├── Cargo.toml   (depends on ruscal_runtime by path)
    ▼                                                 └── src/
  lexer ──► tokens ──► parser ──► AST ──► sema ──► codegen ──► rustfmt ──►   ├── main.rs
                                           │                                 └── bstunit.rs, founit.rs, ...
@@ -87,8 +87,8 @@ foo.pas (+ units)                                   out/foo/
   string through an indenting writer. Output is then run through `rustfmt`
   (if available) so our formatter does not need to be perfect.
 - **driver**: writes a Cargo project, optionally runs `cargo build` /
-  `cargo run`. The CLI is `pascrust build foo.pas`, `pascrust run foo.pas`,
-  `pascrust emit foo.pas` (print the Rust), and `pascrust fmt`. A second
+  `cargo run`. The CLI is `ruscal build foo.pas`, `ruscal run foo.pas`,
+  `ruscal emit foo.pas` (print the Rust), and `ruscal fmt`. A second
   binary, `tpc` (`src/bin/tpc.rs`), takes Turbo Pascal's `TPC.EXE` command
   line: it builds in a cache directory and copies the executable next to
   the source; `-U` adds unit directories and `-$` switches act as
@@ -107,12 +107,12 @@ unit becomes one Rust module file.
 ## 2. Repository layout (Cargo workspace)
 
 ```
-pascrust/
+ruscal/
 ├── Cargo.toml                 # [workspace] members = ["crates/*"]
 ├── crates/
-│   ├── pascrust/              # the transpiler: bin + lib
+│   ├── ruscal/              # the transpiler: bin + lib
 │   │   └── src/{main.rs, lib.rs, lexer.rs, token.rs, parser/, ast.rs, sema/, codegen/, driver.rs, diag.rs}
-│   └── pascrust_runtime/      # the library every generated program depends on
+│   └── ruscal_runtime/      # the library every generated program depends on
 │       └── src/{lib.rs, prelude.rs, string.rs, array.rs, set.rs, ptr.rs, ordinal.rs,
 │                system.rs, io/{text.rs, typed.rs, fmt.rs}, run.rs, crt.rs, dos.rs, graph/}
 ├── examples/                  # the user's Turbo Pascal programs (acceptance tests)
@@ -121,7 +121,7 @@ pascrust/
 └── out/                       # generated Cargo projects (git-ignored)
 ```
 
-`pascrust_runtime` has Cargo features `crt`, `dos`, `graph`. A hello-world
+`ruscal_runtime` has Cargo features `crt`, `dos`, `graph`. A hello-world
 program depends only on the core (no terminal or window crates get built).
 Codegen enables exactly the features the `uses` clauses require.
 
@@ -193,7 +193,7 @@ Decision:
   reference or raw pointer. Dereferencing a nil or disposed handle is a
   checked runtime error, not undefined behaviour. See §12.
 - **Runtime errors surface as panics**, caught once at the top by
-  `pascrust_runtime::run`. See §17.
+  `ruscal_runtime::run`. See §17.
 
 Why not one heap object passed around: that is exactly what fights the borrow
 checker. If every procedure took `heap: &mut Heap`, then passing
@@ -242,7 +242,7 @@ via `run()` and `catch_unwind` (§17).
 | unit                      | `mod` (one file)                       | |
 
 Everything in the right column except primitive types lives in
-`pascrust_runtime` and is re-exported from `pascrust_runtime::prelude`.
+`ruscal_runtime` and is re-exported from `ruscal_runtime::prelude`.
 
 ## 7. Integers and overflow
 
@@ -264,7 +264,7 @@ Rust argument for keeping checks on does not apply. Open question #1 offers a
 like `{$I-}`: the driver works out which source ranges it covers
 (`switch_regions`), and there codegen writes the checked operations,
 `i.checked_add(1).unwrap_or_else(overflow)`, where the runtime's generic
-`overflow()` raises error 215. The check is in the type PascRust computes
+`overflow()` raises error 215. The check is in the type Ruscal computes
 in, which follows TP's (an `Integer` sum in 16 bits). Only the code that
 asks for checks pays for the longer form; `x := x + 1` isn't turned into
 `x += 1` there. A constant expression (`is_constant`: anything sema's
@@ -896,7 +896,7 @@ hides what is going on, and intermediate Rust programmers are warned off
 
 Decision: every Pascal runtime error (range check, nil/disposed pointer, I/O
 error with `{$I+}`, division by zero, `RunError`, `RefCell` double borrow) is a
-`panic!` raised through `pascrust_runtime::rte(code, msg)`. The generated
+`panic!` raised through `ruscal_runtime::rte(code, msg)`. The generated
 `main` is:
 
 ```rust
@@ -905,7 +905,7 @@ fn main() {
     // run() restores the terminal (raw mode, colours), saves the graphics
     // screen if asked to, prints "Runtime error 201 ..." in TP style, and
     // exits with the error code.
-    pascrust_runtime::run(|| pascal_main());
+    ruscal_runtime::run(|| pascal_main());
 }
 ```
 
@@ -933,10 +933,10 @@ window meanwhile (§19).
   implementation-only ones are private. `uses A, B` → `use crate::a::*;
   use crate::b::*;`; sema resolves conflicts by Pascal's rule (the later unit
   wins) and emits qualified paths when needed.
-- **PascRust's own units** (`PR...`, the user's naming: units start with
+- **Ruscal's own units** (`PR...`, the user's naming: units start with
   `PR`, their types follow TP's `T`/`P` convention inside) that can be
-  written in Turbo Pascal are: `crates/pascrust/units/*.pas`, put into the
-  `pascrust` binary with `include_str!` (`driver::PASCRUST_UNITS`), and
+  written in Turbo Pascal are: `crates/ruscal/units/*.pas`, put into the
+  `ruscal` binary with `include_str!` (`driver::RUSCAL_UNITS`), and
   loaded like a program's own unit when `uses` finds no file of that name.
   So they're translated with the program, compile in TP 7 too, and show
   off the translation. `PRJson` (JSON, as linked records on the heap) and
@@ -985,7 +985,7 @@ window meanwhile (§19).
   (a loop around a `match` on where to go next), which would no longer
   read like the program. What Rust *can* say directly is to leave a
   labeled block early and go back to the top of a labeled loop, so
-  PascRust supports the jumps that are one of those. In each
+  Ruscal supports the jumps that are one of those. In each
   statement list, `goto::plan` gives a label with `goto`s before it a
   block from the first such statement up to the label (`'done: { ... }`,
   the `goto` is `break 'done`), and a label with `goto`s from it on a
@@ -1038,7 +1038,7 @@ window meanwhile (§19).
   is worked out, as TP defines `Write(a, b)` to be `Write(a); Write(b)`: a
   function in the list that writes something comes out in its place.
 - **Evaluation order** isn't defined by Pascal. Where it shows (a function
-  that changes a variable the expression also reads), PascRust follows
+  that changes a variable the expression also reads), Ruscal follows
   Free Pascal: `n := n + Bump` reads `n` first, so when a call could change
   `n` (it's passed `n`, receives it as a global or outer variable, or is a
   method) it stays `n = n + bump(&mut n)` rather than `n += ...`, which
@@ -1054,7 +1054,7 @@ window meanwhile (§19).
   pointer next to a call (`p^.n + F`, `Add(p^.n, F)`) is done into a `let`
   before the call, so its borrow has ended when `F` changes the record.
   (Free Pascal calls first for reals, strings and sets, and runs calls
-  before plain arguments; PascRust doesn't. See TODO.md.)
+  before plain arguments; Ruscal doesn't. See TODO.md.)
 - **`Read`/`Readln`** → `preadln!(x, y)`, with TP's lenient numeric parsing
   (leading blanks, stops at the first bad character).
 - **Files**: `PText` wraps a buffered reader/writer; `PFile<T>` serializes
@@ -1134,9 +1134,9 @@ window meanwhile (§19).
     DOS's `GetTime` only changed every 55 ms), but not for faster ticks,
     such as a music player at hundreds of Hz. TP for DOS had no
     millisecond clock (programs read the timer chip through `Port[$40]`),
-    so it would be PascRust's own routine, such as Turbo Pascal for
+    so it would be Ruscal's own routine, such as Turbo Pascal for
     Windows's `GetTickCount` (milliseconds since start-up). It would go in
-    a small PascRust-only unit the program names in its `uses` clause, so
+    a small Ruscal-only unit the program names in its `uses` clause, so
     that a program which no longer compiles in real TP says so up front.
 - **WinDos** (TP 7, in the `dos` feature): the routines without strings
   are the `Dos` unit's own (the same `units.rs` entries); the ones with
@@ -1165,13 +1165,13 @@ window meanwhile (§19).
   Changed from the plan, and why: colour numbers rather than `u32` pixels,
   because `GetPixel` returns colour numbers and `SetBkColor`/`SetPalette`
   recolour what is already on the screen, as on an EGA. No PNG writer:
-  `PASCRUST_GRAPH=headless` draws without a window, and run tests check
+  `RUSCAL_GRAPH=headless` draws without a window, and run tests check
   drawings with `GetPixel` instead of golden images (no binary files in the
-  repository, no image dependency). `PASCRUST_GRAPH_SAVE=file.bmp` saves the
+  repository, no image dependency). `RUSCAL_GRAPH_SAVE=file.bmp` saves the
   screen (BMP needs no compression code) for looking at by eye.
 
   `GetImage`/`PutImage` (step 4 of `notes/untyped_memory.md`) keep the image
-  in TP's EGA/VGA layout, not one of PascRust's own (Fable's review): a
+  in TP's EGA/VGA layout, not one of Ruscal's own (Fable's review): a
   4-byte header (width - 1, height - 1), then each row as bit planes 3
   down to 0, as BGI documentation and the Usenet notes of the time
   describe; `ImageSize` counts 2 bytes more at the end, which nothing
@@ -1200,7 +1200,7 @@ sense; only what can't be real is faked.
 - **Printer** (`runtime/src/printer.rs`): `Lst` is a standard file like
   `Output` (`SymKind::StdText(StdFile::Printer)`), and `Writeln(Lst, ...)`
   is `fwriteln!(Lst, ...)` with the runtime's `Lst`. Where it prints is the
-  `PASCRUST_PRINTER` setting: appended to `printer.txt` where the program
+  `RUSCAL_PRINTER` setting: appended to `printer.txt` where the program
   started (the default) or another file, or `|command` to pipe it to a
   command run by `sh`, such as `|lp` for a real printer. The destination
   opens on the first print, so a program that never prints creates
@@ -1224,7 +1224,7 @@ sense; only what can't be real is faked.
 - **Drive letters** (`dos_path` in `runtime/src/system.rs`): `C:` is the
   file system's root, `/`, so `C:\DATA\X.DAT` is `/DATA/X.DAT` and
   `GetDir`/`FExpand` show the real path, which the operating system
-  understands too. Other drives exist only when `PASCRUST_DRIVE_A` (and so
+  understands too. Other drives exist only when `RUSCAL_DRIVE_A` (and so
   on) maps them, so `A:` can be real removable media or a folder standing
   in for a floppy; a name on an unmapped drive isn't found. A name without
   a drive is relative to the current directory. Names match ignoring
@@ -1241,7 +1241,7 @@ sense; only what can't be real is faked.
   clearing it gives write access back to the owner only). The routines that take
   TP's untyped `var F` take any file through the runtime's `AnyFile` trait.
   DOS kept a `FindFirst` search's state in the `SearchRec` itself, so a
-  program never closes a search; PascRust keeps each search's matches in
+  program never closes a search; Ruscal keeps each search's matches in
   a table, with the handle and position in `SearchRec.Fill`. A copy of a
   `SearchRec` can carry on with a search at any time, so none is dropped
   when it runs out; instead, past 100 open searches the one used longest
@@ -1328,7 +1328,7 @@ Three layers, all driven by `cargo test`:
    Free Pascal (`brew install fpc`, run with `-Mtp`) gives a reference
    implementation to generate them, which is open question #2.
 
-The examples are built in CI (`pascrust build` on every file) and the
+The examples are built in CI (`ruscal build` on every file) and the
 non-interactive ones are run. Interactive ones get scripted `*.in` key
 streams where feasible.
 
@@ -1349,10 +1349,10 @@ Codegen writes the Rust signature each `external` needs as a comment. A
 
 ### Rust → Pascal (embedding a Pascal engine)
 
-Done: `pascrust build --lib unit.pas` (`driver::transpile_library`)
+Done: `ruscal build --lib unit.pas` (`driver::transpile_library`)
 translates a program that only `uses` the unit, then swaps its `main.rs`
 for a `lib.rs` that declares the modules, re-exports the unit's interface
-and `pascrust_runtime`. The host calls `pascrust_runtime::call(|| tree.insert(...))`,
+and `ruscal_runtime`. The host calls `ruscal_runtime::call(|| tree.insert(...))`,
 which catches a runtime error's panic (`catch_unwind`) and returns it as
 `Err(RuntimeError)`. A unit's globals are the host's to own, which is
 the §15.4 lifting with the host as `main`: codegen's `library` writes
@@ -1365,8 +1365,8 @@ captures passed as fields (designed with Fable; the user chose the name
 and that every interface routine is a method). A general "bundled
 globals" mode was considered and left: one bundle would make Rust see two
 borrows where lifting passes separate variables.
-A Rust project can also run PascRust from its `build.rs`
-(`pascrust::build::library`, designed in `notes/build_rs.md` and reviewed
+A Rust project can also run Ruscal from its `build.rs`
+(`ruscal::build::library`, designed in `notes/build_rs.md` and reviewed
 by Fable): the library's files become one file in `OUT_DIR`, each module
 inline (`include!` can't take `mod x;` or a leading `//!`/`#![...]`),
 brought in by the runtime's `include_library!`, which allows the lints of
@@ -1378,8 +1378,8 @@ read; `lib.rs` checks the runtime features it needs at compile time
 (`FEATURE_CRT`), since a Rust program chooses those; and a context's
 `new()` probes once whether Cargo's overflow checks are on for the
 generated code (`warn_unless_wrapping`), since a library is built with
-the program's profile. `pascrust` as a build dependency leaves out the
-command-line tools (the `cli` feature). `examples/pascrust/rust_calls_pascal`
+the program's profile. `ruscal` as a build dependency leaves out the
+command-line tools (the `cli` feature). `examples/ruscal/rust_calls_pascal`
 is the example (`build_rs_tests.rs`). `tests/embed/bst_host.rs` uses the user's `bstunit.pas`
 (`embed_tests.rs`); `docs/embedding.md` is the user guide. This is the
 "Pascal crust inside Rust" configuration from the project's name.
@@ -1415,7 +1415,7 @@ program are behind `Mutex`es.
 
 ## 24. Typed files as JSON (`to-json`, `from-json`)
 
-`pascrust to-json` reads a `file of T` written by a TP program and prints
+`ruscal to-json` reads a `file of T` written by a TP program and prints
 it as JSON (docs/data_files.md). Decision: decode in the transpiler, from
 sema's types, rather than generate a Rust program around the runtime's
 `FileRecord`: nothing to compile, and an answer at once. It runs the front
@@ -1434,7 +1434,7 @@ source spells them (`EnumType::pascal_names`; the Rust names are camel
 case), and which real type a `Real` is (`Type::Real(RealKind)`). In Rust
 every real is an `f64`, so two `RealKind`s always compare equal and sema
 treats `Double` and `Real` as one type; only the size on disk differs (8
-and 6 bytes), which PascRust's files don't model yet, so `to-json` refuses
+and 6 bytes), which Ruscal's files don't model yet, so `to-json` refuses
 a `Double` rather than read the wrong bytes.
 
 `from-json` is the reverse walk (`json/encode.rs`), strict about every
@@ -1500,8 +1500,8 @@ end.
 Expected Rust output (`out/demo/src/main.rs`), after `rustfmt`:
 
 ```rust
-//! Generated by PascRust from demo.pas. Do not edit by hand.
-use pascrust_runtime::prelude::*;
+//! Generated by Ruscal from demo.pas. Do not edit by hand.
+use ruscal_runtime::prelude::*;
 
 /// Pascal: `Node = record value: integer; next: NodePtr; end`
 #[derive(Clone, Default, Debug)]
@@ -1560,7 +1560,7 @@ fn pascal_main() {
 fn main() {
     // run() catches Pascal runtime errors (panics), restores the terminal,
     // prints "Runtime error NNN" like Turbo Pascal, and sets the exit code.
-    pascrust_runtime::run(pascal_main);
+    ruscal_runtime::run(pascal_main);
 }
 ```
 

@@ -1,0 +1,76 @@
+---
+source: crates/ruscal/tests/json_tests.rs
+expression: items
+---
+[
+  {
+    "Name": "Café",
+    "Count": 200,
+    "Delta": -5,
+    "Big": -100000,
+    "Code": 65535,
+    "Ok": true,
+    "Letter": "Z",
+    "Hue": "Blue",
+    "Hues": [
+      "Red",
+      "Blue"
+    ],
+    "Letters": [
+      "a",
+      "q",
+      "z"
+    ],
+    "Grid": [
+      [
+        11,
+        12,
+        13
+      ],
+      [
+        21,
+        22,
+        23
+      ]
+    ],
+    "Where": {
+      "X": -1,
+      "Y": 300
+    },
+    "Next": null,
+    "Kind": "Circle",
+    "Radius": 7
+  },
+  {
+    "Name": "Box",
+    "Count": 0,
+    "Delta": 0,
+    "Big": 0,
+    "Code": 0,
+    "Ok": false,
+    "Letter": "\u0000",
+    "Hue": "Red",
+    "Hues": [],
+    "Letters": [],
+    "Grid": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "Where": {
+      "X": 0,
+      "Y": 0
+    },
+    "Next": null,
+    "Kind": "Square",
+    "Side": 12,
+    "Filled": true
+  }
+]

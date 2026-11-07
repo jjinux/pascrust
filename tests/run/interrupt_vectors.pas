@@ -1,7 +1,7 @@
 program InterruptVectors;
 { GetIntVec and SetIntVec, faked: a vector holds what a program puts in it
   (here @Tick, an interrupt procedure), and gives back DOS's handler, so
-  saving and restoring a vector works, but PascRust has no interrupts and
+  saving and restoring a vector works, but Ruscal has no interrupts and
   never calls a handler. Written by hand: Free Pascal on this machine has
   no interrupt vectors. }
 uses Dos;

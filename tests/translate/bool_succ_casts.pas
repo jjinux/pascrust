@@ -1,7 +1,7 @@
 { Review batch L: Succ and Pred of a Boolean (the enum (False, True)),
   conversions of numbers (Word(-1) is 65535), not Odd(a) as a % 2 == 0,
   and shifts with arithmetic around them. Output from fpc -Mtp except
-  Hi(i * 300): Free Pascal works in 32 bits (0), TP and PascRust in 16. }
+  Hi(i * 300): Free Pascal works in 32 bits (0), TP and Ruscal in 16. }
 program BoolSuccAndCasts;
 var
    i, a: Integer;

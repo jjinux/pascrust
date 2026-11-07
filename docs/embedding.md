@@ -2,26 +2,26 @@
 
 A Rust program can use a Turbo Pascal unit (and the units it uses). The
 easy way is to let `cargo build` translate it, with a build script; the
-other is to make a library crate of it once, with `pascrust build --lib`.
+other is to make a library crate of it once, with `ruscal build --lib`.
 (The other way round, Turbo Pascal calling Rust, is in [Calling
 Rust](calling_rust.md).)
 
 ## With a build script
 
-`examples/pascrust/rust_calls_pascal` is a whole Rust project that uses
+`examples/ruscal/rust_calls_pascal` is a whole Rust project that uses
 the user's `examples/database/bstunit.pas`, a binary search tree written
-in 1997 (`cargo run --manifest-path examples/pascrust/rust_calls_pascal/Cargo.toml`).
+in 1997 (`cargo run --manifest-path examples/ruscal/rust_calls_pascal/Cargo.toml`).
 It needs three things:
 
 ```toml
 # Cargo.toml
 [dependencies]
-pascrust_runtime = { git = "https://github.com/jjinux/pascrust", rev = "..." }
+ruscal_runtime = { git = "https://github.com/jjinux/ruscal", rev = "..." }
 
 [build-dependencies]
 # The same `rev` as the runtime. Without the default features, it's just
 # the translator, without the command-line tools.
-pascrust = { git = "https://github.com/jjinux/pascrust", rev = "...", default-features = false }
+ruscal = { git = "https://github.com/jjinux/ruscal", rev = "...", default-features = false }
 
 # Turbo Pascal's integer arithmetic wraps around (32767 + 1 is -32768);
 # Rust's stops with an error in a debug build unless this is off.
@@ -32,22 +32,22 @@ overflow-checks = false
 ```rust
 // build.rs
 fn main() {
-    pascrust::build::library("pascal/bstunit.pas").unwrap();
+    ruscal::build::library("pascal/bstunit.pas").unwrap();
 }
 ```
 
 ```rust
 // src/main.rs
-pascrust_runtime::include_library!(bstunit);
+ruscal_runtime::include_library!(bstunit);
 
 use bstunit::{Bst, BstUnitContext, PeopleKey};
-use pascrust_runtime::{RuntimeError, call};
+use ruscal_runtime::{RuntimeError, call};
 ```
 
-- `pascrust::build::library` translates the unit into one file in Cargo's
+- `ruscal::build::library` translates the unit into one file in Cargo's
   `OUT_DIR`, and tells Cargo to run it again when the unit, a unit it
   uses, or a Rust file it links (`{$L}`) changes. A Pascal error stops
-  the build with PascRust's message; warnings show as Cargo's.
+  the build with Ruscal's message; warnings show as Cargo's.
 - `include_library!(bstunit)` is the module `bstunit`, named after the
   file (lowercased: `BSTUnit.pas` is `bstunit`). Lints are allowed in it,
   since nobody edits generated code.
@@ -57,13 +57,13 @@ use pascrust_runtime::{RuntimeError, call};
   links that uses crates (`//! cargo:` lines) needs them in
   `[dependencies]` too; the build says so.
 - A unit in another directory than the units it uses: say where to find
-  them with `pascrust::build::library_with(path, &Options { unit_dirs:
-  vec![...], ..Default::default() })` (`pascrust::driver::Options`).
+  them with `ruscal::build::library_with(path, &Options { unit_dirs:
+  vec![...], ..Default::default() })` (`ruscal::driver::Options`).
 - A Rust file the unit links with `{$L}` names the unit's types as
   `super::TList` (see [Calling Rust](calling_rust.md)).
 - The Rust program needs edition 2018 or later. Two libraries that both
   use one unit each get their own copy of it.
-- For hacking on PascRust itself, `path` dependencies on a checkout work
+- For hacking on Ruscal itself, `path` dependencies on a checkout work
   too, as in the example.
 
 ## Overflow checks
@@ -75,7 +75,7 @@ with the Rust program's settings instead, and a debug build checks: then
 
 - with a build script, the Pascal is part of the program's crate:
   `[profile.dev] overflow-checks = false` (all of the program);
-- with `pascrust build --lib`, it's its own crate:
+- with `ruscal build --lib`, it's its own crate:
   `[profile.dev.package.bstunit] overflow-checks = false` (just the
   library).
 
@@ -88,13 +88,13 @@ which keeps an I/O error for `IOResult`. With `panic = "abort"` there's
 no check, and a runtime error, even an I/O error under `{$I-}`, ends the
 program, with its message and a note saying why on stderr.
 
-## With `pascrust build --lib`
+## With `ruscal build --lib`
 
 Here the unit is `examples/database/bstunit.pas`, a binary search tree
 written in 1997:
 
 ```sh
-cargo run -p pascrust -- build --lib examples/database/bstunit.pas --out out/bstunit
+cargo run -p ruscal -- build --lib examples/database/bstunit.pas --out out/bstunit
 ```
 
 `out/bstunit` is a Cargo project named after the file, `bstunit`. Its
@@ -108,7 +108,7 @@ bstunit = { path = "../out/bstunit" }
 ```
 
 ```rust
-use bstunit::pascrust_runtime::{RuntimeError, call};
+use bstunit::ruscal_runtime::{RuntimeError, call};
 use bstunit::{Bst, PeopleKey};
 
 fn main() -> Result<(), RuntimeError> {
@@ -129,7 +129,7 @@ fn main() -> Result<(), RuntimeError> {
 ```
 
 `tests/embed/bst_host.rs` is this program, complete, and
-`crates/pascrust/tests/embed_tests.rs` builds and runs it.
+`crates/ruscal/tests/embed_tests.rs` builds and runs it.
 
 ## What the Rust sees
 
@@ -137,18 +137,18 @@ fn main() -> Result<(), RuntimeError> {
   is the struct `Bst`, its methods are methods (`tree.insert(...)`), and
   its records are structs with public fields that derive `Default`, so
   `PeopleKey { id: 60, ..Default::default() }` makes one.
-- Parameters have PascRust's usual types (`Integer` is `i16`, a `var`
+- Parameters have Ruscal's usual types (`Integer` is `i16`, a `var`
   parameter is `&mut`, a string is a `PString`): see the table in
-  [Calling Rust](calling_rust.md#types). `pascrust emit` shows a unit's
+  [Calling Rust](calling_rust.md#types). `ruscal emit` shows a unit's
   Rust.
-- `bstunit::pascrust_runtime` is the runtime the library uses, with
+- `bstunit::ruscal_runtime` is the runtime the library uses, with
   `PString`, `Ptr` and the rest, so the program needs no other dependency.
 
 ## Runtime errors
 
 A Pascal runtime error (a range check, a nil or disposed pointer, a file
 that isn't there) stops a Pascal program. Called from Rust through
-`pascrust_runtime::call`, it comes back as an `Err(RuntimeError)` instead,
+`ruscal_runtime::call`, it comes back as an `Err(RuntimeError)` instead,
 with Turbo Pascal's error number and message:
 
 ```rust
@@ -170,7 +170,7 @@ which `call`s Pascal), the innermost one gets it, and the Rust code
 around it decides what happens next.
 
 When the Rust program is done with the Pascal code, it can call
-`pascrust_runtime::shutdown()`, which does what the end of a Pascal
+`ruscal_runtime::shutdown()`, which does what the end of a Pascal
 program does: puts the terminal back if the unit used `Crt`, and finishes
 `Lst` output to a printer command.
 
@@ -187,14 +187,14 @@ program does: puts the terminal back if the unit used `Crt`, and finishes
 
 ## Units with variables
 
-PascRust has no global state: a unit's variables are passed to its
+Ruscal has no global state: a unit's variables are passed to its
 routines as parameters. So for a library, the variables of the unit and
 of the units it uses become the fields of one struct, named after the unit
 (`CounterContext` for `Counter`), and the unit's interface routines are its
 methods, with the fields passed in:
 
 ```rust
-use counter::pascrust_runtime::{RuntimeError, call};
+use counter::ruscal_runtime::{RuntimeError, call};
 use counter::CounterContext;
 
 fn main() -> Result<(), RuntimeError> {
@@ -220,7 +220,7 @@ fn main() -> Result<(), RuntimeError> {
 - The routines of the units it uses aren't methods (in Pascal, a program
   using `Counter` doesn't see `Helper`'s routines). Like the methods of an
   object type, or a procedural value, they take the unit variables they
-  use as parameters: `tally.add(&mut c.count_2, 3)`. `pascrust emit`
+  use as parameters: `tally.add(&mut c.count_2, 3)`. `ruscal emit`
   shows a routine's parameters.
 - A method borrows the whole context, so `c.swap(&mut c.count_2, &mut x)`
   is a Rust borrow error; call the function instead,

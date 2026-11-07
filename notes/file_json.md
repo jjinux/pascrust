@@ -1,10 +1,10 @@
-# Plan: `pascrust json` and `pascrust unjson` (a `file of T` to JSON and back)
+# Plan: `ruscal json` and `ruscal unjson` (a `file of T` to JSON and back)
 
 The user's request (2026-10-29, prioritized 2026-11-05): turn a binary file
 written by a Turbo Pascal program (`file of T`) into JSON. The user's
 choices (2026-11-05):
 
-- PascRust decodes the bytes itself, from the Pascal source's types (no
+- Ruscal decodes the bytes itself, from the Pascal source's types (no
   generated program, nothing to compile).
 - Both ways: JSON back to a `file of T`, so old data can be edited.
 - Without a type name, the only `file of T` the source declares.
@@ -14,13 +14,13 @@ choices (2026-11-05):
 ## Commands
 
 ```sh
-pascrust json   examples/database/founit.pas mark.dat --type People            # JSON on stdout
-pascrust json   examples/database/founit.pas mark.dat --type People -o mark.json
-pascrust unjson examples/database/founit.pas mark.json --type People -o mark.dat
+ruscal json   examples/database/founit.pas mark.dat --type People            # JSON on stdout
+ruscal json   examples/database/founit.pas mark.dat --type People -o mark.json
+ruscal unjson examples/database/founit.pas mark.json --type People -o mark.dat
 ```
 
 - The first argument is the program or unit that declares the type. Its
-  `uses` are found as for `pascrust build` (next to it, PascRust's own
+  `uses` are found as for `ruscal build` (next to it, Ruscal's own
   units), so a type from a used unit works too.
 - `--type T` names a type the source can see at its top level (a unit's
   interface or implementation, a program's declarations). Without it: the
@@ -69,7 +69,7 @@ Pascal, variant fields included, so an object never repeats a key.
   OS handle: meaningless on disk).
 - `object` types (a plain one is rare; can come later). (Since done:
   see item 9 below.)
-- `Single`, `Double`, `Extended`, `Comp`: PascRust maps them all to `Real`
+- `Single`, `Double`, `Extended`, `Comp`: Ruscal maps them all to `Real`
   (6 bytes on disk), so a file written by the real TP with a `Double`
   field (8 bytes) doesn't read correctly, neither by a translated program
   nor here. **Open question 1.**
@@ -98,7 +98,7 @@ same JSON.
 
 ## Code
 
-- `crates/pascrust/src/json/` (behind the `cli` feature, as it's a
+- `crates/ruscal/src/json/` (behind the `cli` feature, as it's a
   command): `layout.rs` turns a sema `Type` into a `Layout` tree (sizes and
   offsets, field names as spelled, enum names, set bounds), reusing
   `tp_size`/`set_bytes`/`RecordType::variant_area` so it agrees with what
@@ -110,18 +110,18 @@ same JSON.
   optional dependency under `cli`, for parsing and printing. (A hand-written
   JSON parser is possible but isn't what this project is about.)
 - Real48 and CP437: the runtime already has both (`io::files::real48`,
-  `cp437`). Depend on `pascrust_runtime` (no features, so no extra crates)
-  from `pascrust` rather than copying them, so the two can't disagree.
+  `cp437`). Depend on `ruscal_runtime` (no features, so no extra crates)
+  from `ruscal` rather than copying them, so the two can't disagree.
 
 ## Tests
 
-- `crates/pascrust/tests/json_tests.rs`:
+- `crates/ruscal/tests/json_tests.rs`:
   - `examples/database/mark.dat` (a real file from 1997) with `founit.pas`
     and `People`, and `mark.key` with `PeopleKey`: snapshots of the JSON.
   - A Pascal test program (`tests/json/records.pas`) with every supported
     kind of field (integers, Boolean, Char, `string[n]`, Real, enum, sets
     of chars and enums, arrays of arrays, a nested record, tagged and
-    tagless variants, a pointer) writes `records.dat` through `pascrust
+    tagless variants, a pointer) writes `records.dat` through `ruscal
     run`; `json` on it is a snapshot, `unjson` of that gives the same bytes
     (the program clears strings first with `FillChar`, so no junk), and a
     second Pascal program reads the `unjson` output back and prints it.
@@ -140,7 +140,7 @@ same JSON.
 ## Open questions
 
 1. `Single`/`Double`/`Extended`/`Comp` are 4/8/10/8 bytes in TP's files
-   but 6 in PascRust's (all are `Real`). Fix that first (a `Real` kind in
+   but 6 in Ruscal's (all are `Real`). Fix that first (a `Real` kind in
    sema; the runtime writes each in its TP size), or leave it as a known
    limit for both translated programs and this command?
 2. A tagless variant record in `unjson`: fields from more than one
@@ -187,7 +187,7 @@ plan:
 14. **Default type**: among several `file of` types, the one whose size
     divides the file's length, if only one does (`mark.key`, 14 bytes, is
     `PeopleKey`); otherwise the error lists them.
-15. **Dependencies**: `cli = ["dep:clap", "dep:serde_json", "dep:pascrust_runtime"]`,
+15. **Dependencies**: `cli = ["dep:clap", "dep:serde_json", "dep:ruscal_runtime"]`,
     `serde_json` with `preserve_order`; `#[cfg(feature = "cli")] pub mod json;`;
     `json_tests` with `required-features = ["cli"]`. A build script's
     `default-features = false` pulls in nothing new.
@@ -213,4 +213,4 @@ values to the same byte; (3) `json`/`unjson`.
 
 The user's answers (2026-11-05): (1) refuse now, fix later, as Fable
 recommends; (2) an error only on a clash; (3) the commands are
-`pascrust to-json` and `pascrust from-json`.
+`ruscal to-json` and `ruscal from-json`.

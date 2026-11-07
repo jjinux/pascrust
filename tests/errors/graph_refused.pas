@@ -1,5 +1,5 @@
 program GraphRefused;
-{ Graph routines that load or link driver code PascRust doesn't have. }
+{ Graph routines that load or link driver code Ruscal doesn't have. }
 uses Graph;
 var
    n: Integer;

@@ -1,5 +1,5 @@
 program Lifting;
-{ Nested procedures and globals, which PascRust "lifts" into top-level
+{ Nested procedures and globals, which Ruscal "lifts" into top-level
   Rust functions with extra parameters. }
 var
    count: integer;

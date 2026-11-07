@@ -1,8 +1,8 @@
 # Plan: a Rust project that builds its Pascal with `build.rs`
 
 The user's question (2026-11-03): if a Rust project embeds Pascal code,
-how does its `cargo build` know to run PascRust? Today a user runs
-`pascrust build --lib unit.pas --out dir` by hand and depends on `dir` by
+how does its `cargo build` know to run Ruscal? Today a user runs
+`ruscal build --lib unit.pas --out dir` by hand and depends on `dir` by
 path (docs/embedding.md); a change in the Pascal needs that step again.
 
 ## Goal
@@ -10,25 +10,25 @@ path (docs/embedding.md); a change in the Pascal needs that step again.
 ```toml
 # the Rust project's Cargo.toml
 [dependencies]
-pascrust_runtime = { git = "https://github.com/jjinux/pascrust", features = ["crt"] }
+ruscal_runtime = { git = "https://github.com/jjinux/ruscal", features = ["crt"] }
 
 [build-dependencies]
-pascrust = { git = "https://github.com/jjinux/pascrust", default-features = false }
+ruscal = { git = "https://github.com/jjinux/ruscal", default-features = false }
 ```
 
 ```rust
 // build.rs
 fn main() {
-    pascrust::build::library("pascal/bstunit.pas").unwrap();
+    ruscal::build::library("pascal/bstunit.pas").unwrap();
 }
 ```
 
 ```rust
 // src/main.rs
-pascrust_runtime::include_library!(bstunit);   // `mod bstunit { ... }`
+ruscal_runtime::include_library!(bstunit);   // `mod bstunit { ... }`
 
 use bstunit::{Bst, BstUnitContext, PeopleKey};
-use pascrust_runtime::call;
+use ruscal_runtime::call;
 ```
 
 `cargo build` then translates the unit (and the units it uses, and the
@@ -36,7 +36,7 @@ Rust files it links) whenever one of them changed, and only then.
 
 ## How
 
-1. **`pascrust::build::library(path)`** (new module `crates/pascrust/src/build.rs`):
+1. **`ruscal::build::library(path)`** (new module `crates/ruscal/src/build.rs`):
    - calls `driver::transpile_library` with the unit's directory and
      `$CARGO_MANIFEST_DIR`-relative paths;
    - writes **one file**, `$OUT_DIR/<crate name>.rs`, with every module
@@ -57,20 +57,20 @@ Rust files it links) whenever one of them changed, and only then.
    path). Nested inside the user's crate those are wrong. For a library,
    codegen writes `super::helper` instead (units are siblings inside the
    library's module), behind a flag in `codegen::Input` (`library`
-   already says it's a library). `pascrust build --lib` keeps working,
+   already says it's a library). `ruscal build --lib` keeps working,
    since `super::` from a module at the crate root is `crate::`.
-3. **`pascrust_runtime::include_library!(name)`**: a `macro_rules!` that
+3. **`ruscal_runtime::include_library!(name)`**: a `macro_rules!` that
    expands to
    `#[allow(unused_variables, unused_assignments, dead_code, arithmetic_overflow)] pub mod name { include!(concat!(env!("OUT_DIR"), "/name.rs")); }`.
 4. **Runtime features**: the generated code needs the runtime's `crt` or
    `dos` feature when the unit uses `Crt` or `Dos`; a build dependency
    can't turn on a dependency's features. So the generated file starts
    with a check that fails clearly at compile time:
-   `const _: () = assert!(pascrust_runtime::FEATURE_CRT, "bstunit uses Crt: turn on pascrust_runtime's \"crt\" feature");`
+   `const _: () = assert!(ruscal_runtime::FEATURE_CRT, "bstunit uses Crt: turn on ruscal_runtime's \"crt\" feature");`
    with `pub const FEATURE_CRT: bool = cfg!(feature = "crt");` (and
    `FEATURE_DOS`) in the runtime. The `build` helper also prints a
    `cargo:warning` naming the features.
-5. **Keeping the build dependency light**: `pascrust`'s only dependency
+5. **Keeping the build dependency light**: `ruscal`'s only dependency
    is `clap`, for the binaries. Put it behind a default `cli` feature
    (`required-features = ["cli"]` on the two `[[bin]]`s), so
    `default-features = false` builds just the library.
@@ -82,21 +82,21 @@ Rust files it links) whenever one of them changed, and only then.
 
 ## Tests
 
-- `crates/pascrust/tests/build_rs_tests.rs`: writes a small Rust project
+- `crates/ruscal/tests/build_rs_tests.rs`: writes a small Rust project
   into `CARGO_TARGET_TMPDIR` with path dependencies on this repo's two
-  crates, a `build.rs` calling `pascrust::build::library`, and a
+  crates, a `build.rs` calling `ruscal::build::library`, and a
   `main.rs` like `tests/embed/counter_host.rs`; runs `cargo run`; checks
   the output. Then touches `helper.pas` and checks Cargo rebuilds
   (or at least that the output file names all sources).
 - A unit test that the single-file output has no `crate::` and no inner
   attributes, and that the `rerun-if-changed` list has the unit, the units
   it uses, and a linked `.rs`.
-- The `pascrust build --lib` tests stay as they are (`super::` paths).
+- The `ruscal build --lib` tests stay as they are (`super::` paths).
 
 ## Docs
 
 docs/embedding.md gets a "Building with `build.rs`" section (the
-three files above), and the `pascrust build --lib` way stays as the
+three files above), and the `ruscal build --lib` way stays as the
 manual one; README's embedding line mentions it; docs/architecture.md
 §22 explains the single file and `super::`.
 
@@ -105,7 +105,7 @@ manual one; README's embedding line mentions it; docs/architecture.md
 1. `include_library!` in the runtime, or have the user write the `mod`
    with `include!` themselves (one less macro, but they must get the
    `#[allow]` right)?
-2. Is a git dependency the right way to depend on PascRust until it's on
+2. Is a git dependency the right way to depend on Ruscal until it's on
    crates.io, or should the docs show a path dependency on a checkout?
 
 ## After Fable's review (2026-11-04), and the user's answers
@@ -135,20 +135,20 @@ four libraries into one file each in `OUT_DIR`, `-D warnings`, editions
 5. **`rerun-if-changed`** needs `Generated::sources`: every file the driver
    opened (the unit, each used unit's path as `find_file` found it, each
    linked `.rs`), absolute. Built-in units need none; no directories.
-6. **Errors**: `pascrust::build::library` returns `Result<(), build::Error>`
+6. **Errors**: `ruscal::build::library` returns `Result<(), build::Error>`
    whose `Debug` writes the rendered message as is (so `.unwrap()` and
    `fn main() -> Result<..>` show the carets); warnings become one
    `cargo:warning=` per line.
-7. **Runtime features**: the `const _: () = assert!(pascrust_runtime::FEATURE_CRT, ...)`
+7. **Runtime features**: the `const _: () = assert!(ruscal_runtime::FEATURE_CRT, ...)`
    check works and is reported first; no `cargo:warning` for it.
 8. **`cli` feature**: works as planned (`required-features` on both bins).
 9. **`//! cargo:` crates of a linked `.rs`**: a `cargo:warning` naming the
    crates to add to the program's `[dependencies]` (the user's choice).
 10. **Docs**: git dependencies with the same `rev` for both crates (the
-    user's choice), a path dependency for hacking on PascRust; edition
+    user's choice), a path dependency for hacking on Ruscal; edition
     2018+; the macro's name is the file stem lowercased; the overflow
     lines; two libraries using one unit get two copies of it.
 
 A full crate written into `OUT_DIR` can't work (Cargo reads dependencies'
-manifests before build scripts run), and a separate `pascrust-build`
-crate gains nothing over a `pascrust::build` module.
+manifests before build scripts run), and a separate `ruscal-build`
+crate gains nothing over a `ruscal::build` module.

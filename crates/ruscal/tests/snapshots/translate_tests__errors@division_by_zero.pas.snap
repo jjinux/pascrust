@@ -1,0 +1,40 @@
+---
+source: crates/ruscal/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/division_by_zero.pas
+---
+division_by_zero.pas:6:18: error: division by zero
+   Bad = (10 div Z) + 1;
+                 ^
+
+division_by_zero.pas:9:21: error: division by zero
+   Sub = 1..(10 div Z);
+                    ^
+
+division_by_zero.pas:10:24: error: division by zero
+   Name = string[8 div Z];
+                       ^
+
+division_by_zero.pas:13:16: error: division by zero
+         1 div Z: (A: Integer);
+               ^
+
+division_by_zero.pas:17:23: error: division by zero
+   A: array[1..(4 div Z)] of Integer;
+                      ^
+
+division_by_zero.pas:20:23: error: division by zero
+   WriteLn(i * (5 div 0));
+                      ^
+
+division_by_zero.pas:21:23: error: division by zero
+   WriteLn(i + (5 mod Z));
+                      ^
+
+division_by_zero.pas:23:23: error: division by zero
+   WriteLn(i * (5 div 0));
+                      ^
+
+division_by_zero.pas:25:13: error: division by zero
+      5 div Z: WriteLn('a');
+            ^

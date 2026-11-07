@@ -1,8 +1,8 @@
 program SystemMisc;
-{ GetDir, and the System routines PascRust fakes: MemAvail, MaxAvail,
+{ GetDir, and the System routines Ruscal fakes: MemAvail, MaxAvail,
   Mark, Release, SetTextBuf, Test8087. Self-checking. (GetDir gives
-  PascRust's DOS paths; the tests map drive C: to the directory the
-  program starts in (PASCRUST_DRIVE_C=.), so this .out is written by hand.) }
+  Ruscal's DOS paths; the tests map drive C: to the directory the
+  program starts in (RUSCAL_DRIVE_C=.), so this .out is written by hand.) }
 type
    PNode = ^Node;
    Node = record

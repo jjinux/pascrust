@@ -1,7 +1,7 @@
 program FindFiles;
 { FindFirst and FindNext with DOS wildcards and attributes. Self-checking.
   (Free Pascal returns matches in directory order, so this .out is built
-  from the checks, by hand: PascRust sorts them by name.) }
+  from the checks, by hand: Ruscal sorts them by name.) }
 uses Dos;
 var
    checks, failures: Integer;

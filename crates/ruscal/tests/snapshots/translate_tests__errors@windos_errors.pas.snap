@@ -1,0 +1,16 @@
+---
+source: crates/ruscal/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/windos_errors.pas
+---
+windos_errors.pas:14:32: error: expected a TSearchRec variable, found Integer
+   FindFirst('*.*', faAnyFile, n);
+                               ^
+
+windos_errors.pas:15:4: error: Ruscal can't run `Intr`: it calls a DOS or BIOS interrupt, which needs real DOS
+   Intr($21, r);
+   ^^^^^^^^^^^^
+
+windos_errors.pas:12:9: error: this keeps a PChar into a Char array, which Ruscal can't do (it lends a PChar to an array only for one statement); use a PChar from StrNew or GetMem instead; how to rewrite it: https://github.com/jjinux/ruscal/blob/main/docs/rust_limits.md#pchar-into-array
+   p := FileExpand(buf, 'x');
+        ^^^^^^^^^^^^^^^^^^^^

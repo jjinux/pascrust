@@ -15,6 +15,6 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       # Generated programs turn on only the units they use, and must build
       # without warnings, so check each feature on its own too.
-      - run: for f in crt dos graph; do cargo clippy -p pascrust_runtime --features $f -- -D warnings; done
+      - run: for f in crt dos graph; do cargo clippy -p ruscal_runtime --features $f -- -D warnings; done
       - run: cargo test --workspace
-      - run: cargo test -p pascrust_runtime --all-features
+      - run: cargo test -p ruscal_runtime --all-features

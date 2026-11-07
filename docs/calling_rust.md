@@ -3,7 +3,7 @@
 A Turbo Pascal program can call routines written in Rust, the way TP
 programs called routines written in assembly: declare them `external`,
 and say which file has them with `{$L ...}`. TP linked an `.OBJ` file;
-PascRust links a `.rs` file.
+Ruscal links a `.rs` file.
 
 ```pascal
 program Beeper;
@@ -20,7 +20,7 @@ end.
 
 ```rust
 // sound.rs, next to beeper.pas
-use pascrust_runtime::prelude::*;
+use ruscal_runtime::prelude::*;
 
 pub fn beep(hz: u16) {
     pwriteln!("beep at ", hz, " Hz");
@@ -31,11 +31,11 @@ pub fn twice(n: i16) -> i16 {
 }
 ```
 
-`pascrust run beeper.pas` prints `beep at 440 Hz` and `42`. For a fuller
-example, `examples/pascrust/calls_rust.pas` (with `calls_rust.rs`) uses
+`ruscal run beeper.pas` prints `beep at 440 Hz` and `42`. For a fuller
+example, `examples/ruscal/calls_rust.pas` (with `calls_rust.rs`) uses
 Rust for an environment variable, word counting and primes, and has Rust
-sort with a Pascal function: `cargo run -p pascrust -- run
-examples/pascrust/calls_rust.pas`.
+sort with a Pascal function: `cargo run -p ruscal -- run
+examples/ruscal/calls_rust.pas`.
 
 ## How it works
 
@@ -47,7 +47,7 @@ examples/pascrust/calls_rust.pas`.
   trailing underscore, `Loop` is `loop_`), in the file of the last `{$L}`
   before it. It must be `pub`.
 - A path in `{$L}` can use DOS's backslashes (`{$L rust\sound.rs}`).
-- The arguments are in PascRust's usual types (below). The generated
+- The arguments are in Ruscal's usual types (below). The generated
   code says what each function must look like:
 
   ```rust
@@ -55,7 +55,7 @@ examples/pascrust/calls_rust.pas`.
   // Written in Rust, in `sound.rs`: `pub fn beep(hz: u16)`
   ```
 
-  so `pascrust emit beeper.pas` is the quickest way to see the signature
+  so `ruscal emit beeper.pas` is the quickest way to see the signature
   to write.
 - A unit's routines can be in Rust too: put the `{$L}` and the
   `external` declarations in its `implementation` part. Two units can
@@ -71,7 +71,7 @@ examples/pascrust/calls_rust.pas`.
 | `Real`, `Single`, `Double`, `Extended` | `f64` |
 | `Boolean` | `bool` |
 | `Char` | `u8` (a byte, as in TP) |
-| `string`, `string[n]` | `PString` (`pascrust_runtime::PString`) |
+| `string`, `string[n]` | `PString` (`ruscal_runtime::PString`) |
 | an enum, record or object of the program | its Rust type, `super::TPoint` |
 | `array[1..10] of T` | `PArray<T, 1, 10>` |
 | `^T` | `Ptr<T>` |
@@ -128,11 +128,11 @@ pub fn sort_with(items: &mut TList, less: TLess) {
 
 The Rust file is a module next to the Pascal code's, so it names the
 program's (or the unit's) types as `super::TLess`, which works for a
-program, for `pascrust build --lib` and inside `include_library!` alike
+program, for `ruscal build --lib` and inside `include_library!` alike
 (`crate::TLess` works only for a program). A procedural type is a `ProcVar`, and `.get()` gives
 the routine as a plain Rust function pointer. A routine that uses the
 program's global variables takes them as parameters too, so a callback
-is simplest when it uses only its own parameters (`pascrust emit` shows
+is simplest when it uses only its own parameters (`ruscal emit` shows
 the type, `type TLess = ProcVar<fn(i16, i16) -> bool>;`).
 `tests/run/rust_callback.pas` is this example, complete.
 
@@ -151,12 +151,12 @@ pub fn roll() -> i16 {
 }
 ```
 
-The line goes into the generated project's `Cargo.toml`, so `pascrust
+The line goes into the generated project's `Cargo.toml`, so `ruscal
 run` fetches the crate as Cargo does.
 
 ## In Turbo Pascal
 
 TP 7 can't link a `.rs` file, so a program that calls Rust compiles only
-with PascRust. PascRust can't link `.OBJ` files either (they're 16-bit
+with Ruscal. Ruscal can't link `.OBJ` files either (they're 16-bit
 x86 code for DOS); `{$L sound.obj}` is an error that says to write the
 routines in Rust.

@@ -1,6 +1,6 @@
 # PRTurtle: turtle graphics on top of Graph
 
-`PRTurtle` is one of PascRust's own units (their names start with `PR`).
+`PRTurtle` is one of Ruscal's own units (their names start with `PR`).
 It gives a program turtle graphics, with the routines Turbo Pascal 3.0's
 turtle had (in TP 4.0 to 7.0, the `Graph3` unit), drawn with the `Graph`
 unit. So a Graph3 turtle program ports by changing its `uses` line and
@@ -24,12 +24,12 @@ begin
 end.
 ```
 
-For more, [`examples/pascrust/turtles.pas`](../examples/pascrust/turtles.pas)
-draws a Koch snowflake, a tree and a spiral (`cargo run -p pascrust --
-run examples/pascrust/turtles.pas`).
+For more, [`examples/ruscal/turtles.pas`](../examples/ruscal/turtles.pas)
+draws a Koch snowflake, a tree and a spiral (`cargo run -p ruscal --
+run examples/ruscal/turtles.pas`).
 
-The unit is written in Turbo Pascal (`crates/pascrust/units/PRTurtle.pas`)
-and comes with PascRust: `uses PRTurtle` finds it unless there's a file of
+The unit is written in Turbo Pascal (`crates/ruscal/units/PRTurtle.pas`)
+and comes with Ruscal: `uses PRTurtle` finds it unless there's a file of
 that name next to the program. It's translated with the program, like any
 unit, so it also compiles in Turbo Pascal 7 itself.
 

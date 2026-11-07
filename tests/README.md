@@ -2,12 +2,12 @@
 
 Three layers (see `docs/architecture.md` §21):
 
-1. **Unit tests** inside the crates (`cargo test -p pascrust --lib`): lexer
+1. **Unit tests** inside the crates (`cargo test -p ruscal --lib`): lexer
    token streams, parser shapes, sema type rules, runtime formatting.
 2. **Translation tests** (`tests/translate/*.pas`): the generated Rust for
    each file is snapshotted with [insta](https://insta.rs). These document
    which Rust each Pascal construct becomes. Snapshots live in
-   `crates/pascrust/tests/snapshots/`. `tests/errors/*.pas` are programs that
+   `crates/ruscal/tests/snapshots/`. `tests/errors/*.pas` are programs that
    must be rejected, and their snapshots are the error messages.
 3. **Execution tests** (`tests/run/*.pas`): transpiled, compiled into one
    scratch Cargo package, and run. Standard output must match `NAME.out`
@@ -35,5 +35,5 @@ make the test fail, through the output, the exit code, or both. Copy the
 
 Where Free Pascal agrees with Turbo Pascal, the `.out` comes from
 `tests/gen_expected.sh`. Where it doesn't (`SizeOf`, DOS paths), the `.out`
-is built from the `Check` calls in the source, never from PascRust's own
-output, so it can't just repeat a PascRust bug.
+is built from the `Check` calls in the source, never from Ruscal's own
+output, so it can't just repeat a Ruscal bug.

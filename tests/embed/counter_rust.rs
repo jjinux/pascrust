@@ -1,6 +1,6 @@
 //! The Rust half of counter.pas: an `external` routine that names one of
 //! the unit's types as `super::`, which works for a program, a
-//! `pascrust build --lib` library and `include_library!` alike.
+//! `ruscal build --lib` library and `include_library!` alike.
 
 use super::TTally;
 

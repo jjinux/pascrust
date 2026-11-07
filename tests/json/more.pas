@@ -1,5 +1,5 @@
 { Writes nested.dat, tagless.dat, mixed.dat, strs.dat and ints.dat, more
-  fixtures of crates/pascrust/tests/json_tests.rs (from Fable's review):
+  fixtures of crates/ruscal/tests/json_tests.rs (from Fable's review):
   variant parts inside variants, a record without a tag whose variants
   share bytes (a string, an array, a Boolean and a nested tag), an object
   with a parent, sets that don't start at 0, every character, reals, and

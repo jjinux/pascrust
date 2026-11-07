@@ -1,8 +1,0 @@
----
-source: crates/pascrust/tests/json_tests.rs
-expression: text
----
-[
-  -1,
-  300
-]

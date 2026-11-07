@@ -1,0 +1,8 @@
+---
+source: crates/ruscal/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/link_twice.pas
+---
+link_twice.pas:4:1: error: `link_twice/sound.rs` and `sound.rs` would both be the Rust module `sound`; give one another name
+{$L link_twice\sound.rs}
+^^^^^^^^^^^^^^^^^^^^^^^^

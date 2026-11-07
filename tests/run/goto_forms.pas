@@ -1,4 +1,4 @@
-{ The forms of goto PascRust translates: back (a loop), forward past an
+{ The forms of goto Ruscal translates: back (a loop), forward past an
   if (a block), crossing jumps that nest once a block starts earlier, a
   numbered label inside repeat, out of a case arm, and in a procedure. }
 program GotoForms;

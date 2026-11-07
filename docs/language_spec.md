@@ -1,8 +1,8 @@
-# PascRust language specification
+# Ruscal language specification
 
 ## Decision: Turbo Pascal, not ISO Pascal
 
-PascRust translates **Turbo Pascal** (Borland's dialect), accepting Turbo
+Ruscal translates **Turbo Pascal** (Borland's dialect), accepting Turbo
 Pascal 7.0 syntax and implementing the Turbo Pascal 5.5 feature level first.
 ISO 7185 "Standard Pascal" is not a target.
 
@@ -247,11 +247,11 @@ Built-ins (System unit)
   `var f: Text` parameter (`Report(Output)`); they're always the console,
   so `Assign`/`Reset`/`Rewrite` on them is an error
 - `GetDir`. Drive C: is the file system's root (`/`) unless
-  `PASCRUST_DRIVE_C` says otherwise, so `GetDir` and `FExpand` give the
+  `RUSCAL_DRIVE_C` says otherwise, so `GetDir` and `FExpand` give the
   real path (`C:\USERS\JJ\GAMES`); other drives exist only when mapped
-  (`PASCRUST_DRIVE_A`), and a name on an unmapped drive isn't found.
+  (`RUSCAL_DRIVE_A`), and a name on an unmapped drive isn't found.
   File names with a drive letter go to that drive's directory; `A:X` is relative to the current directory when
-  it's on drive A (PascRust keeps one current directory, not one per
+  it's on drive A (Ruscal keeps one current directory, not one per
   drive), and `..` stops at the drive's root. `GetDir` and `FExpand`
   agree: after `ChDir('A:\SUB')`, `GetDir(1)` is `A:\SUB` and
   `FExpand('A:X')` is `A:\SUB\X`. `Assign(f, '')` is standard input and
@@ -366,7 +366,7 @@ Printer unit
 - `Lst`, a text file always open on the printer: `Write(Lst, ...)`,
   `Writeln(Lst, ...)`, `Flush(Lst)`, and passed to a `var f: Text`
   parameter (`Report(Lst)`). Faked: it appends to `printer.txt`,
-  another file, or a command such as `lp`, as `PASCRUST_PRINTER` says (see
+  another file, or a command such as `lp`, as `RUSCAL_PRINTER` says (see
   the README). Reading from `Lst`, or reopening it, is an error
 
 Overlay unit (faked: a Rust program has all its code in memory)
@@ -394,12 +394,12 @@ Dos unit
   root (`\`, or a drive's `A:\` wherever it's mapped), a link to a directory counts as a directory, and `VolumeID` alone
   finds nothing (there's no volume label). A copy of a `SearchRec` goes on
   from the same place by itself. `SearchRec.Name` is a full string (TP's
-  was `string[12]`), so long names fit. Nothing tells PascRust when a
+  was `string[12]`), so long names fit. Nothing tells Ruscal when a
   program is done with a search, so it keeps up to 10,000 (of which up
   to 100 that have run out), forgetting those used longest ago
 - Faked: `DosVersion` (DOS 6.22), `DiskFree`/`DiskSize` (512 MB free of a
   1 GB disk on every drive there is: real disks are too big for a
-  `LongInt`; -1 for a drive `PASCRUST_DRIVE_x` doesn't map, as TP's
+  `LongInt`; -1 for a drive `RUSCAL_DRIVE_x` doesn't map, as TP's
   invalid drive),
   `SetDate`/`SetTime` (don't change the computer's clock),
   `GetCBreak`/`SetCBreak` and `GetVerify`/`SetVerify` (remembered),
@@ -442,7 +442,7 @@ Dos unit
   which wants write access); a time that doesn't exist locally (the hour skipped
   when clocks go forward, day 0) moves to the nearest one that does.
   `DosError` is 2 for a missing file and 3 for a missing directory.
-  TP's untyped `var F` took any variable; PascRust wants a file
+  TP's untyped `var F` took any variable; Ruscal wants a file
 - `Erase` of a read-only file fails with access denied (5), as in DOS
 - DOS path translation (`a:\tictac` → a configured directory)
 
@@ -456,7 +456,7 @@ Graph unit (BGI, as used in the examples)
   `PieSlice`, `Sector`, `FillEllipse`, `FloodFill`, `GetArcCoords`
   (`ArcCoordsType`)
 - `DrawPoly`/`FillPoly` with an array of `PointType` (TP's untyped `var
-  PolyPoints` took any variable; PascRust wants that array). `DrawPoly`
+  PolyPoints` took any variable; Ruscal wants that array). `DrawPoly`
   doesn't close the shape; `FillPoly` fills it (even-odd rule) and
   outlines it closed. A `NumPoints` beyond the array's length uses the
   array's points (TP would read past it). Out-of-range `SetPalette`,
@@ -481,7 +481,7 @@ Graph unit (BGI, as used in the examples)
 - Faked: `InstallUserFont` gives a new font number (drawn in the built-in
   font), `SetGraphBufSize` does nothing. Refused: `RegisterBGIdriver`,
   `RegisterBGIfont` and `InstallUserDriver`, which link or load driver
-  code; PascRust's one driver is built in, so the calls can go
+  code; Ruscal's one driver is built in, so the calls can go
 - `SetActivePage`/`SetVisualPage`: two pages in every mode (VGA had two
   only at 640x350), for flicker-free animation
 - `GetImage`/`PutImage`/`ImageSize`, with `NormalPut`/`CopyPut`,
@@ -493,13 +493,13 @@ Graph unit (BGI, as used in the examples)
   the original programs still draw. `ImageSize` of 64K or more is 0 with
   `GraphResult` `grError`. A buffer too small is runtime error 201.
   `PutImage` is clipped to the viewport (with `ClipOn`)
-- `PRJson`, PascRust's own unit for reading and writing JSON (JSON
+- `PRJson`, Ruscal's own unit for reading and writing JSON (JSON
   strings up to 255 characters); see [PRJson](pr_json.md)
-- `PRTurtle`, PascRust's own unit of turtle graphics on top of `Graph`,
+- `PRTurtle`, Ruscal's own unit of turtle graphics on top of `Graph`,
   with Graph3's turtle routines (`Forwd`, `TurnRight`, `PenUp`, `Wrap`,
   `TurtleWindow`, ...); see [PRTurtle](pr_turtle.md)
 - `label` and `goto` (names or numbers, `10:`): some uses, not all.
-  PascRust supports the ones Rust can say directly, with a labeled block
+  Ruscal supports the ones Rust can say directly, with a labeled block
   or loop: a jump forward, to a label later in the same statement list
   or one around it (out of nested loops, past the rest of a routine), and
   a jump back, to a label earlier in such a list. Rust has no `goto`: it
@@ -580,7 +580,7 @@ for expected output only where FPC matches TP (it doesn't for `shr` or
   annotated disassembly of TP's System unit. `docs/library/RANDOM-ENGINE.md`,
   `RANDOM-INT.md`, `RANDOM-REAL.md`, `RANDOM-REAL-FPU.md` and `RANDOMIZE.md`
   show exactly how `Random`, `Random(n)` and `Randomize` work, which our
-  runtime follows (`crates/pascrust_runtime/src/system.rs`).
+  runtime follows (`crates/ruscal_runtime/src/system.rs`).
 - [J R Stockton, "Borland Pascal/Delphi Random"](https://people.cs.nycu.edu.tw/~tsaiwn/sisc/runtime_error_200_div_by_0/www.merlyn.demon.co.uk/pas-rand.htm):
   the `RandSeed` update (`134775813 * seed + 1`), test values, and how
   `Random` differs between TP, BP 7 (`{$N+}`) and Delphi.
@@ -589,6 +589,6 @@ for expected output only where FPC matches TP (it doesn't for `shr` or
   Turbo Pascal.
 - Free Pascal's scanner (`compiler/scanner.pas`): where `^` is a pointer
   symbol and where `^M` is a character, which our lexer copies (see
-  `caret_is_control_char` in `crates/pascrust/src/lexer.rs`).
+  `caret_is_control_char` in `crates/ruscal/src/lexer.rs`).
 - `fpc -Mtp` itself, for `{$I-}`/`IOResult`, `Eof` on a file being written
   (runtime error 104), `Real` formatting and most run tests.

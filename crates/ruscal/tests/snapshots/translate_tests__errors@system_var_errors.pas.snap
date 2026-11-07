@@ -1,0 +1,16 @@
+---
+source: crates/ruscal/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/system_var_errors.pas
+---
+system_var_errors.pas:5:8: error: `RandSeed` can only be read, or set with `:=`
+   Inc(RandSeed);
+       ^^^^^^^^
+
+system_var_errors.pas:6:11: error: Ruscal's `Output` is always the console; `Assign` can't change it
+   Assign(Output, 'log.txt');
+          ^^^^^^
+
+system_var_errors.pas:7:10: error: Ruscal's `Input` is always the console; `Reset` can't change it
+   Reset(Input);
+         ^^^^^

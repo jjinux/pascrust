@@ -1,4 +1,4 @@
-{ A unit with variables, built with `pascrust build --lib` and used from
+{ A unit with variables, built with `ruscal build --lib` and used from
   tests/embed/counter_host.rs: its variables (and Helper's) are fields of
   the generated CounterContext. }
 unit Counter;

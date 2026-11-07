@@ -67,7 +67,7 @@ requirement (it ignores it), and its layout differs where a `Real` is
 involved (an 8-byte `Double`, aligned: `SizeOf` of a record with a `Real`
 variant is 16 where TP says 11) and `SizeOf(Func)` is 8 (TP: 4).
 
-## What PascRust has already
+## What Ruscal has already
 
 - Records are structs with `derive(Clone, Default, Debug)` (`Copy` when
   every field is), and `docs/architecture.md` §11 planned variant records
@@ -516,7 +516,7 @@ Variant records:
 - A tagless variant part holding a pointer, file or virtual-method object,
   used as a `file of` element, an untyped argument or a `Move`/`FillChar`
   operand: "`Node` has a variant part without a tag field that holds a
-  pointer, so PascRust keeps each variant separately and can't tell which
+  pointer, so Ruscal keeps each variant separately and can't tell which
   one to store as bytes".
 - Two fields of one byte-backed variant part passed by `var` in one call:
   "`p.Lo` and `p.Hi` are in the same variant part of `p`, which Rust
@@ -568,7 +568,7 @@ Procedural types (TP's own rules, with TP's reasons in the message):
    `AnyPtr::Code`, and `Func(P)` (a `Pointer` cast back to a routine) is
    refused until a program needs it. OK?
 4. Not requiring `far`/`{$F+}` on routines used as values (as Free Pascal
-   does): fine, or should PascRust warn, since real TP would reject the
+   does): fine, or should Ruscal warn, since real TP would reject the
    program?
 
 ## Build order

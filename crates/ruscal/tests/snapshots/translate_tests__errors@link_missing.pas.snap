@@ -1,0 +1,8 @@
+---
+source: crates/ruscal/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/link_missing.pas
+---
+link_missing.pas:3:1: error: cannot find the Rust file `no_such_file.rs`
+{$L no_such_file.rs}
+^^^^^^^^^^^^^^^^^^^^

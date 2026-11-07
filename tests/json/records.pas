@@ -1,4 +1,4 @@
-{ Writes items.dat and raws.dat, the fixtures of crates/pascrust/tests/
+{ Writes items.dat and raws.dat, the fixtures of crates/ruscal/tests/
   json_tests.rs: a record with every kind of field to-json reads, a tagged
   variant part, and a tagless one. An Item is 45 bytes, as in TP 7. (Free
   Pascal can't check this: on a 64-bit machine its pointers take 8 bytes,

@@ -1,6 +1,6 @@
 program PrinterTest;
-{ The Printer unit's Lst. PascRust prints to printer.txt (or wherever
-  PASCRUST_PRINTER says), so this reads the file back to check what was
+{ The Printer unit's Lst. Ruscal prints to printer.txt (or wherever
+  RUSCAL_PRINTER says), so this reads the file back to check what was
   printed. Self-checking. (Free Pascal's Lst is a real printer device, so
   this .out is built from the checks, by hand.) }
 uses Printer;

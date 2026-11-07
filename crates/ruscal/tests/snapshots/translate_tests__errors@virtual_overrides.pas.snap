@@ -1,0 +1,12 @@
+---
+source: crates/ruscal/tests/translate_tests.rs
+expression: error
+input_file: tests/errors/virtual_overrides.pas
+---
+virtual_overrides.pas:10:17: error: `TCircle.Draw` overrides the virtual method `TShape.Draw`, so it must be declared `virtual` too
+      procedure Draw;
+                ^^^^
+
+virtual_overrides.pas:11:17: error: `TCircle.Show` hides `TShape.Show`, which calls virtual methods; Ruscal doesn't support that yet (make `TShape.Show` virtual)
+      procedure Show;
+                ^^^^

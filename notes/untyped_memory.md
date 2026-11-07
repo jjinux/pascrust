@@ -10,13 +10,13 @@ Phase 7 needs it:
 - `PChar` and the `Strings` unit: a `PChar` is a pointer into a byte
   buffer, and `PChar` arithmetic is pointer arithmetic.
 - And beyond Phase 7, `Move`/`FillChar` between different types, which
-  PascRust refuses today.
+  Ruscal refuses today.
 
 All of these treat a variable as bytes. TP did that by handing out its
-address. PascRust can't do that safely in Rust, so the question is what
+address. Ruscal can't do that safely in Rust, so the question is what
 to do instead.
 
-## What PascRust has already
+## What Ruscal has already
 
 - Typed files (`file of T`) write records in TP's byte layout, through the
   runtime's `FileRecord` trait: `encode(&self, out: &mut Vec<u8>)` and
@@ -52,7 +52,7 @@ to do instead.
    set it), and `BlockRead(f, Buf, Count, Result)`/`BlockWrite` move
    `Count` records between the file and `Buf`'s byte view.
 
-4. **`GetImage`/`PutImage`.** The image is stored in the buffer as PascRust
+4. **`GetImage`/`PutImage`.** The image is stored in the buffer as Ruscal
    likes: the width and height as two `Word`s (as TP did), then one byte
    per pixel (TP stored the VGA's four bit planes). `ImageSize` reports
    what that needs. A program that only hands the buffer back to
@@ -77,7 +77,7 @@ to do instead.
 
 1. Are byte views that copy in and out at the call acceptable, rather than
    true aliasing?
-2. For `GetImage`, is PascRust's own layout in the buffer fine, given that
+2. For `GetImage`, is Ruscal's own layout in the buffer fine, given that
    a program only sees it if it reads the buffer's bytes itself?
 3. Which first: untyped files with `BlockRead`/`BlockWrite`, or
    `GetImage`/`PutImage`? Both need parts 1 and 2.

@@ -1,13 +1,13 @@
 # Data files as JSON
 
 A Turbo Pascal program's typed file (`file of T`) is its records' bytes,
-one after another, in TP's layout. `pascrust to-json` turns one into JSON,
+one after another, in TP's layout. `ruscal to-json` turns one into JSON,
 so old data can be read, searched or moved to something else, and
-`pascrust from-json` turns the JSON (edited, say) back into the file the
+`ruscal from-json` turns the JSON (edited, say) back into the file the
 program reads:
 
 ```sh
-cargo run -p pascrust -- to-json examples/database/founit.pas examples/database/mark.dat
+cargo run -p ruscal -- to-json examples/database/founit.pas examples/database/mark.dat
 ```
 
 ```json
@@ -23,7 +23,7 @@ cargo run -p pascrust -- to-json examples/database/founit.pas examples/database/
 `mark.dat` was written by the user's database program in 1997. Nothing in
 the file says what its records look like, so the first argument is the
 program or unit that declares the type (the units it uses are found as for
-`pascrust build`).
+`ruscal build`).
 
 - `--type T` says which type the records have, in any case (`people`,
   `People`), or a file type (`MasterFileType`, a `file of People`).
@@ -69,9 +69,9 @@ variant's fields are there, each read from the same bytes:
 ## Back again: `from-json`
 
 ```sh
-cargo run -p pascrust -- to-json examples/database/founit.pas examples/database/mark.dat -o mark.json
+cargo run -p ruscal -- to-json examples/database/founit.pas examples/database/mark.dat -o mark.json
 # ...edit mark.json...
-cargo run -p pascrust -- from-json examples/database/founit.pas mark.json -o mark.dat
+cargo run -p ruscal -- from-json examples/database/founit.pas mark.json -o mark.dat
 ```
 
 It takes the same source and `--type`, and the JSON as `to-json` writes it.
@@ -104,7 +104,7 @@ bytes after the name), and `from-json` then `to-json` gives back the JSON.
 ## What it can't read
 
 - `Single`, `Double` and `Extended`: TP stores them in 4, 8 and 10 bytes,
-  but PascRust (in translated programs too) stores every real as a 6-byte
+  but Ruscal (in translated programs too) stores every real as a 6-byte
   `Real` for now, so both commands refuse them rather than use the wrong
   bytes.
 - Subranges (`Month: 1..12`) are checked against their host type only
@@ -112,7 +112,7 @@ bytes after the name), and `from-json` then `to-json` gives back the JSON.
 - An `object` with a constructor, destructor or virtual method:
   `to-json` skips its VMT field, but `from-json` refuses it. TP stored
   there the address of the type's table of virtual methods in the program
-  that wrote the file, which PascRust can't know, and a wrong one would
+  that wrote the file, which Ruscal can't know, and a wrong one would
   crash the TP program at its next virtual call.
 - An enumeration value past the type's last one: an error naming the
   record and field, since it has no name.

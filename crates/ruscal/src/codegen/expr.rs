@@ -1,0 +1,2212 @@
+//! Expressions, type conversions and literals.
+//!
+//! Every function here returns the Rust code *and its precedence*, so that
+//! callers can add parentheses only where Rust needs them. Pascal and Rust
+//! rank operators differently (in Pascal `and` binds like `*`; in Rust `&&`
+//! binds looser than `==`), so the parse tree has to be re-parenthesized for
+//! Rust rather than copied.
+
+use super::Codegen;
+use crate::ast::*;
+use crate::sema::{Access, Builtin, ConstVal, IntKind, SymId, SymKind, Type, numeric_common};
+
+/// Rust operator precedence, loosest first. Only the relative order matters.
+pub(super) mod prec {
+    pub const OR: u8 = 1; // ||
+    pub const AND: u8 = 2; // &&
+    pub const CMP: u8 = 3; // == != < > <= >=
+    pub const BIT_OR: u8 = 4; // |
+    pub const BIT_XOR: u8 = 5; // ^
+    pub const BIT_AND: u8 = 6; // &
+    pub const SHIFT: u8 = 7; // << >>
+    pub const ADD: u8 = 8; // + -
+    pub const MUL: u8 = 9; // * / %
+    pub const AS: u8 = 10; // `x as T`
+    pub const UNARY: u8 = 11; // -x !x *x
+    pub const POSTFIX: u8 = 12; // calls, methods, fields, indexing
+    pub const ATOM: u8 = 13; // names and literals
+}
+
+/// Code plus its precedence.
+pub(super) type Code = (String, u8);
+
+/// Wrap `code` in parentheses if it binds looser than `min`.
+pub(super) fn paren(code: Code, min: u8) -> String {
+    if code.1 < min { format!("({})", code.0) } else { code.0 }
+}
+
+impl<'a> Codegen<'a> {
+    /// An expression in its natural Rust type.
+    pub(super) fn expr(&mut self, e: &Expr) -> Code {
+        if let Some(name) = self.hoisted.get(&e.id) {
+            return (name.clone(), prec::ATOM);
+        }
+        // `F := Square`: the routine as a procedural value.
+        if let Some(&p) = self.a.proc_values.get(&e.id) {
+            let info = &self.a.procs[p];
+            let ty = self.a.type_of(e.id).rust();
+            return (format!("{ty}::of({}, \"{}\")", info.rust_name, info.name), prec::POSTFIX);
+        }
+        // `N := F` for a function value without parameters: a call.
+        if self.a.proc_calls.contains_key(&e.id) && matches!(e.kind, ExprKind::Name(_)) && !self.calling.contains(&e.id)
+        {
+            return (self.call(e, &[]), prec::POSTFIX);
+        }
+        // `N := R.Next`: the same for a field or element (whose type is
+        // then the result: `R.Apply` in `R.Apply(2, 3)` stays a value);
+        // `call` asks for the value again, which is then the field itself.
+        if self.a.proc_calls.contains_key(&e.id)
+            && !matches!(self.a.type_of(e.id), Type::Proc(_))
+            && self.calling.insert(e.id)
+        {
+            let code = self.call(e, &[]);
+            self.calling.remove(&e.id);
+            return (code, prec::POSTFIX);
+        }
+        // A call that may change an array the statement lends to a `PChar`
+        // later: it runs first, into a `let`, before the array is copied.
+        if self.a.calls_before_lend.contains(&e.id) && self.running_first.insert(e.id) {
+            let code = self.expr(e).0;
+            let callee = match &e.kind {
+                ExprKind::Call { callee, .. } => self.a.refs.get(&callee.id),
+                _ => self.a.refs.get(&e.id),
+            };
+            let base = callee.map_or("result".to_string(), |&sym| self.a.sym(sym).rust_name.clone());
+            let name = self.temp_name(&format!("{base}_result"));
+            if self.first_time("call_before_lend") {
+                self.pending.push(format!("// `{base}` may change an array this statement uses as a PChar, so it"));
+                self.pending.push("// runs before the array's characters are copied.".to_string());
+            }
+            self.pending.push(format!("let {name} = {code};"));
+            self.hoisted.insert(e.id, name.clone());
+            return (name, prec::ATOM);
+        }
+        // `A[i]` of a `Char` array this statement lends to a `PChar`: the
+        // copy, which sees what the statement writes through the `PChar`.
+        if let ExprKind::Index(base, indexes) = &e.kind
+            && indexes.len() == 1
+            && self.is_lent(base)
+        {
+            let copy = self.lent_pchar(base);
+            let index = self.expr(&indexes[0]).0;
+            return (format!("{copy}.get({index})"), prec::POSTFIX);
+        }
+        // `p^.n + F`: the read through `p` would keep the record borrowed
+        // while `F` runs, and `F` may change it (through another pointer).
+        // So `p^.n` is read into a `let` first.
+        if let ExprKind::Binary { lhs, rhs, .. } = &e.kind
+            && !self.hoisted.contains_key(&lhs.id)
+            && reads_pointer(lhs)
+            && self.has_call(rhs)
+        {
+            let code = self.expr(lhs).0;
+            let name = self.temp_name(&super::value_temp_base(lhs));
+            self.pending.push(format!("let {name} = {code};"));
+            self.hoisted.insert(lhs.id, name);
+        }
+        // `items[Count]` in a method is `self.items[self.count()]`, which
+        // borrows `self.items` while `count` needs all of `self`. An index
+        // whose call can reach the array is worked out first, into a `let`.
+        if let ExprKind::Index(base, indexes) = &e.kind {
+            let root = super::root_expr(base);
+            for index in indexes {
+                if !self.hoisted.contains_key(&index.id) && self.call_reaches(index, root) {
+                    let code = self.expr(index).0;
+                    let name = self.temp_name("index");
+                    self.pending.push(format!("let {name} = {code};"));
+                    self.hoisted.insert(index.id, name);
+                }
+            }
+        }
+        if let Some(code) = self.array_bound(e) {
+            return code;
+        }
+        if let Some(value) = self.a.folded.get(&e.id) {
+            let ty = self.a.type_of(e.id).clone();
+            // A folded `Hi(-1)` is a Byte: `255_u8`, so it converts like one.
+            if let (ConstVal::Int(n), Type::Int(kind)) = (value, &ty) {
+                let precedence = if *n < 0 { prec::UNARY } else { prec::ATOM };
+                return (format!("{n}_{}", kind.rust()), precedence);
+            }
+            return (self.const_value(value, &ty), prec::ATOM);
+        }
+        match &e.kind {
+            ExprKind::Int(n) => (n.to_string(), prec::ATOM),
+            ExprKind::Real(x) => (real_literal(*x), prec::ATOM),
+            ExprKind::Str(bytes) => (str_literal(bytes), prec::ATOM),
+            ExprKind::Nil => ("Ptr::nil()".to_string(), prec::POSTFIX),
+            ExprKind::Name(_) => self.name(e),
+            // A conversion like `Word(i)` keeps its precedence (`i as u16`
+            // needs parentheses before `<`); other calls bind tightly.
+            ExprKind::Call { callee, args } => match self.value_cast(callee, args) {
+                Some(code) => code,
+                None => {
+                    let code = self.call(callee, args);
+                    let precedence = self.call_precedence(callee, args, &code);
+                    (code, precedence)
+                }
+            },
+            // `not Odd(n)` is `n % 2 == 0`, as a person would write it.
+            ExprKind::Unary { op: UnaryOp::Not, operand }
+                if let ExprKind::Call { callee, args } = &operand.kind
+                    && args.len() == 1
+                    && self
+                        .a
+                        .refs
+                        .get(&callee.id)
+                        .is_some_and(|&s| matches!(self.a.sym(s).kind, SymKind::Builtin(Builtin::Odd))) =>
+            {
+                let t = self.a.type_of(args[0].id).concrete();
+                let n = self.coerce(&args[0], &t);
+                if is_unsigned(&t) {
+                    (format!("{}.is_multiple_of(2)", paren(n, prec::POSTFIX)), prec::POSTFIX)
+                } else {
+                    (format!("{} % 2 == 0", paren(n, prec::MUL)), prec::CMP)
+                }
+            }
+            ExprKind::Unary { op, operand } => {
+                let ty = self.a.type_of(e.id).clone();
+                if *op == UnaryOp::Neg
+                    && matches!(ty, Type::Int(_))
+                    && self.overflow_checked_at(e.span)
+                    && !self.is_constant(e)
+                {
+                    let operand = self.coerce(operand, &ty);
+                    return self.checked_op(operand, "checked_neg", "");
+                }
+                let inner = paren(self.coerce(operand, &ty), prec::UNARY);
+                match op {
+                    // `--x` reads like C's decrement, and rustc warns about it.
+                    UnaryOp::Neg if inner.starts_with('-') => (format!("-({inner})"), prec::UNARY),
+                    UnaryOp::Neg => (format!("-{inner}"), prec::UNARY),
+                    // `not Assigned(p)`: the two negations cancel out.
+                    UnaryOp::Not if inner.starts_with('!') => (inner[1..].to_string(), prec::POSTFIX),
+                    UnaryOp::Not => (format!("!{inner}"), prec::UNARY),
+                    UnaryOp::Plus => self.coerce(operand, &ty),
+                }
+            }
+            ExprKind::Binary { op, lhs, rhs } => self.binary(e, *op, lhs, rhs),
+            ExprKind::Format { value, .. } => self.expr(value),
+            ExprKind::Field(..) if self.a.method_calls.contains_key(&e.id) => (self.call(e, &[]), prec::POSTFIX),
+            // `P^` and `P[i]`: a character through a `PChar`.
+            ExprKind::Deref(base) | ExprKind::Index(base, _) if *self.a.type_of(base.id) == Type::PChar => {
+                let receiver = self.pchar_operand(base);
+                let index = match &e.kind {
+                    ExprKind::Index(_, indexes) => self.expr(&indexes[0]).0,
+                    _ => "0".to_string(),
+                };
+                (format!("{receiver}.get({index})"), prec::POSTFIX)
+            }
+            // A whole record through a pointer: copy it out of the cell.
+            ExprKind::Deref(_) => {
+                let code = self.selector(e);
+                if self.a.type_of(e.id).is_copy() {
+                    (format!("*{code}"), prec::UNARY)
+                } else {
+                    (format!("{code}.clone()"), prec::POSTFIX)
+                }
+            }
+            ExprKind::Field(..) | ExprKind::Index(..) => (self.selector(e), prec::POSTFIX),
+            ExprKind::Set(elems) => (self.set_literal(e, elems), prec::POSTFIX),
+            ExprKind::AddrOf(base) if self.a.proc_addresses_of_values.contains(&e.id) => {
+                (format!("{}.address()", paren(self.expr(base), prec::POSTFIX)), prec::POSTFIX)
+            }
+            ExprKind::AddrOf(_) => {
+                let name = &self.a.proc_addresses[&e.id];
+                (format!("AnyPtr::code(\"{name}\")"), prec::POSTFIX)
+            }
+        }
+    }
+
+    /// `[1, 3..5, x]` → `pset![1, 3..=5, x]`, each element as the set's
+    /// element type (`'a'` → `b'a'`).
+    fn set_literal(&mut self, e: &Expr, elems: &[SetElem]) -> String {
+        let Type::Set(elem_ty, _) = self.a.type_of(e.id).clone() else { unreachable!("sema typed the set") };
+        if elems.is_empty() {
+            return "PSet::new()".to_string();
+        }
+        let items: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty, false)).collect();
+        format!("pset![{}]", items.join(", "))
+    }
+
+    /// One element of a set literal, or, with `pattern`, of the `matches!`
+    /// pattern that tests `x in [...]` against constants.
+    fn set_item(&mut self, elem: &SetElem, elem_ty: &Type, pattern: bool) -> String {
+        match elem {
+            SetElem::Single(x) if pattern => self.pattern_value(x, elem_ty),
+            SetElem::Single(x) => self.coerce(x, elem_ty).0,
+            SetElem::Range(lo, hi) => {
+                // Rust range patterns are for numbers and chars: in
+                // `d in [Sat..Sun]` an enum's (or Boolean's) values are
+                // listed instead. (A set value can take a range of anything
+                // ordinal: `pset![Day::Sat..=Day::Sun]`.)
+                if pattern
+                    && matches!(elem_ty, Type::Enum(_) | Type::Bool)
+                    && let (Some(lo), Some(hi)) = (self.const_ordinal(lo), self.const_ordinal(hi))
+                {
+                    return self.ord_range_pattern(elem_ty, lo, hi);
+                }
+                if pattern {
+                    return format!("{}..={}", self.pattern_value(lo, elem_ty), self.pattern_value(hi, elem_ty));
+                }
+                let (lo, hi) = (self.coerce(lo, elem_ty), self.coerce(hi, elem_ty));
+                // Any binary operator binds tighter than `..=`.
+                format!("{}..={}", paren(lo, prec::OR), paren(hi, prec::OR))
+            }
+        }
+    }
+
+    /// A constant in a `matches!` pattern. A pattern takes a literal or a
+    /// constant's name, not an expression, so one of literals is written
+    /// as its value: `2 + 3` as `5`, `Succ(Mon)` as `Day::Tue`.
+    fn pattern_value(&mut self, e: &Expr, elem_ty: &Type) -> String {
+        let simple = match &e.kind {
+            ExprKind::Int(_) | ExprKind::Str(_) | ExprKind::Name(_) => true,
+            ExprKind::Unary { op: UnaryOp::Neg, operand } => matches!(operand.kind, ExprKind::Int(_)),
+            _ => false,
+        };
+        match self.const_ordinal(e) {
+            Some(n) if !simple => self.ord_range_pattern(elem_ty, n, n),
+            _ => self.coerce(e, elem_ty).0,
+        }
+    }
+
+    /// Set operators: `+` → `|`, `*` → `&`, `-` stays, `<=`/`>=` are
+    /// `is_subset`/`is_superset`, and `x in s` is `s.contains(x)`, or, for a
+    /// list of constants, `matches!(x, 1 | 3..=5)`.
+    fn set_binary(&mut self, op: BinaryOp, lhs: &Expr, rhs: &Expr) -> Code {
+        use BinaryOp::*;
+        if op == In {
+            let Type::Set(elem_ty, _) = self.a.type_of(rhs.id).clone() else { unreachable!("sema checked `in`") };
+            let x = self.coerce(lhs, &elem_ty);
+            if let ExprKind::Set(elems) = &rhs.kind
+                && elems.iter().all(|elem| self.constant_item(elem))
+            {
+                // A backwards range (`[Fri..Mon]`) is empty, as in TP; Rust
+                // rejects it as a pattern.
+                let elems: Vec<&SetElem> = elems
+                    .iter()
+                    .filter(|elem| match elem {
+                        SetElem::Range(lo, hi) => {
+                            !matches!((self.const_ordinal(lo), self.const_ordinal(hi)), (Some(l), Some(h)) if l > h)
+                        }
+                        SetElem::Single(_) => true,
+                    })
+                    .collect();
+                if elems.is_empty() {
+                    return ("false".to_string(), prec::POSTFIX);
+                }
+                let patterns: Vec<String> = elems.into_iter().map(|elem| self.set_item(elem, &elem_ty, true)).collect();
+                return (format!("matches!({}, {})", x.0, patterns.join(" | ")), prec::POSTFIX);
+            }
+            // A literal tested at once has nothing else to say what it holds.
+            let set = match &rhs.kind {
+                ExprKind::Set(elems) if !elems.is_empty() => {
+                    let items: Vec<String> = elems.iter().map(|elem| self.set_item(elem, &elem_ty, false)).collect();
+                    (format!("pset![set of {}; {}]", elem_ty.rust(), items.join(", ")), prec::ATOM)
+                }
+                _ => self.expr(rhs),
+            };
+            // `contains` takes any ordinal, so an integer is passed as it
+            // is: `300 in s` is false for a set of bytes, rather than
+            // testing 300 cut down to a byte (44).
+            let x = if self.a.type_of(lhs.id).is_integer() { self.expr(lhs) } else { x };
+            return (format!("{}.contains({})", paren(set, prec::POSTFIX), x.0), prec::POSTFIX);
+        }
+        let (l, r) = (self.expr(lhs), self.expr(rhs));
+        let (rust_op, p) = match op {
+            Add => ("|", prec::BIT_OR),
+            Mul => ("&", prec::BIT_AND),
+            Sub => ("-", prec::ADD),
+            Eq => ("==", prec::CMP),
+            NotEq => ("!=", prec::CMP),
+            LtEq | GtEq => {
+                let method = if op == LtEq { "is_subset" } else { "is_superset" };
+                // `&` borrows the right-hand set; a literal needs no `&`
+                // around its parentheses, `&pset![...]` is fine.
+                return (format!("{}.{method}(&{})", paren(l, prec::POSTFIX), paren(r, prec::UNARY)), prec::POSTFIX);
+            }
+            _ => unreachable!("sema checked the set operator"),
+        };
+        let left_min = if p == prec::CMP { p + 1 } else { p };
+        (format!("{} {rust_op} {}", paren(l, left_min), paren(r, p + 1)), p)
+    }
+
+    /// The ordinal of a constant (`5`, `'a'`, an enum value, `True`,
+    /// `K + 1`), as sema worked it out.
+    fn const_ordinal(&self, e: &Expr) -> Option<i64> {
+        match self.a.consts.get(&e.id)? {
+            ConstVal::Int(n) => Some(*n),
+            ConstVal::Bool(b) => Some(*b as i64),
+            ConstVal::Str(bytes) if bytes.len() == 1 => Some(i64::from(bytes[0])),
+            _ => None,
+        }
+    }
+
+    /// Is this an integer constant expression (`5`, `C`, `2 + 3`, `-(C * 2)`)?
+    /// Turbo Pascal works those out when it compiles, so `{$Q+}` never
+    /// checks them: they're written as under `{$Q-}`, and Rust folds them.
+    pub(super) fn is_constant(&self, e: &Expr) -> bool {
+        self.constant_int(e).is_some()
+    }
+
+    /// The value of an integer constant expression (see [`Self::is_constant`]),
+    /// as sema worked it out (in 64 bits, as TP works constants out in 32).
+    /// `None` if it isn't one (or divides by 0).
+    pub(super) fn constant_int(&self, e: &Expr) -> Option<i64> {
+        match self.a.consts.get(&e.id) {
+            Some(ConstVal::Int(n)) => Some(*n),
+            _ => None,
+        }
+    }
+
+    /// Can this set element be a `match` pattern? A constant can, as a
+    /// constant's name or as its value; but one worked out from a named
+    /// constant (`K + 1`) can't, as its value would lose the name.
+    fn constant_item(&self, elem: &SetElem) -> bool {
+        let pattern = |e: &Expr| {
+            self.const_ordinal(e).is_some() && (matches!(e.kind, ExprKind::Name(_)) || !self.names_constant(e))
+        };
+        match elem {
+            SetElem::Single(e) => pattern(e),
+            SetElem::Range(lo, hi) => pattern(lo) && pattern(hi),
+        }
+    }
+
+    /// An integer constant expression written in `to`, keeping its
+    /// constants' names: `C + 1` as a LongInt is `i32::from(C) + 1`. TP
+    /// works constants out in 32 bits, so when a value along the way
+    /// doesn't fit `to` the expression is worked out in `i32` and the
+    /// result cut down to `to` with `as`, which keeps the low bits as TP
+    /// does: `i * (C + 1)` (`C = 32767`) is `i * (C as i32 + 1) as i16`. In
+    /// a `const` item (`in_const`) a conversion is always `as`, as
+    /// `i32::from` can't be called there. `None` for an expression this
+    /// can't write (`Ord`, a typecast, ...).
+    pub(super) fn const_expr(&mut self, e: &Expr, to: IntKind, in_const: bool) -> Option<Code> {
+        if self.intermediates_fit(e, to) {
+            return self.const_expr_in(e, to, in_const);
+        }
+        if !self.intermediates_fit(e, IntKind::LongInt) {
+            return None;
+        }
+        let code = self.const_expr_in(e, IntKind::LongInt, in_const)?;
+        Some((format!("{} as {}", paren(code, prec::AS), to.rust()), prec::AS))
+    }
+
+    /// Does every value along the way in the constant expression `e`
+    /// (each operand, as sema worked it out) fit `kind`?
+    pub(super) fn intermediates_fit(&self, e: &Expr, kind: IntKind) -> bool {
+        let fits = matches!(self.a.consts.get(&e.id), Some(ConstVal::Int(n)) if kind.contains(*n));
+        fits && match &e.kind {
+            ExprKind::Unary { operand, .. } => self.intermediates_fit(operand, kind),
+            ExprKind::Binary { lhs, rhs, .. } => self.intermediates_fit(lhs, kind) && self.intermediates_fit(rhs, kind),
+            _ => true,
+        }
+    }
+
+    /// [`Self::const_expr`] in `kind`, where everything fits.
+    fn const_expr_in(&mut self, e: &Expr, kind: IntKind, in_const: bool) -> Option<Code> {
+        use BinaryOp::*;
+        match &e.kind {
+            ExprKind::Int(n) => Some((n.to_string(), if *n < 0 { prec::UNARY } else { prec::ATOM })),
+            ExprKind::Name(_) => {
+                let sym = *self.a.refs.get(&e.id)?;
+                let SymKind::Const { ty: Type::Int(own), .. } = self.a.sym(sym).kind else { return None };
+                let name = self.expr(e).0;
+                Some(if own == kind {
+                    (name, prec::ATOM)
+                } else if in_const || !kind.holds(own) {
+                    (format!("{name} as {}", kind.rust()), prec::AS)
+                } else {
+                    (format!("{}::from({name})", kind.rust()), prec::POSTFIX)
+                })
+            }
+            ExprKind::Unary { op: UnaryOp::Plus, operand } => self.const_expr_in(operand, kind, in_const),
+            ExprKind::Unary { op: UnaryOp::Neg, operand } => {
+                let inner = self.const_expr_in(operand, kind, in_const)?;
+                Some((format!("-{}", paren(inner, prec::UNARY)), prec::UNARY))
+            }
+            ExprKind::Binary { op, lhs, rhs } => {
+                let (rust_op, p) = match op {
+                    Add => ("+", prec::ADD),
+                    Sub => ("-", prec::ADD),
+                    Mul => ("*", prec::MUL),
+                    Div => ("/", prec::MUL),
+                    Mod => ("%", prec::MUL),
+                    And => ("&", prec::BIT_AND),
+                    Or => ("|", prec::BIT_OR),
+                    Xor => ("^", prec::BIT_XOR),
+                    _ => return None,
+                };
+                let l = self.const_expr_in(lhs, kind, in_const)?;
+                let r = self.const_expr_in(rhs, kind, in_const)?;
+                Some((format!("{} {rust_op} {}", paren(l, p), paren(r, p + 1)), p))
+            }
+            _ => None,
+        }
+    }
+
+    /// `High(a)` or `Low(a)` of an array with an integer index: the
+    /// array's bound, `a.high()` (or `TArr::HIGH` for a type), so it
+    /// follows the array's declaration rather than being a number.
+    fn array_bound(&mut self, e: &Expr) -> Option<Code> {
+        let ExprKind::Call { callee, args } = &e.kind else { return None };
+        let [arg] = args.as_slice() else { return None };
+        let high = match self.a.sym(*self.a.refs.get(&callee.id)?).kind {
+            SymKind::Builtin(Builtin::High) => true,
+            SymKind::Builtin(Builtin::Low) => false,
+            _ => return None,
+        };
+        // (Sema answered `High(a)` without checking `a` as a value, so a
+        // name's type comes from its symbol: a variable's or a type's. A
+        // field, `High(r.Items)`, it did check.)
+        let (arg_ty, type_name) = match (&arg.kind, self.a.refs.get(&arg.id)) {
+            (ExprKind::Name(_), Some(&sym)) if !self.a.self_fields.contains_key(&arg.id) => {
+                let sym = self.a.sym(sym);
+                match &sym.kind {
+                    SymKind::TypeName(ty) => (ty.concrete(), Some(sym.rust_name.clone())),
+                    SymKind::Var(v) => (v.ty.concrete(), None),
+                    _ => return None,
+                }
+            }
+            _ if self.a.types.contains_key(&arg.id) => (self.a.type_of(arg.id).concrete(), None),
+            _ => return None,
+        };
+        let Type::Array(array) = &arg_ty else { return None };
+        if !array.index.is_integer() {
+            return None;
+        }
+        Some(match type_name {
+            Some(name) => (format!("{name}::{}", if high { "HIGH" } else { "LOW" }), prec::POSTFIX),
+            None => {
+                let base = self.selector_base(arg);
+                (format!("{base}.{}()", if high { "high" } else { "low" }), prec::POSTFIX)
+            }
+        })
+    }
+
+    /// `High(T)` or `Low(T)` of an integer type or `Char` (or of a variable
+    /// of one) by name: Rust's `i16::MAX`, `u8::MIN`, or a subrange type's
+    /// bound as written.
+    pub(super) fn type_limit(&self, e: &Expr) -> Option<Limit> {
+        let ExprKind::Call { callee, args } = &e.kind else { return None };
+        let [arg] = args.as_slice() else { return None };
+        let high = match self.a.sym(*self.a.refs.get(&callee.id)?).kind {
+            SymKind::Builtin(Builtin::High) => true,
+            SymKind::Builtin(Builtin::Low) => false,
+            _ => return None,
+        };
+        let ExprKind::Name(_) = arg.kind else { return None };
+        let sym_id = *self.a.refs.get(&arg.id)?;
+        if let Some((lo, hi)) = self.a.subrange_exprs.get(&sym_id) {
+            return Some(Limit::Bound(if high { hi.clone() } else { lo.clone() }));
+        }
+        let ty = match &self.a.sym(sym_id).kind {
+            SymKind::TypeName(ty) => ty.concrete(),
+            SymKind::Var(v) => v.ty.concrete(),
+            _ => return None,
+        };
+        let Some(ConstVal::Int(value)) = self.a.folded.get(&e.id) else { return None };
+        // (A variable of a subrange type has other bounds: its number stays.)
+        let (lo, hi) = match &ty {
+            Type::Int(kind) => kind.range(),
+            Type::Char => (0, 255),
+            _ => return None,
+        };
+        let rust = match &ty {
+            Type::Int(kind) => kind.rust(),
+            _ => "u8",
+        };
+        match (high, *value) {
+            (true, v) if v == hi => Some(Limit::Named(format!("{rust}::MAX"), ty)),
+            (false, v) if v == lo => Some(Limit::Named(format!("{rust}::MIN"), ty)),
+            _ => None,
+        }
+    }
+
+    /// Does `e` use `High` or `Low` of an array ([`Self::array_bound`])?
+    fn uses_array_bound(&mut self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Call { .. } => self.array_bound(e).is_some(),
+            ExprKind::Unary { operand, .. } => self.uses_array_bound(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.uses_array_bound(lhs) || self.uses_array_bound(rhs),
+            _ => false,
+        }
+    }
+
+    /// Does `e` use a named constant (`K`, `MaxInt`)? Then the Rust should
+    /// say so, rather than write the value it comes to. (An enum value or
+    /// `True` is like a literal.)
+    pub(super) fn names_constant(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Name(_) => self.a.refs.get(&e.id).is_some_and(|&s| {
+                matches!(&self.a.sym(s).kind, SymKind::Const { ty, .. } if !matches!(ty, Type::Enum(_) | Type::Bool))
+            }),
+            ExprKind::Call { args, .. } => args.iter().any(|a| self.names_constant(a)),
+            ExprKind::Unary { operand, .. } => self.names_constant(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.names_constant(lhs) || self.names_constant(rhs),
+            _ => false,
+        }
+    }
+
+    fn name(&mut self, e: &Expr) -> Code {
+        // Inside a method, a bare field name means `self.field`, and a bare
+        // method name is a call on `self`.
+        if let Some((self_sym, path)) = self.a.self_fields.get(&e.id) {
+            return (format!("{}.{}", self.self_place(*self_sym), path.join(".")), prec::POSTFIX);
+        }
+        if self.a.method_calls.contains_key(&e.id) {
+            return (self.call(e, &[]), prec::POSTFIX);
+        }
+        let sym = self.a.refs[&e.id];
+        let symbol = self.a.sym(sym);
+        match &symbol.kind {
+            SymKind::Var(_) => match self.a.access(self.proc, sym) {
+                Access::Direct => (self.a.var_name(self.proc, sym).to_string(), prec::ATOM),
+                // A reference must be dereferenced to get at the value.
+                Access::Reference => (format!("*{}", self.a.var_name(self.proc, sym)), prec::UNARY),
+            },
+            SymKind::Const { .. } => (symbol.rust_name.clone(), prec::ATOM),
+            SymKind::RuntimeVar { get, .. } => (format!("{get}()"), prec::POSTFIX),
+            // The printer: the runtime's `Lst`, as a file argument
+            // (`fwriteln!(Lst, ...)`). `Input` and `Output` never get here.
+            SymKind::StdText(_) => (symbol.rust_name.clone(), prec::ATOM),
+            SymKind::Proc(_) | SymKind::Builtin(_) | SymKind::UnitRoutine(_) => (self.call(e, &[]), prec::POSTFIX),
+            SymKind::TypeName(_) => unreachable!("sema rejects types used as values"),
+        }
+    }
+
+    /// An expression converted to type `to`. Pascal converts between number
+    /// types silently; Rust insists on explicit conversions, so this is where
+    /// the `i32::from(x)` and `x as i16` in the generated code come from.
+    pub(super) fn coerce(&mut self, e: &Expr, to: &Type) -> Code {
+        let from = self.a.type_of(e.id).clone();
+        // A one-character string literal used as a `Char` becomes a byte
+        // literal: `'A'` → `b'A'`.
+        if *to == Type::Char
+            && let ExprKind::Str(bytes) = &e.kind
+            && bytes.len() == 1
+        {
+            return (char_literal(bytes[0]), prec::ATOM);
+        }
+        if let (Type::Real(_), Type::IntLit(_)) = (to, &from)
+            && let ExprKind::Int(n) = e.kind
+        {
+            return (format!("{n}.0"), prec::ATOM);
+        }
+        if let (Type::Str { .. }, ExprKind::Str(bytes)) = (to, &e.kind)
+            && bytes.is_empty()
+        {
+            return ("PString::new()".to_string(), prec::POSTFIX);
+        }
+        // A packed string used as a string: its characters (a zero-based
+        // array's up to its `#0`).
+        if let Type::Str { .. } = to
+            && from.is_packed_string()
+        {
+            let chars = format!("{}.as_slice()", paren(self.expr(e), prec::POSTFIX));
+            return if from.is_char_array0() {
+                (format!("chars_str({chars})"), prec::POSTFIX)
+            } else {
+                (format!("PString::from({chars})"), prec::POSTFIX)
+            };
+        }
+        // `Name := 'Smith'`: a string constant as a packed string.
+        if to.is_packed_string()
+            && let Type::StrLit(_) = from
+        {
+            return (format!("char_array({})", self.string_arg(e)), prec::POSTFIX);
+        }
+        // `PChar`s from string constants, arrays and `Pointer`s.
+        match (to, &from) {
+            (Type::PChar, Type::StrLit(_)) => {
+                return (format!("PChar::literal({})", self.expr(e).0), prec::POSTFIX);
+            }
+            (Type::PChar, Type::Nil) => return ("PChar::nil()".to_string(), prec::POSTFIX),
+            (Type::Proc(_), Type::Nil) => return (format!("{}::nil()", to.rust()), prec::POSTFIX),
+            (Type::PChar, Type::AnyPointer) => {
+                return (format!("PChar::from_any(&{})", self.selector_base(e)), prec::POSTFIX);
+            }
+            (Type::AnyPointer, Type::PChar) => {
+                return (format!("{}.to_any()", self.pchar_operand(e)), prec::POSTFIX);
+            }
+            (Type::PChar, t) if t.is_char_array0() => {
+                return (format!("{}.clone()", self.lent_pchar(e)), prec::POSTFIX);
+            }
+            _ => {}
+        }
+        // `p := Node1` and `Node1 := p` between `Pointer` and a typed pointer.
+        match (to, &from) {
+            (Type::AnyPointer, Type::Pointer(_)) => {
+                return (format!("AnyPtr::from_ptr(&{})", self.selector_base(e)), prec::POSTFIX);
+            }
+            (Type::Pointer(target), Type::AnyPointer) => {
+                let target = target.target().rust();
+                return (format!("{}.cast::<{target}>()", paren(self.expr(e), prec::POSTFIX)), prec::POSTFIX);
+            }
+            (Type::AnyPointer, Type::Nil) => return ("AnyPtr::nil()".to_string(), prec::POSTFIX),
+            _ => {}
+        }
+        // A descendant object where an ancestor is expected: its ancestor
+        // part, `circle.base` (cloned unless it's `Copy`). TP copied its
+        // table of virtual methods too, so the copy would still act as a
+        // circle there; here it's the ancestor it now is.
+        if let (Type::Object(to_object), Type::Object(from_object)) = (to, &from)
+            && let Some(depth) = from_object.lineage().iter().position(|(o, _)| o == to_object)
+            && depth > 0
+        {
+            let base = match &e.kind {
+                ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => {
+                    self.selector_base(e)
+                }
+                _ => paren(self.expr(e), prec::POSTFIX),
+            };
+            let part = format!("{base}{}", ".base".repeat(depth));
+            return if to.is_copy() { (part, prec::POSTFIX) } else { (format!("{part}.clone()"), prec::POSTFIX) };
+        }
+        // `High(a)` (an `i64`) in an integer context: `a.high() as i16`. Also
+        // a sum of them, `High(a) - Low(a) + 1`, typed like a literal.
+        // (Not inside such a sum, whose parts are typed like literals: the
+        // sum is cut down once.)
+        if !matches!(to, Type::IntLit(_))
+            && let Type::Int(kind) = to.concrete()
+            && (self.array_bound(e).is_some() || matches!(from, Type::IntLit(_)) && self.uses_array_bound(e))
+        {
+            let code = self.expr(e);
+            return (format!("{} as {}", paren(code, prec::AS), kind.rust()), prec::AS);
+        }
+        // `High(Integer)` is `i16::MAX`, and `High(Index)` (`Index = 1..N`)
+        // is `N`: names rather than numbers. (Only where the type is known:
+        // inside a sum typed like a literal, `High(Integer) + 1`, the
+        // number stays, as `i16::MAX + 1` would overflow.)
+        if !matches!(to, Type::IntLit(_))
+            && matches!(to.concrete(), Type::Int(_) | Type::Char)
+            && let Some(limit) = self.type_limit(e)
+        {
+            return match limit {
+                Limit::Bound(bound) => self.coerce(&bound, to),
+                Limit::Named(code, from) => convert((code, prec::POSTFIX), &from, to),
+            };
+        }
+        // An integer constant expression: worked out as TP does (in 32
+        // bits), keeping its constants' names (see `const_expr`); one of
+        // literals whose sum along the way doesn't fit is written as its
+        // value (`30000 + 30000 - 40000` in an Integer is `20000`).
+        if let Type::Int(kind) = to.concrete()
+            && matches!(e.kind, ExprKind::Binary { .. } | ExprKind::Unary { .. })
+            && let Some(ConstVal::Int(n)) = self.a.consts.get(&e.id).cloned()
+            && !(self.intermediates_fit(e, kind) && from.concrete() == Type::Int(kind))
+        {
+            if self.names_constant(e) {
+                if let Some(code) = self.const_expr(e, kind, false) {
+                    return code;
+                }
+            } else if !self.intermediates_fit(e, kind) && kind.contains(n) {
+                return (n.to_string(), if n < 0 { prec::UNARY } else { prec::ATOM });
+            }
+        }
+        // `Ord(c)` of a Char (or of a Byte) used as a Byte is the same byte:
+        // `b = c` and `b.checked_add(b'A')`, not `i16::from(c) as u8`.
+        if matches!(to.concrete(), Type::Int(IntKind::Byte))
+            && let Some(arg) = self.ord_of_byte(e)
+        {
+            return if self.a.type_of(arg.id).is_integer() {
+                self.coerce(arg, to)
+            } else {
+                self.coerce(arg, &Type::Char)
+            };
+        }
+        let code = self.expr(e);
+        // Pascal copies records and pointers on assignment. For types that
+        // aren't `Copy` in Rust (anything holding a `Ptr`), that copy has to
+        // be an explicit `.clone()`. A value that's already fresh (a
+        // function result, a literal) needs no clone.
+        if !to.is_copy() && is_place(e) && !matches!(e.kind, ExprKind::Deref(_)) {
+            let receiver = match (&e.kind, self.a.refs.get(&e.id)) {
+                (ExprKind::Name(_), Some(&sym))
+                    if matches!(self.a.sym(sym).kind, SymKind::Var(_)) && !self.a.self_fields.contains_key(&e.id) =>
+                {
+                    self.a.var_name(self.proc, sym).to_string()
+                }
+                _ => paren(code, prec::POSTFIX),
+            };
+            return (format!("{receiver}.clone()"), prec::POSTFIX);
+        }
+        convert(code, &from, to)
+    }
+
+    /// If `e` is `Ord(x)` of a Char, a one-character literal or a Byte:
+    /// that `x`, whose value fits a Byte as it is.
+    pub(super) fn ord_of_byte<'e>(&self, e: &'e Expr) -> Option<&'e Expr> {
+        let ExprKind::Call { callee, args } = &e.kind else { return None };
+        let [arg] = args.as_slice() else { return None };
+        let sym = *self.a.refs.get(&callee.id)?;
+        let byte = matches!(self.a.type_of(arg.id).concrete(), Type::Char | Type::StrLit(1) | Type::Int(IntKind::Byte));
+        (matches!(self.a.sym(sym).kind, SymKind::Builtin(Builtin::Ord)) && byte).then_some(arg)
+    }
+
+    /// An expression used as the receiver of a method call (`x.abs()`):
+    /// parenthesized if needed, and with integer literals given an explicit
+    /// type, because Rust can't call methods on a literal of unknown type.
+    pub(super) fn postfix(&mut self, e: &Expr, ty: &Type) -> String {
+        // Method calls dereference automatically, so a reference variable
+        // can be used as is: `x.abs()` rather than `(*x).abs()`.
+        // (Not a function variable that's called: `Abs(F)`.)
+        if let ExprKind::Name(_) = e.kind
+            && let Some(&sym) = self.a.refs.get(&e.id)
+            && let SymKind::Var(_) = self.a.sym(sym).kind
+            && *self.a.type_of(e.id) == *ty
+            && !self.a.proc_calls.contains_key(&e.id)
+        {
+            return self.a.var_name(self.proc, sym).to_string();
+        }
+        // Literals get a type suffix: `5_i16.abs()`, `(-2.5_f64).round()`.
+        let literal = match (self.a.type_of(e.id), ty, &e.kind) {
+            (Type::IntLit(n), Type::Int(k), _) => Some(format!("{n}_{}", k.rust())),
+            (Type::IntLit(n), Type::Real(_), _) => Some(format!("{n}.0_f64")),
+            (_, _, ExprKind::Real(x)) => Some(format!("{}_f64", real_literal(*x))),
+            (_, _, ExprKind::Unary { op: UnaryOp::Neg, operand }) => match operand.kind {
+                ExprKind::Real(x) => Some(format!("-{}_f64", real_literal(x))),
+                _ => None,
+            },
+            _ => None,
+        };
+        match literal {
+            Some(text) if text.starts_with('-') => format!("({text})"),
+            Some(text) => text,
+            None => paren(self.coerce(e, ty), prec::POSTFIX),
+        }
+    }
+
+    /// A `PChar` value to call a method on or compare: a variable as it is
+    /// (no `.clone()` just to look at it), anything else converted.
+    pub(super) fn pchar_operand(&mut self, e: &Expr) -> String {
+        self.pointer_operand(e, &Type::PChar)
+    }
+
+    /// A `PChar` or `Pointer` (`to`) value to look at: a variable of that
+    /// type as it is, a `Char` array's lent copy, anything else converted.
+    fn pointer_operand(&mut self, e: &Expr, to: &Type) -> String {
+        let ty = self.a.type_of(e.id).clone();
+        if *to == Type::PChar && ty.is_char_array0() {
+            self.lent_pchar(e)
+        } else if ty == *to && is_place(e) {
+            self.selector_base(e)
+        } else {
+            paren(self.coerce(e, to), prec::POSTFIX)
+        }
+    }
+
+    /// Is `e` a zero-based `Char` array the current statement lends to a
+    /// `PChar` (so it should be read through the copy)?
+    pub(super) fn is_lent(&self, e: &Expr) -> bool {
+        self.a.type_of(e.id).is_char_array0()
+            && self.a.refs.get(&super::root_expr(e).id).is_some_and(|sym| self.lent_roots.contains(sym))
+    }
+
+    /// A zero-based `Char` array used as a `PChar`. Ruscal can't point
+    /// into an array, so it lends the statement a copy of the characters,
+    /// made before it, and (if the statement may write through the `PChar`)
+    /// copies them back after it. Each array gets one copy per statement, so
+    /// `StrEnd(A) - A` compares pointers into the same copy. (Sema made sure
+    /// no `PChar` into the copy outlives the statement.)
+    pub(super) fn lent_pchar(&mut self, e: &Expr) -> String {
+        let array = self.selector_base(e);
+        let written = self.a.pchar_arrays.get(&e.id).copied().unwrap_or(false);
+        // The array's copy for this statement, if an earlier use made one.
+        let name = match self.lent.iter().find(|(code, _)| *code == array) {
+            Some((_, name)) => name.clone(),
+            None => {
+                let base = match array.rsplit(['.', '*']).next() {
+                    Some(last) if !last.is_empty() && last.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => {
+                        last
+                    }
+                    _ => "array",
+                };
+                let name = self.temp_name(&format!("{base}_chars"));
+                if self.first_time("lent_pchar") {
+                    self.pending
+                        .push("// A Char array used as a PChar: Rust can't point into the array, so".to_string());
+                    self.pending
+                        .push("// the statement gets a copy of its characters, copied back after it".to_string());
+                    self.pending.push("// if it may change them.".to_string());
+                }
+                self.pending.push(format!("let {name} = PChar::copy_of({array}.as_slice());"));
+                self.lent.push((array, name.clone()));
+                name
+            }
+        };
+        // Copied back if any use in the statement may write through it (not
+        // just the first: `StrLen(A) + StrLen(StrCat(A, 'x'))`).
+        let copy_back = format!("{name}.copy_to(");
+        if written && !self.after.iter().any(|line| line.starts_with(&copy_back)) {
+            let place = self.place(e);
+            let place = place.strip_prefix('*').unwrap_or(&place).to_string();
+            self.after.push(format!("{name}.copy_to({place}.as_mut_slice());"));
+        }
+        name
+    }
+
+    fn binary(&mut self, e: &Expr, op: BinaryOp, lhs: &Expr, rhs: &Expr) -> Code {
+        use BinaryOp::*;
+        let ty = self.a.type_of(e.id).clone();
+        // A constant expression whose value along the way doesn't fit its
+        // type (`C + 1` with `C = 32767`, an Integer): TP works it out in 32
+        // bits, so `WriteLn(C + 1)` prints 32768 (see `const_expr`).
+        // (A literal's type, `IntLit`, adapts to where it's used, as Rust's
+        // literals do, so it's left alone.)
+        if !matches!(ty, Type::IntLit(_))
+            && let Type::Int(kind) = ty.concrete()
+            && let Some(ConstVal::Int(n)) = self.a.consts.get(&e.id).cloned()
+            && !self.intermediates_fit(e, kind)
+        {
+            let to = if kind.contains(n) { kind } else { IntKind::LongInt };
+            if !self.names_constant(e) {
+                return (n.to_string(), if n < 0 { prec::UNARY } else { prec::ATOM });
+            }
+            if let Some(code) = self.const_expr(e, to, false) {
+                return code;
+            }
+        }
+        let (lt, rt) = (self.a.type_of(lhs.id).clone(), self.a.type_of(rhs.id).clone());
+        // `PChar` arithmetic: `P + 1`, `1 + P`, `P - 1`, and `P - Q`.
+        if ty == Type::PChar {
+            let (pointer, n) = if lt.is_pcharish() { (lhs, rhs) } else { (rhs, lhs) };
+            let method = if op == Add { "plus" } else { "minus" };
+            let (pointer, n) = (self.pchar_operand(pointer), self.expr(n).0);
+            return (format!("{pointer}.{method}({n})"), prec::POSTFIX);
+        }
+        if op == Sub && lt.is_pcharish() && rt.is_pcharish() {
+            let (p, q) = (self.pchar_operand(lhs), self.pchar_operand(rhs));
+            return (format!("{p}.diff(&{q})"), prec::POSTFIX);
+        }
+        if op == In || matches!(lt, Type::Set(..)) {
+            return self.set_binary(op, lhs, rhs);
+        }
+        let (rust_op, p) = match op {
+            Add => ("+", prec::ADD),
+            Sub => ("-", prec::ADD),
+            Mul => ("*", prec::MUL),
+            RealDiv | Div => ("/", prec::MUL),
+            Mod => ("%", prec::MUL),
+            And if ty == Type::Bool => ("&&", prec::AND),
+            Or if ty == Type::Bool => ("||", prec::OR),
+            And => ("&", prec::BIT_AND),
+            Or => ("|", prec::BIT_OR),
+            Xor => ("^", prec::BIT_XOR),
+            Shl => ("<<", prec::SHIFT),
+            Shr => (">>", prec::SHIFT),
+            Eq => ("==", prec::CMP),
+            NotEq => ("!=", prec::CMP),
+            Lt => ("<", prec::CMP),
+            LtEq => ("<=", prec::CMP),
+            Gt => (">", prec::CMP),
+            GtEq => (">=", prec::CMP),
+            In => unreachable!("sema rejects `in` without sets"),
+        };
+        // `TypeOf(p^) = TypeOf(TCircle)` compares type names.
+        if lt == Type::TypeInfo {
+            let (l, r) = (self.expr(lhs).0, self.expr(rhs).0);
+            return (format!("{l} {rust_op} {r}"), p);
+        }
+        // `p = nil` reads best as `p.is_nil()`.
+        if matches!(op, Eq | NotEq) && (lt == Type::Nil || rt == Type::Nil) && lt != rt {
+            let pointer = if lt == Type::Nil { rhs } else { lhs };
+            // No `.clone()` needed just to look at the pointer.
+            let receiver = match &pointer.kind {
+                // `@F = nil` is `f.is_nil()`.
+                ExprKind::AddrOf(value) if self.a.proc_addresses_of_values.contains(&pointer.id) => {
+                    paren(self.expr(value), prec::POSTFIX)
+                }
+                ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => {
+                    self.selector_base(pointer)
+                }
+                _ => paren(self.expr(pointer), prec::POSTFIX),
+            };
+            let code = format!("{receiver}.is_nil()");
+            return if op == Eq { (code, prec::POSTFIX) } else { (format!("!{code}"), prec::UNARY) };
+        }
+        // The type both operands are converted to before the operation.
+        let operand_ty = match op {
+            Eq | NotEq | Lt | LtEq | Gt | GtEq => comparison_type(&lt, &rt),
+            _ => ty.clone(),
+        };
+        // Comparing two pointers only looks at them, so neither side needs
+        // the `.clone()` that `coerce` gives a pointer it copies.
+        let compare_pointers = matches!(op, Eq | NotEq) && matches!(operand_ty, Type::Pointer(_));
+        if matches!(operand_ty, Type::PChar | Type::AnyPointer) {
+            let (l, r) = (self.pointer_operand(lhs, &operand_ty), self.pointer_operand(rhs, &operand_ty));
+            return (format!("{l} {rust_op} {r}"), p);
+        }
+        let left = if compare_pointers { self.expr(lhs) } else { self.coerce(lhs, &operand_ty) };
+        // The right side of `and`/`or` only runs if it has to: in
+        // `(p <> nil) and (Show(p^.value) > 0)`, `p^.value` mustn't be read
+        // when `p` is nil. So the `let`s it needs go inside it, in a block,
+        // rather than before the whole statement.
+        let short_circuit = matches!(op, And | Or) && ty == Type::Bool;
+        let mark = self.pending.len();
+        let right = match (op, &operand_ty, &rt) {
+            _ if compare_pointers => self.expr(rhs),
+            // `PString` implements `+` and `==` for string literals and
+            // chars directly, so the right operand can stay as it is.
+            (Add | Eq | NotEq | Lt | LtEq | Gt | GtEq, Type::Str { .. }, Type::StrLit(_) | Type::Char) => {
+                self.expr(rhs)
+            }
+            (Shl | Shr, _, _) => self.expr(rhs),
+            _ => self.coerce(rhs, &operand_ty),
+        };
+        let right = if short_circuit && self.pending.len() > mark {
+            let (comments, lets): (Vec<String>, Vec<String>) =
+                self.pending.split_off(mark).into_iter().partition(|line| line.starts_with("//"));
+            self.pending.extend(comments);
+            if lets.is_empty() { right } else { (format!("{{ {} {} }}", lets.join(" "), right.0), prec::ATOM) }
+        } else {
+            right
+        };
+        if let (Shl | Shr, Type::Int(kind)) = (op, operand_ty.concrete()) {
+            return self.shift(op, kind, (left, &lt), (right, &rt));
+        }
+        if let (Add | Sub | Mul, Type::Int(kind)) = (op, operand_ty.concrete())
+            && self.overflow_checked_at(e.span)
+            && !self.is_constant(e)
+        {
+            // A literal needs its type spelled out to have a method called
+            // on it (`1_i16.checked_add(i)`), and a constant expression of
+            // literals is written as its value (`(2 + 3) * i` is
+            // `5_i16.checked_mul(i)`). A constant operand isn't checked
+            // (`i * (2 + 3)` is `i.checked_mul(2 + 3)`): see `is_constant`.
+            let left = match lt {
+                Type::IntLit(n) => {
+                    let precedence = if n < 0 { prec::UNARY } else { prec::ATOM };
+                    (format!("{n}_{}", kind.rust()), precedence)
+                }
+                _ => left,
+            };
+            let method = match op {
+                Add => "checked_add",
+                Sub => "checked_sub",
+                _ => "checked_mul",
+            };
+            return self.checked_op(left, method, &right.0);
+        }
+        // `x as i16 < y` would parse `<` as the start of generic arguments,
+        // so a cast on the left of `<` or `<<` always gets parentheses.
+        // Comparisons don't chain in Rust, so both sides need higher
+        // precedence; arithmetic is left-associative, so only the right side
+        // does.
+        let left_min = if left.1 == prec::AS && op == Lt {
+            prec::UNARY
+        } else if p == prec::CMP {
+            p + 1
+        } else {
+            p
+        };
+        // A bit operator's operands get parentheses unless they're simple
+        // (`(i << 1) & 3`, `(a & b) | c`), as a person writes it, though
+        // Rust wouldn't need them; a chain of one operator doesn't.
+        let (left_min, right_min) = if matches!(p, prec::BIT_AND | prec::BIT_OR | prec::BIT_XOR) {
+            (if left.1 == p { p } else { prec::AS }, prec::AS)
+        } else {
+            (left_min, p + 1)
+        };
+        // Rust's `x / 0.0` is infinity; Turbo Pascal stops with runtime
+        // error 200. `nonzero` checks the divisor (not needed for a constant
+        // that isn't 0, `x / 2`).
+        if op == RealDiv && !self.nonzero_constant(rhs) {
+            if self.first_time("nonzero") {
+                self.pending
+                    .push("// `nonzero(y)` stops with runtime error 200 if `y` is 0, as Turbo Pascal's".to_string());
+                self.pending.push("// `/` does (Rust's would give infinity).".to_string());
+            }
+            let right = (format!("nonzero({})", right.0), prec::POSTFIX);
+            let code = format!("{} {rust_op} {}", paren(left, left_min), paren(right, right_min));
+            return (code, p);
+        }
+        let code = format!("{} {rust_op} {}", paren(left, left_min), paren(right, right_min));
+        (code, p)
+    }
+
+    /// Is `e` a constant that isn't 0 (`2`, `2.5`, `C`, `2 * C`)? A real
+    /// division by one needs no check.
+    fn nonzero_constant(&self, e: &Expr) -> bool {
+        match self.a.consts.get(&e.id) {
+            Some(ConstVal::Int(n)) => *n != 0,
+            Some(ConstVal::Real(x)) => *x != 0.0,
+            _ => false,
+        }
+    }
+
+    /// `x shl n` or `x shr n` on an integer of type `kind`.
+    fn shift(&mut self, op: BinaryOp, kind: IntKind, left: (Code, &Type), right: (Code, &Type)) -> Code {
+        let ((left, lt), (right, rt)) = (left, right);
+        let width = i64::from(kind.bits());
+        // Turbo Pascal's `shr` is a logical shift: it fills with zeros, so
+        // `-300 shr 4` is 4077. Rust's `>>` on a signed integer copies the
+        // sign bit instead (-19), so shift the same bits as unsigned.
+        // (A literal that isn't negative shifts the same either way.)
+        let unsigned = match kind {
+            _ if op == BinaryOp::Shl || matches!(lt, Type::IntLit(n) if *n >= 0) => None,
+            IntKind::ShortInt => Some("u8"),
+            IntKind::Integer => Some("u16"),
+            IntKind::LongInt => Some("u32"),
+            IntKind::Byte | IntKind::Word => None,
+        };
+        // A literal needs its type spelled out (`-300_i16`) to be cast or to
+        // have a method called on it.
+        let small_count = matches!(rt, Type::IntLit(n) if (0..width).contains(n));
+        let left = if matches!(lt, Type::IntLit(_)) && (unsigned.is_some() || !small_count) {
+            (format!("{}_{}", left.0, kind.rust()), prec::POSTFIX)
+        } else {
+            left
+        };
+        let left = match unsigned {
+            Some(unsigned) => (format!("{} as {unsigned}", paren(left, prec::AS)), prec::AS),
+            None => left,
+        };
+        let code = if small_count {
+            let rust_op = if op == BinaryOp::Shl { "<<" } else { ">>" };
+            // `x as i16 << y` would parse `<` as the start of generic
+            // arguments, so a cast on the left of `<<` gets parentheses.
+            let left_min = if left.1 == prec::AS { prec::UNARY } else { prec::AS };
+            // (Arithmetic on either side gets parentheses, as a person writes
+            // it: `(i + 1) << 1`, though Rust wouldn't need them.)
+            (format!("{} {rust_op} {}", paren(left, left_min), paren(right, prec::AS)), prec::SHIFT)
+        } else {
+            // Shifting by the type's width or more shifts every bit out in
+            // Turbo Pascal (`x shl 16` is 0), but Rust's `<<` rejects it (or
+            // panics, for a count it can't see at compile time).
+            // `checked_shl` gives `None` instead.
+            if self.first_time("checked_shift") {
+                self.pending
+                    .push("// `checked_shl`/`checked_shr`: shifting by the integer's width or more gives".to_string());
+                self.pending.push("// 0, as in Turbo Pascal, where Rust's `<<` and `>>` would panic.".to_string());
+            }
+            let method = if op == BinaryOp::Shl { "checked_shl" } else { "checked_shr" };
+            let count = match rt {
+                Type::IntLit(_) => right.0,
+                _ => format!("{} as u32", paren(right, prec::AS)),
+            };
+            (format!("{}.{method}({count}).unwrap_or(0)", paren(left, prec::POSTFIX)), prec::POSTFIX)
+        };
+        match unsigned {
+            // Back to the signed type. (`value_cast` uses the shift as it
+            // is, if it's converted to the unsigned type anyway.)
+            Some(_) => {
+                let signed = format!("{} as {}", paren(code.clone(), prec::AS), kind.rust());
+                self.unsigned_shift = Some((signed.clone(), code));
+                (signed, prec::AS)
+            }
+            None => code,
+        }
+    }
+
+    /// The Rust place expression for an assignment target.
+    pub(super) fn place(&mut self, e: &Expr) -> String {
+        self.hoist_target_indexes(e);
+        self.view_for_place(e);
+        if let Some((self_sym, path)) = self.a.self_fields.get(&e.id) {
+            return format!("{}.{}", self.self_place(*self_sym), path.join("."));
+        }
+        match &e.kind {
+            ExprKind::Name(_) => self.var_place(self.a.refs[&e.id]),
+            ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => {
+                let saved = std::mem::replace(&mut self.mutable_place, true);
+                let mut code = self.selector(e);
+                self.mutable_place = saved;
+                // A whole record through a pointer, `p^ := ...`, or a field
+                // kept in a variant part's bytes: assign through the guard.
+                if matches!(e.kind, ExprKind::Deref(_)) || self.is_byte_field(e) {
+                    code = format!("*{code}");
+                }
+                code
+            }
+            _ => unreachable!("sema rejects other assignment targets"),
+        }
+    }
+
+    /// Does the place `e` go through a field kept in a variant part's bytes
+    /// (`p.I2` in `p.I2.Hi`), whose `_mut()` guard borrows the record?
+    pub(super) fn through_byte_field(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Field(base, _) => self.is_byte_field(e) || self.through_byte_field(base),
+            ExprKind::Index(base, _) | ExprKind::Deref(base) => self.through_byte_field(base),
+            _ => false,
+        }
+    }
+
+    /// Is `e` a field kept in a variant part's bytes (`p.Lo`)?
+    pub(super) fn is_byte_field(&self, e: &Expr) -> bool {
+        matches!(&e.kind, ExprKind::Field(base, field)
+            if matches!(self.a.type_of(base.id), Type::Record(r) if r.byte_field(&field.name).is_some()))
+    }
+
+    /// `record.field` or `array[i][j]`. Pascal's `a[i, j]` becomes Rust's
+    /// `a[i][j]`; the runtime's `PArray` does the bounds arithmetic.
+    fn selector(&mut self, e: &Expr) -> String {
+        match &e.kind {
+            // `p^` inside a longer path, like `p^.next`: borrow the record,
+            // mutably if we're about to change it. Only the last `^` in a
+            // path needs that: in `head^.next^.value := 2`, `head^` is just
+            // read to find `next`, so it's `head.get().next.get_mut()`.
+            ExprKind::Deref(base) => {
+                let method = if self.mutable_place { "get_mut" } else { "get" };
+                let saved = std::mem::replace(&mut self.mutable_place, false);
+                let base_code = self.selector_base(base);
+                self.mutable_place = saved;
+                match self.a.type_of(e.id) {
+                    // A pointer into a hierarchy with virtual methods points to
+                    // its enum; this picks out the object's part.
+                    Type::Object(o) if self.in_dispatch(o) => {
+                        let suffix = if self.mutable_place { "_mut" } else { "" };
+                        format!("{base_code}.{method}().as_{}{suffix}()", super::accessor(o))
+                    }
+                    _ => format!("{base_code}.{method}()"),
+                }
+            }
+            // A field kept in a variant part's bytes: its accessor, `p.lo()`
+            // to read it, `p.lo_mut()` (a guard that writes it back) to
+            // change it.
+            ExprKind::Field(base, field)
+                if let Type::Record(r) = self.a.type_of(base.id).clone()
+                    && let Some((f, _)) = r.byte_field(&field.name) =>
+            {
+                let suffix = if self.mutable_place { "_mut" } else { "" };
+                format!("{}.{}{suffix}()", self.selector_base(base), f.rust_name)
+            }
+            ExprKind::Field(base, field) => {
+                let path = match self.a.type_of(base.id).clone() {
+                    Type::Record(r) => r.field(&field.name).expect("sema checked the field").rust_name.clone(),
+                    Type::Object(o) => o.field_path(&field.name).expect("sema checked the field").0.join("."),
+                    _ => unreachable!("sema checked the field"),
+                };
+                format!("{}.{path}", self.selector_base(base))
+            }
+            // `TBytes(Data)[i]`: a byte of an untyped parameter, read or
+            // written in place.
+            ExprKind::Index(base, indexes)
+                if let Some(bytes) = self.view_cast_guard(base)
+                    && let Type::Array(a) = self.a.type_of(base.id).clone()
+                    && super::super::sema::types::tp_size(&a.elem) == Some(1)
+                    && indexes.len() == 1 =>
+            {
+                let index = self.expr(&indexes[0]).0;
+                if a.lo == 0 { format!("{bytes}[{index}]") } else { format!("{bytes}[{index} - {}]", a.lo) }
+            }
+            ExprKind::Index(base, indexes) => {
+                let mut ty = self.a.type_of(base.id).clone();
+                let mut code = self.selector_base(base);
+                for index in indexes {
+                    // The index is only read, even in a place being written
+                    // (`p.B[q.B[0]] := 9` needs no guard on `q`).
+                    let saved = std::mem::replace(&mut self.mutable_place, false);
+                    let index_code = match &ty {
+                        // A character literal index must become a byte
+                        // literal: `counts['a']` → `counts[b'a']`.
+                        Type::Array(a) if a.index == Type::Char => self.coerce(index, &Type::Char).0,
+                        _ => self.expr(index).0,
+                    };
+                    self.mutable_place = saved;
+                    code.push_str(&format!("[{index_code}]"));
+                    ty = match &ty {
+                        Type::Array(a) => a.elem.clone(),
+                        _ => Type::Char,
+                    };
+                }
+                code
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// The Rust name of an untyped parameter (its `Bytes`).
+    pub(super) fn untyped_name(&self, e: &Expr) -> String {
+        let sym = self.a.refs[&e.id];
+        self.a.sym(sym).rust_name.clone()
+    }
+
+    /// If `e` is a typecast of an untyped parameter (`TBytes(Data)`), the
+    /// parameter's `Bytes`.
+    /// A place inside a typecast of an untyped parameter, `TWords(Data)[1]`
+    /// or `Rec(Data).b`: the bytes are read into a `view` before the
+    /// statement, the statement changes that, and it's written back after.
+    /// (A byte of a byte array, `TBytes(Data)[i]`, is changed in place.)
+    fn view_for_place(&mut self, e: &Expr) {
+        let mut inner = e;
+        let cast = loop {
+            match &inner.kind {
+                ExprKind::Field(base, _) | ExprKind::Index(base, _) => {
+                    if self.view_cast_guard(base).is_some() {
+                        break base;
+                    }
+                    inner = base;
+                }
+                _ => return,
+            }
+        };
+        let byte_element = matches!(&inner.kind, ExprKind::Index(_, indexes) if indexes.len() == 1)
+            && std::ptr::eq(inner, e)
+            && matches!(self.a.type_of(cast.id), Type::Array(a) if super::super::sema::types::tp_size(&a.elem) == Some(1));
+        if byte_element || self.hoisted.contains_key(&cast.id) {
+            return;
+        }
+        let bytes = self.view_cast_guard(cast).expect("a view cast");
+        let ty = self.a.type_of(cast.id).clone();
+        let (read, write) = match super::string_capacity(&ty) {
+            Some(cap) => (format!("read_string::<{}>({cap})", ty.rust()), format!("write_string(&{{}}, {cap})")),
+            None => (format!("read::<{}>()", ty.rust()), "write(&{})".to_string()),
+        };
+        let name = self.temp_name("view");
+        if self.first_time("view_for_place") {
+            self.pending
+                .push(format!("// Part of an untyped parameter seen as a `{}`: its bytes are read into", ty.rust()));
+            self.pending.push(format!("// `{name}`, which the statement changes, and written back after it."));
+        }
+        self.pending.push(format!("let mut {name} = {bytes}.{read};"));
+        self.after.push(format!("{bytes}.{};", write.replace("{}", &name)));
+        self.hoisted.insert(cast.id, name);
+    }
+
+    pub(super) fn view_cast_guard(&self, e: &Expr) -> Option<String> {
+        let ExprKind::Call { args, .. } = &e.kind else { return None };
+        match args.as_slice() {
+            [arg] if *self.a.type_of(arg.id) == Type::Untyped => Some(self.untyped_name(arg)),
+            _ => None,
+        }
+    }
+
+    /// An argument for an untyped `var` parameter: the variable as bytes,
+    /// from where the argument starts (`&mut x`, `&mut string_bytes(&mut s,
+    /// 30)`, `&mut bytes_from(&mut buf, 9)`).
+    pub(super) fn view_arg(&mut self, arg: &Expr) -> String {
+        // `p^` of a `Pointer`: the bytes `GetMem` gave it.
+        if let ExprKind::Deref(pointer) = &arg.kind
+            && *self.a.type_of(pointer.id) == Type::AnyPointer
+        {
+            return format!("&mut {}.bytes()", self.selector_base(pointer));
+        }
+        if *self.a.type_of(arg.id) == Type::Untyped {
+            // A nested routine holds a reference to the outer one's guard.
+            let sym = self.a.refs[&arg.id];
+            let star = if self.a.var(sym).owner == self.proc { "" } else { "*" };
+            return format!("&mut {star}{}", self.untyped_name(arg));
+        }
+        let (root, offset) = self.view_offset(arg);
+        // `TBytes(Data)[2]`: part of an untyped parameter, passed on.
+        if let Some(bytes) = self.view_cast_guard(root) {
+            return match offset {
+                None => format!("&mut {bytes}"),
+                Some(offset) => format!("&mut bytes_from(&mut {bytes}, {offset})"),
+            };
+        }
+        let root_view = match self.a.type_of(root.id).clone() {
+            Type::Str { cap } => format!("&mut string_bytes({}, {cap})", self.place_mut(root)),
+            // An array of `string[n]`s or of small sets: their real sizes.
+            ty => match super::size_hint(&ty) {
+                Some((size, 0)) => format!("&mut sized_bytes({}, {size})", self.place_mut(root)),
+                Some((size, first)) => format!("&mut sized_bytes_from({}, {size}, {first})", self.place_mut(root)),
+                None => self.place_mut(root),
+            },
+        };
+        match offset {
+            None => root_view,
+            Some(offset) => format!("&mut bytes_from({root_view}, {offset})"),
+        }
+    }
+
+    /// A variable's bytes to read from (`Move`'s source).
+    pub(super) fn view_bytes(&mut self, arg: &Expr) -> String {
+        if let ExprKind::Deref(pointer) = &arg.kind
+            && *self.a.type_of(pointer.id) == Type::AnyPointer
+        {
+            return format!("&{}.bytes().to_bytes()", self.selector_base(pointer));
+        }
+        if *self.a.type_of(arg.id) == Type::Untyped {
+            return format!("&{}", self.untyped_name(arg));
+        }
+        let (root, offset) = self.view_offset(arg);
+        if let Some(bytes) = self.view_cast_guard(root) {
+            return match offset {
+                None => format!("&{bytes}"),
+                Some(offset) => format!("bytes_after(&{bytes}.to_bytes(), {offset})"),
+            };
+        }
+        let all = match self.a.type_of(root.id).clone() {
+            Type::Str { cap } => format!("string_view_bytes(&{}, {cap})", paren(self.expr(root), prec::UNARY)),
+            ty => match super::size_hint(&ty) {
+                Some((size, 0)) => format!("sized_view_bytes(&{}, {size})", paren(self.expr(root), prec::UNARY)),
+                Some((size, first)) => {
+                    format!("sized_view_bytes_from(&{}, {size}, {first})", paren(self.expr(root), prec::UNARY))
+                }
+                None => format!("{}.to_bytes()", paren(self.expr(root), prec::POSTFIX)),
+            },
+        };
+        match offset {
+            None => format!("&{all}"),
+            Some(offset) => format!("bytes_after(&{all}, {offset})"),
+        }
+    }
+
+    /// Where `e` starts inside the variable it's part of, in TP's bytes:
+    /// the variable, and the offset (`None` for the whole of it). An array
+    /// element is `(i - lo) * size` in, a string's `s[i]` is `i` in (after
+    /// the length byte), a record field after the fields before it.
+    fn view_offset<'e>(&mut self, e: &'e Expr) -> (&'e Expr, Option<String>) {
+        use super::super::sema::types::tp_size;
+        let mut parts: Vec<String> = Vec::new();
+        let mut constant: i64 = 0;
+        let mut node = e;
+        // Walk from the argument up to the variable, collecting offsets.
+        loop {
+            match &node.kind {
+                ExprKind::Index(base, indexes) => {
+                    let mut ty = self.a.type_of(base.id).clone();
+                    for index in indexes {
+                        let (lo, size, next) = match &ty {
+                            Type::Array(a) => (a.lo, tp_size(&a.elem).unwrap_or(1), a.elem.clone()),
+                            _ => (0, 1, Type::Char),
+                        };
+                        let literal = match &index.kind {
+                            ExprKind::Int(n) => Some(*n),
+                            _ => match self.a.folded.get(&index.id) {
+                                Some(crate::sema::ConstVal::Int(n)) => Some(*n),
+                                _ => None,
+                            },
+                        };
+                        match literal {
+                            Some(n) => constant += (n - lo) * size,
+                            // In `i64`, so an index out of range gives a
+                            // negative or too large offset, which the
+                            // runtime reports as runtime error 201.
+                            None => {
+                                let i = paren(self.expr(index), prec::AS);
+                                let start = if lo == 0 { format!("{i} as i64") } else { format!("{i} as i64 - {lo}") };
+                                parts.push(match (size, lo) {
+                                    (1, _) => start,
+                                    (_, 0) => format!("{start} * {size}"),
+                                    _ => format!("({start}) * {size}"),
+                                });
+                            }
+                        }
+                        ty = next;
+                    }
+                    node = base;
+                }
+                ExprKind::Field(base, field) => {
+                    match self.a.type_of(base.id) {
+                        Type::Record(r) => constant += r.field_offset(&field.name),
+                        Type::Object(o) => constant += o.field_offset(&field.name),
+                        _ => {}
+                    }
+                    node = base;
+                }
+                _ => break,
+            }
+        }
+        if std::ptr::eq(node, e) {
+            return (node, None); // the whole variable
+        }
+        if constant != 0 || parts.is_empty() {
+            parts.push(constant.to_string());
+        }
+        (node, Some(parts.join(" + ")))
+    }
+
+    /// The left side of `.field` or `[index]`. Rust dereferences
+    /// automatically there, so a variable we hold by reference can be used
+    /// as is (`grid[c][r]`, not `(*grid)[c][r]`).
+    pub(super) fn selector_base(&mut self, base: &Expr) -> String {
+        if let Some((self_sym, path)) = self.a.self_fields.get(&base.id) {
+            return format!("{}.{}", self.self_place(*self_sym), path.join("."));
+        }
+        match &base.kind {
+            // Fields through `shape: &mut dyn TShapeMethods`: `shape.t_shape().x`.
+            ExprKind::Name(_) if self.is_dyn_param(base) => {
+                let Type::Object(o) = self.a.type_of(base.id).clone() else { unreachable!() };
+                format!("{}.{}()", self.a.var_name(self.proc, self.a.refs[&base.id]), super::accessor(&o))
+            }
+            ExprKind::Name(_) if matches!(self.a.sym(self.a.refs[&base.id]).kind, SymKind::Var(_)) => {
+                self.a.var_name(self.proc, self.a.refs[&base.id]).to_string()
+            }
+            ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_) => self.selector(base),
+            _ => paren(self.expr(base), prec::POSTFIX),
+        }
+    }
+
+    /// A mutable reference to a place, for a `var` argument: `&mut x`, or
+    /// just `x` if we already hold `x` as a reference (Rust "reborrows" it).
+    pub(super) fn place_mut(&mut self, e: &Expr) -> String {
+        self.hoist_target_indexes(e);
+        // `Report(Output)` or `Report(Lst)` with `procedure Report(var f: Text)`.
+        match self.std_text(e) {
+            Some(crate::sema::StdFile::Printer) => return "&mut PText::printer()".to_string(),
+            Some(_) => return "&mut PText::console()".to_string(),
+            None => {}
+        }
+        match &e.kind {
+            ExprKind::Name(_) if !self.a.self_fields.contains_key(&e.id) => {
+                let sym = self.a.refs[&e.id];
+                let name = self.a.var_name(self.proc, sym).to_string();
+                match self.a.access(self.proc, sym) {
+                    Access::Direct => format!("&mut {name}"),
+                    Access::Reference => name,
+                }
+            }
+            _ => format!("&mut {}", self.place(e)),
+        }
+    }
+
+    /// A call to a user procedure, a builtin or a type cast.
+    pub(super) fn call(&mut self, callee: &Expr, args: &[Expr]) -> String {
+        if let Some((pid, path)) = self.a.method_calls.get(&callee.id).cloned() {
+            return self.method_call(callee, pid, &path, args);
+        }
+        // `F(x)` through a procedural variable: its routine, called with
+        // its class's globals and the arguments.
+        if let Some(&class) = self.a.proc_calls.get(&callee.id) {
+            let value = match &callee.kind {
+                ExprKind::Name(_) if !self.a.self_fields.contains_key(&callee.id) => {
+                    self.a.var_name(self.proc, self.a.refs[&callee.id]).to_string()
+                }
+                // `R.F(x)`, `Handlers[i](x)`, a method's `Next`: the value is
+                // copied out first (as a value: `calling` keeps `expr` from
+                // calling it again).
+                _ => {
+                    self.calling.insert(callee.id);
+                    let value = paren(self.expr(callee), prec::POSTFIX);
+                    self.calling.remove(&callee.id);
+                    value
+                }
+            };
+            let (args, records) = self.call_args(class, args, None);
+            return wrap_with_mut(format!("{value}.get()({args})"), records);
+        }
+        let sym = self.a.refs[&callee.id];
+        match &self.a.sym(sym).kind {
+            SymKind::Proc(p) => self.user_call(*p, args),
+            SymKind::Builtin(b) => {
+                let b = *b;
+                let code = self.builtin(b, args, callee.id, callee.span);
+                // Writing to the console never sets `IOResult`, so it needs
+                // no `io_unchecked` around it.
+                let console_write = matches!(b, Builtin::Write | Builtin::Writeln)
+                    && !args.first().is_some_and(|a| matches!(self.a.type_of(a.id), Type::Text | Type::File(_)));
+                if b.is_io() && !console_write { self.io_checked(code, callee.span) } else { code }
+            }
+            SymKind::UnitRoutine(r) => {
+                use crate::sema::units::Param;
+                let r: &crate::sema::units::UnitRoutine = r;
+                let parts: Vec<String> = r
+                    .params
+                    .iter()
+                    .zip(args)
+                    .map(|(param, arg)| match param {
+                        Param::Int => self.expr(arg).0,
+                        Param::Real => self.coerce(arg, &Type::REAL).0,
+                        Param::Str => self.string_arg(arg),
+                        Param::Bool => self.expr(arg).0,
+                        Param::Char => self.coerce(arg, &Type::Char).0,
+                        Param::Pointer => self.coerce(arg, &Type::AnyPointer).0,
+                        Param::VarPointer => self.place_mut(arg),
+                        // The `Strings` functions borrow their `PChar`s.
+                        Param::PChar | Param::PCharDest => format!("&{}", self.pchar_operand(arg)),
+                        Param::FillPattern => self.coerce(arg, &crate::sema::units::fill_pattern_type()).0,
+                        Param::VarWord
+                        | Param::VarInteger
+                        | Param::VarText
+                        | Param::VarStr(_)
+                        | Param::VarBool
+                        | Param::VarSearchRec
+                        | Param::VarDateTime
+                        | Param::VarLongInt
+                        | Param::VarFile
+                        | Param::VarFillPattern
+                        | Param::VarRecord(_) => self.place_mut(arg),
+                        Param::Untyped => self.view_arg(arg),
+                        Param::UntypedIn => self.view_bytes(arg),
+                        // The points as a `&[PointType]` slice. A method
+                        // call dereferences by itself, so a `var` parameter
+                        // `*points` is just `points.as_slice()`.
+                        Param::Points => {
+                            let (code, precedence) = self.expr(arg);
+                            match code.strip_prefix('*') {
+                                Some(rest) => format!("{rest}.as_slice()"),
+                                None => format!("{}.as_slice()", paren((code, precedence), prec::POSTFIX)),
+                            }
+                        }
+                    })
+                    .collect();
+                let code = format!("{}({})", r.rust, parts.join(", "));
+                if matches!(r.rust, "ch_dir" | "mk_dir" | "rm_dir") { self.io_checked(code, callee.span) } else { code }
+            }
+            // `TRec(Data)`: an untyped parameter's bytes, read as a `TRec`.
+            SymKind::TypeName(ty) if *self.a.type_of(args[0].id) == Type::Untyped => {
+                let bytes = self.untyped_name(&args[0]);
+                match super::string_capacity(ty) {
+                    Some(cap) => format!("{bytes}.read_string::<{}>({cap})", ty.rust()),
+                    None => format!("{bytes}.read::<{}>()", ty.rust()),
+                }
+            }
+            // `PNode(p)`, `Pointer(Node1)`: the conversions `coerce` makes.
+            SymKind::TypeName(ty @ (Type::AnyPointer | Type::Pointer(_)))
+                if matches!(self.a.type_of(args[0].id), Type::AnyPointer | Type::Pointer(_)) =>
+            {
+                let ty = ty.clone();
+                self.coerce(&args[0], &ty).0
+            }
+            SymKind::TypeName(_) => self.value_cast(callee, args).expect("a conversion between values").0,
+            SymKind::Var(_) | SymKind::Const { .. } | SymKind::RuntimeVar { .. } | SymKind::StdText { .. } => {
+                self.expr(callee).0
+            }
+        }
+    }
+
+    /// How tightly a call's Rust binds. Most are calls, but a standard
+    /// function can be an expression (`Succ(i)` is `i + 1`, `Odd(n)` is
+    /// `n % 2 != 0`, `Ord(c)` may be `c as i16`), and `Succ(i) * 2` needs
+    /// parentheses around it.
+    fn call_precedence(&self, callee: &Expr, args: &[Expr], code: &str) -> u8 {
+        let builtin = self.a.refs.get(&callee.id).and_then(|&sym| match self.a.sym(sym).kind {
+            SymKind::Builtin(b) => Some(b),
+            _ => None,
+        });
+        // `x as u8` at the end, outside any brackets.
+        let ends_with_cast =
+            code.rsplit_once(" as ").is_some_and(|(_, ty)| ty.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+        match builtin {
+            // (`!b.is_multiple_of(2)` for a Byte or Word.)
+            Some(Builtin::Odd) if code.starts_with('!') && code.ends_with(".is_multiple_of(2)") => prec::UNARY,
+            Some(Builtin::Odd) => prec::CMP,
+            Some(Builtin::Succ | Builtin::Pred)
+                if !matches!(self.a.type_of(args[0].id).concrete(), Type::Enum(_) | Type::Bool) =>
+            {
+                prec::ADD
+            }
+            Some(Builtin::Concat) if args.len() > 1 => prec::ADD,
+            Some(_) if ends_with_cast => prec::AS,
+            _ => prec::POSTFIX,
+        }
+    }
+
+    /// `Word(i)`, `Char(n)`: a conversion between ordinal (or other value)
+    /// types, if `callee` names a type and the argument isn't an untyped
+    /// parameter or a pointer (`call` handles those).
+    fn value_cast(&mut self, callee: &Expr, args: &[Expr]) -> Option<Code> {
+        let sym = *self.a.refs.get(&callee.id)?;
+        let SymKind::TypeName(ty) = &self.a.sym(sym).kind else { return None };
+        let from = self.a.type_of(args.first()?.id).clone();
+        let pointers =
+            matches!(ty, Type::AnyPointer | Type::Pointer(_)) && matches!(from, Type::AnyPointer | Type::Pointer(_));
+        if from == Type::Untyped || pointers {
+            return None;
+        }
+        let ty = ty.clone();
+        // `Word(-1)`, `Char(66)`: a number converted is worked out here
+        // (65535, `b'B'`), keeping its low bits as TP did; Rust won't apply
+        // `-` to a `u16`, and `66 as u8` reads worse than the character.
+        let number = match &args[0].kind {
+            ExprKind::Int(n) => Some(*n),
+            ExprKind::Unary { op: UnaryOp::Neg, operand } => match operand.kind {
+                ExprKind::Int(n) => Some(-n),
+                _ => None,
+            },
+            ExprKind::Unary { op: UnaryOp::Plus, operand } => match operand.kind {
+                ExprKind::Int(n) => Some(n),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(n) = number {
+            match ty.concrete() {
+                Type::Char => return Some((char_literal(n as u8), prec::ATOM)),
+                Type::Int(kind) => {
+                    let value = kind.wrap(n);
+                    let precedence = if value < 0 { prec::UNARY } else { prec::ATOM };
+                    return Some((format!("{value}_{}", kind.rust()), precedence));
+                }
+                _ => {}
+            }
+        }
+        let code = self.coerce(&args[0], &from.concrete());
+        // `Word(i shr 1)`: the shift is done as a `u16` already, so no
+        // going back to `i16` in between (`(i as u16) >> 1`). Converting it
+        // to a narrower type keeps the low bits either way (`Byte(i shr 1)`
+        // is `((i as u16) >> 1) as u8`).
+        if let (Type::Int(a), Type::Int(b)) = (from.concrete(), ty.concrete())
+            && self.unsigned_shift.as_ref().is_some_and(|(signed, _)| *signed == code.0)
+            && (b.bits() < a.bits() || (b.bits() == a.bits() && !b.contains(-1)))
+            && let Some((_, unsigned)) = self.unsigned_shift.take()
+        {
+            if b.bits() == a.bits() {
+                return Some(unsigned);
+            }
+            return Some((format!("{} as {}", paren(unsigned, prec::AS), b.rust()), prec::AS));
+        }
+        Some(cast(code, &from.concrete(), &ty))
+    }
+
+    /// Was the code at `span` compiled with `{$Q+}`?
+    pub(super) fn overflow_checked_at(&self, span: crate::diag::Span) -> bool {
+        self.overflow_checked.iter().any(|r| r.start <= span.start && span.start < r.end)
+    }
+
+    /// `{$Q+}` integer arithmetic: `a.checked_add(b).unwrap_or_else(overflow)`,
+    /// which stops with runtime error 215 where the result doesn't fit.
+    pub(super) fn checked_op(&mut self, receiver: Code, method: &str, arg: &str) -> Code {
+        if self.first_time("overflow") {
+            self.pending
+                .push("// `{$Q+}`: `checked_add` and the like give `None` when the result doesn't fit,".to_string());
+            self.pending.push("// and `overflow` stops with runtime error 215, as in Turbo Pascal.".to_string());
+        }
+        (format!("{}.{method}({arg}).unwrap_or_else(overflow)", paren(receiver, prec::POSTFIX)), prec::POSTFIX)
+    }
+
+    /// An I/O call at `span`: as is, or, if it was compiled with `{$I-}`,
+    /// wrapped so that an error goes to `IOResult`: `io_unchecked(|| f.reset())`.
+    fn io_checked(&mut self, code: String, span: crate::diag::Span) -> String {
+        if !self.io_unchecked.iter().any(|r| r.start <= span.start && span.start < r.end) {
+            return code;
+        }
+        if self.first_time("io_unchecked") {
+            self.pending.push("// `{$I-}`: an I/O error in `io_unchecked` sets `IOResult` instead of".to_string());
+            self.pending.push("// stopping the program.".to_string());
+        }
+        let body = match code.strip_suffix(';') {
+            // A single statement, `f.reset();`, becomes an expression.
+            Some(stmt) if !stmt.contains(';') => stmt.to_string(),
+            Some(_) => format!("{{ {code} }}"),
+            None => code,
+        };
+        format!("io_unchecked(|| {body})")
+    }
+
+    pub(super) fn user_call(&mut self, p: usize, args: &[Expr]) -> String {
+        let (args, records) = self.call_args(p, args, None);
+        wrap_with_mut(format!("{}({args})", self.a.procs[p].rust_name), records)
+    }
+
+    /// `receiver.method(args)`. The receiver is the object before the dot
+    /// (`queue.add_q(item)`), or `self` for a call from a sibling method;
+    /// `path` reaches an inherited method's object (`board.base.show()`).
+    fn method_call(&mut self, callee: &Expr, pid: usize, path: &[String], args: &[Expr]) -> String {
+        // `inherited Draw` or `TShape.Init(...)`: that version, on `Self`.
+        let static_call = self.a.static_calls.contains(&callee.id);
+        // A method of a trait (see `object_traits`) is called on the whole
+        // object, which picks the version; no path to an ancestor.
+        let dispatched = self.a.dispatched.contains(&pid);
+        let mut receiver = match &callee.kind {
+            ExprKind::Field(receiver, _) if !static_call => match &receiver.kind {
+                ExprKind::Name(_) if dispatched && self.is_dyn_param(receiver) => {
+                    self.a.var_name(self.proc, self.a.refs[&receiver.id]).to_string()
+                }
+                // `p^.Draw` through a pointer into the hierarchy: the enum
+                // finds the version.
+                ExprKind::Deref(pointer) if dispatched => format!("{}.get_mut()", self.selector_base(pointer)),
+                // The method takes `&mut self`, so borrow a record behind a
+                // pointer mutably.
+                _ => {
+                    // A method of a typecast untyped parameter (`TCircle(Data).Draw`)
+                    // runs on a view that's written back after the call.
+                    self.view_for_place(callee);
+                    let saved = std::mem::replace(&mut self.mutable_place, true);
+                    let code = self.selector_base(receiver);
+                    self.mutable_place = saved;
+                    code
+                }
+            },
+            _ => {
+                let self_sym = self.a.procs[self.proc_with_self()].self_param.as_ref().unwrap().1;
+                if dispatched { self.a.var_name(self.proc, self_sym).to_string() } else { self.self_place(self_sym) }
+            }
+        };
+        if !dispatched {
+            for step in path {
+                receiver.push('.');
+                receiver.push_str(step);
+            }
+        }
+        let name = if static_call { self.body_name(pid) } else { self.a.procs[pid].rust_name.clone() };
+        // The receiver is borrowed (`&mut self`) for the whole call, so an
+        // argument that uses the same object, `obj.Show(obj.Name)`, must be
+        // computed first. With an implicit `Self`, any call in an argument
+        // might be another method of the same object.
+        let borrowed = match &callee.kind {
+            ExprKind::Field(receiver, _) if !static_call => Receiver::Named(root_key(receiver)),
+            _ => Receiver::ImplicitSelf,
+        };
+        let (args, records) = self.call_args(pid, args, Some(borrowed));
+        wrap_with_mut(format!("{receiver}.{name}({args})"), records)
+    }
+
+    /// How code reaches `Self`'s fields: `self`, or in a trait's default
+    /// method `self.t_shape()` (see `object_traits`).
+    fn self_place(&self, self_sym: SymId) -> String {
+        match &self.self_expr {
+            Some(expr) => expr.clone(),
+            None => self.a.var_name(self.proc, self_sym).to_string(),
+        }
+    }
+
+    /// Is `e` a `var` parameter that takes any object of a hierarchy with
+    /// virtual methods (`shape: &mut dyn TShapeMethods`)?
+    pub(super) fn is_dyn_param(&self, e: &Expr) -> bool {
+        let ExprKind::Name(_) = &e.kind else { return false };
+        let Some(&sym) = self.a.refs.get(&e.id) else { return false };
+        if self.a.sym(sym).rust_name == "self" {
+            return false;
+        }
+        match &self.a.sym(sym).kind {
+            SymKind::Var(v) => {
+                v.role == crate::sema::VarRole::Param(ParamMode::Var)
+                    && matches!(&v.ty, Type::Object(o) if self.in_dispatch(o))
+            }
+            _ => false,
+        }
+    }
+
+    /// The method we're in (or nested inside), whose `Self` a bare method
+    /// call uses.
+    fn proc_with_self(&self) -> usize {
+        let mut p = self.proc;
+        while self.a.procs[p].self_param.is_none() {
+            p = self.a.procs[p].parent.expect("a bare method call happens inside a method");
+        }
+        p
+    }
+
+    /// The argument list for a call: captured outer variables first, then
+    /// the Pascal arguments. Also returns the heap records that two or more
+    /// `var` arguments are fields of, as `(pointer, name)` pairs: the call
+    /// must be wrapped in `pointer.with_mut(|name| ...)` (see
+    /// [`wrap_with_mut`]).
+    fn call_args(&mut self, p: usize, args: &[Expr], receiver: Option<Receiver>) -> (String, Vec<(String, String)>) {
+        let info = &self.a.procs[p];
+        let mut parts = Vec::new();
+        // Captured variables first, in the callee's order.
+        for cap in &info.captures {
+            let mut name = self.a.var_name(self.proc, cap.sym).to_string();
+            if name == "self"
+                && let Some(expr) = &self.self_expr
+            {
+                name = expr.clone();
+            }
+            let access = self.a.access(self.proc, cap.sym);
+            // An untyped parameter: the routine that has it holds its
+            // `Bytes` guard, which is lent; a nested routine holds a
+            // reference to it, which is passed on.
+            if self.a.var(cap.sym).ty == Type::Untyped {
+                let own = self.a.var(cap.sym).owner == self.proc;
+                let reference = if cap.mode == crate::sema::CaptureMode::RefMut { "&mut " } else { "&" };
+                parts.push(if own { format!("{reference}{name}") } else { name });
+                continue;
+            }
+            parts.push(match (cap.mode, access) {
+                (crate::sema::CaptureMode::RefMut, Access::Direct) => format!("&mut {name}"),
+                (crate::sema::CaptureMode::Ref, Access::Direct) => format!("&{name}"),
+                (crate::sema::CaptureMode::Value, Access::Reference) => format!("*{name}"),
+                // We hold it by reference and pass a reference on, or we hold
+                // it by value and pass it by value.
+                _ => name,
+            });
+        }
+        let params = info.params.clone();
+        // Variables this call borrows mutably (`var` arguments).
+        let borrowed: Vec<String> = params
+            .iter()
+            .zip(args)
+            .filter(|(p, _)| self.a.var(**p).role == crate::sema::VarRole::Param(ParamMode::Var))
+            .map(|(_, arg)| root_key(arg))
+            .collect();
+        // Heap records shared by more than one `var` argument (`q^.x, q^.y`).
+        let is_var = |p: &usize| self.a.var(*p).role == crate::sema::VarRole::Param(ParamMode::Var);
+        let heap: Vec<Option<String>> = params
+            .iter()
+            .zip(args)
+            .map(|(p, arg)| if is_var(p) { crate::sema::heap_field(arg).map(|(pointer, ..)| pointer) } else { None })
+            .collect();
+        let shared = |key: &Option<String>| key.is_some() && heap.iter().filter(|k| *k == key).count() > 1;
+        let mut records: Vec<(String, String, String)> = Vec::new(); // (key, pointer, name)
+        // Value arguments not yet in a `let`: (position in `parts`,
+        // parameter, whether it calls something). If a later argument has to
+        // go in a `let` and one of these calls something, they all go
+        // first, in order, so the arguments still run left to right, as TP
+        // pushed them: in `Show(x, Bump, p^.v)`, `x` is read before `Bump`.
+        let mut values_before: Vec<(usize, usize, bool)> = Vec::new();
+        // Whether an earlier `var` argument is borrowed through a pointer
+        // (`Add(p^.x, F)`): it's borrowed for the whole call, so a later
+        // argument that calls something (which may change the record) is
+        // worked out into a `let` first.
+        let mut pointer_var_before = false;
+        for ((param, arg), key) in params.iter().zip(args).zip(&heap) {
+            let var = self.a.var(*param);
+            let ty = var.ty.clone();
+            let is_var_arg = var.role == crate::sema::VarRole::Param(ParamMode::Var);
+            // An object passed where an ancestor is expected: its ancestor
+            // part, `&mut circle.base`. (With virtual methods, the parameter
+            // takes the whole object, `&mut dyn TShapeMethods`.)
+            let depth = match (&ty, self.a.type_of(arg.id)) {
+                (Type::Object(param), Type::Object(given)) if !self.in_dispatch(param) => {
+                    given.lineage().iter().position(|(o, _)| o == param).unwrap_or(0)
+                }
+                _ => 0,
+            };
+            // `Paint(p^)` with `var s: TShape`: the whole record behind the
+            // pointer (the hierarchy's enum, which implements every
+            // object's trait), so the record's real type picks the methods.
+            let dyn_param = matches!(&ty, Type::Object(o) if self.in_dispatch(o));
+            if ty == Type::Untyped {
+                parts.push(self.view_arg(arg));
+            } else if var.role == crate::sema::VarRole::Param(ParamMode::Var)
+                && dyn_param
+                && let ExprKind::Deref(pointer) = &arg.kind
+            {
+                parts.push(format!("&mut *{}.get_mut()", self.selector_base(pointer)));
+            } else if var.role == crate::sema::VarRole::Param(ParamMode::Var) && depth > 0 {
+                parts.push(format!("&mut {}{}", self.selector_base(arg), ".base".repeat(depth)));
+            } else if var.role == crate::sema::VarRole::Param(ParamMode::Var) && shared(key) {
+                // `&mut q.get_mut().x` becomes `&mut point.x`, where `point`
+                // is the record borrowed once by `with_mut`.
+                let place = self.place(arg);
+                let (pointer, fields) = place.rsplit_once(".get_mut()").expect("a heap field");
+                let key = key.clone().unwrap();
+                let name = match records.iter().find(|(k, ..)| *k == key) {
+                    Some((_, _, name)) => name.clone(),
+                    None => {
+                        let mut base = self.record_name(arg);
+                        if !records.is_empty() {
+                            base = format!("{base}_{}", records.len() + 1);
+                        }
+                        let name = self.temp_name(&base);
+                        records.push((key, pointer.to_string(), name.clone()));
+                        name
+                    }
+                };
+                parts.push(format!("&mut {name}{fields}"));
+            } else if var.role == crate::sema::VarRole::Param(ParamMode::Var) {
+                parts.push(self.place_mut(arg));
+            } else {
+                let code = self.coerce(arg, &ty).0;
+                // `f(&mut x, x.size)` borrows `x` mutably and then reads it,
+                // which Rust rejects; Pascal evaluates the argument first
+                // anyway. Compute it into a temporary before the call.
+                //
+                // The same goes for an argument that reads through a pointer
+                // (`f(p^)` is `f(p.get().clone())`): the borrow guard that
+                // `get()` returns would live until the end of the statement,
+                // keeping the record borrowed while `f` runs, so `f` couldn't
+                // modify or dispose it.
+                let uses_receiver = match &receiver {
+                    Some(Receiver::Named(root)) => !root.is_empty() && mentions(arg, root),
+                    Some(Receiver::ImplicitSelf) => self.calls(arg),
+                    None => false,
+                };
+                // (A constant, like `SizeOf(x)`, reads nothing at run time.)
+                let constant = self.a.folded.contains_key(&arg.id);
+                if !constant && borrowed.iter().any(|root| !root.is_empty() && mentions(arg, root))
+                    || derefs(arg)
+                    || uses_receiver
+                    || (pointer_var_before && self.has_call(arg))
+                {
+                    // `ShowV(Bump, p^.value)`: Bump runs before `p^.value`
+                    // is read, as in Pascal.
+                    let earlier = std::mem::take(&mut values_before);
+                    if earlier.iter().any(|&(_, _, calls)| calls) {
+                        for (position, earlier_param, _) in earlier {
+                            let temp = self.temp_name(&self.a.sym(earlier_param).rust_name.clone());
+                            let earlier_code = std::mem::replace(&mut parts[position], temp.clone());
+                            self.pending.push(format!("let {temp} = {earlier_code};"));
+                        }
+                    }
+                    let temp = self.temp_name(&self.a.sym(*param).rust_name.clone());
+                    self.pending.push(format!("let {temp} = {code};"));
+                    parts.push(temp);
+                } else {
+                    // A literal can't change, so it needn't move.
+                    if !matches!(arg.kind, ExprKind::Int(_) | ExprKind::Real(_) | ExprKind::Str(_)) {
+                        values_before.push((parts.len(), *param, self.has_call(arg)));
+                    }
+                    parts.push(code);
+                }
+            }
+            if is_var_arg && super::contains_deref(arg) {
+                pointer_var_before = true;
+            }
+        }
+        (parts.join(", "), records.into_iter().map(|(_, pointer, name)| (pointer, name)).collect())
+    }
+
+    /// A name for the heap record that `arg` (`q^.x`) is a field of, after
+    /// its type: `point` for a `Point`.
+    pub(super) fn record_name(&self, arg: &Expr) -> String {
+        let mut e = arg;
+        while let ExprKind::Field(base, _) = &e.kind {
+            e = base;
+        }
+        match self.a.type_of(e.id) {
+            Type::Record(r) => crate::sema::names::snake_case(&r.rust_name),
+            Type::Object(o) => crate::sema::names::snake_case(&o.rust_name),
+            _ => "rec".to_string(),
+        }
+    }
+
+    /// Does `e` contain a call (which might be a method call)? A method
+    /// without parameters can be called without parentheses, as a bare name.
+    fn calls(&self, e: &Expr) -> bool {
+        if self.a.method_calls.contains_key(&e.id) {
+            return true;
+        }
+        match &e.kind {
+            ExprKind::Call { .. } => true,
+            ExprKind::Field(base, _) | ExprKind::Deref(base) => self.calls(base),
+            ExprKind::Index(base, indexes) => self.calls(base) || indexes.iter().any(|i| self.calls(i)),
+            ExprKind::Unary { operand, .. } => self.calls(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.calls(lhs) || self.calls(rhs),
+            _ => false,
+        }
+    }
+
+    /// A name for a temporary, based on `base` (a parameter's or field's
+    /// name): `base` itself, unless that would shadow one of the caller's
+    /// variables (then `base_arg`) or another temporary already made for the
+    /// same statement (then `base_2`, `base_3`, ...).
+    pub(super) fn temp_name(&self, base: &str) -> String {
+        let info = &self.a.procs[self.proc];
+        let visible = info.locals.iter().chain(&info.params).chain(info.captures.iter().map(|c| &c.sym));
+        let base = if visible.into_iter().any(|sym| self.a.var_name(self.proc, *sym) == base) {
+            format!("{base}_arg")
+        } else {
+            base.to_string()
+        };
+        let taken = |name: &str| self.pending.iter().any(|line| line.starts_with(&format!("let {name} = ")));
+        let mut name = base.clone();
+        let mut n = 1;
+        while taken(&name) {
+            n += 1;
+            name = format!("{base}_{n}");
+        }
+        name
+    }
+
+    /// The Rust literal for a constant of type `ty`.
+    pub(super) fn const_value(&self, value: &ConstVal, ty: &Type) -> String {
+        match value {
+            ConstVal::Int(n) => match ty {
+                Type::Enum(e) => format!("{}::{}", e.rust_name, e.variants[*n as usize]),
+                Type::Char => char_literal(*n as u8),
+                _ => n.to_string(),
+            },
+            ConstVal::Real(x) => real_literal(*x),
+            ConstVal::Bool(b) => b.to_string(),
+            ConstVal::Str(bytes) if *ty == Type::Char && bytes.len() == 1 => char_literal(bytes[0]),
+            ConstVal::Str(bytes) => str_literal(bytes),
+            // `PSet::from_ranges` is a `const fn`, so it can initialize a
+            // `const`; it takes the elements' ordinals as `u8`s.
+            ConstVal::Set(ranges) => {
+                let elem_ty = match ty {
+                    Type::Set(elem, _) => elem.concrete(),
+                    _ => Type::Int(IntKind::Byte),
+                };
+                let ord = |n: u8| match &elem_ty {
+                    Type::Char => char_literal(n),
+                    Type::Enum(e) => format!("{}::{} as u8", e.rust_name, e.variants[n as usize]),
+                    _ => n.to_string(),
+                };
+                if ranges.iter().all(|(lo, hi)| lo == hi) {
+                    let elements: Vec<String> = ranges.iter().map(|&(n, _)| ord(n)).collect();
+                    return format!("PSet::of(&[{}])", elements.join(", "));
+                }
+                let ranges: Vec<String> =
+                    ranges.iter().map(|&(lo, hi)| format!("({}, {})", ord(lo), ord(hi))).collect();
+                format!("PSet::from_ranges(&[{}])", ranges.join(", "))
+            }
+        }
+    }
+}
+
+/// Wrap a call in `pointer.with_mut(|name| call)` for each heap record that
+/// several of its `var` arguments are fields of.
+fn wrap_with_mut(call: String, records: Vec<(String, String)>) -> String {
+    records.into_iter().rev().fold(call, |call, (pointer, name)| format!("{pointer}.with_mut(|{name}| {call})"))
+}
+
+/// The lowercase name of the variable a place starts from (`a` for
+/// `a[i].x`), or empty.
+pub(super) fn root_key(e: &Expr) -> String {
+    match &e.kind {
+        ExprKind::Name(id) => id.key(),
+        ExprKind::Field(base, _) | ExprKind::Index(base, _) | ExprKind::Deref(base) => root_key(base),
+        _ => String::new(),
+    }
+}
+
+/// Does the expression mention the name `key` anywhere?
+pub(super) fn mentions(e: &Expr, key: &str) -> bool {
+    match &e.kind {
+        ExprKind::Name(id) => id.key() == key,
+        ExprKind::Field(base, _) | ExprKind::Deref(base) => mentions(base, key),
+        ExprKind::Index(base, indexes) => mentions(base, key) || indexes.iter().any(|i| mentions(i, key)),
+        ExprKind::Call { callee, args } => mentions(callee, key) || args.iter().any(|a| mentions(a, key)),
+        ExprKind::Unary { operand, .. } => mentions(operand, key),
+        ExprKind::Binary { lhs, rhs, .. } => mentions(lhs, key) || mentions(rhs, key),
+        ExprKind::Format { value, .. } => mentions(value, key),
+        _ => false,
+    }
+}
+
+/// The object a method is called on, for [`Codegen::call_args`].
+enum Receiver {
+    /// `obj.Method(...)`: the variable the receiver starts from.
+    Named(String),
+    /// `Method(...)` inside another method of the same object.
+    ImplicitSelf,
+}
+
+/// Does `e` read through a pointer (`p^`)?
+fn derefs(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Deref(_) => true,
+        ExprKind::Field(base, _) => derefs(base),
+        ExprKind::Index(base, indexes) => derefs(base) || indexes.iter().any(derefs),
+        ExprKind::Call { args, .. } => args.iter().any(derefs),
+        ExprKind::Unary { operand, .. } => derefs(operand),
+        ExprKind::Binary { lhs, rhs, .. } => derefs(lhs) || derefs(rhs),
+        _ => false,
+    }
+}
+
+/// Is `e` a variable or a part of one (as opposed to a computed value)?
+pub(super) fn is_place(e: &Expr) -> bool {
+    matches!(e.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Deref(_))
+}
+
+/// The type in which two values are compared.
+fn comparison_type(l: &Type, r: &Type) -> Type {
+    match (l, r) {
+        _ if l.is_numeric() && r.is_numeric() => numeric_common(l, r).unwrap_or(Type::Error),
+        (Type::Char | Type::StrLit(1), Type::Char | Type::StrLit(1)) => Type::Char,
+        _ if l.is_text() && r.is_text() => Type::Str { cap: 255 },
+        // A `Pointer` and a typed pointer are compared as `Pointer`s.
+        (Type::AnyPointer, _) | (_, Type::AnyPointer) => Type::AnyPointer,
+        (Type::PChar, _) | (_, Type::PChar) => Type::PChar,
+        _ => l.concrete(),
+    }
+}
+
+/// Convert code of type `from` to type `to` (both Pascal types).
+pub(super) fn convert(code: Code, from: &Type, to: &Type) -> Code {
+    match (from, to) {
+        (a, b) if a == b => code,
+        (Type::IntLit(_), Type::Int(_)) => code,
+        (Type::Int(_) | Type::IntLit(_) | Type::Char | Type::Bool | Type::Enum(_), Type::Int(_) | Type::Char) => {
+            cast(code, &from.concrete(), to)
+        }
+        (Type::Int(_) | Type::IntLit(_), Type::Real(_)) => (format!("f64::from({})", code.0), prec::POSTFIX),
+        (Type::StrLit(_) | Type::Char, Type::Str { .. }) => (format!("pstr({})", code.0), prec::POSTFIX),
+        _ => code,
+    }
+}
+
+/// Whether a (concrete) integer type is a Byte or a Word: Rust's unsigned
+/// integers have `is_multiple_of`, which clippy prefers to `% 2 == 0`.
+pub(super) fn is_unsigned(t: &Type) -> bool {
+    matches!(t, Type::Int(kind) if !kind.contains(-1))
+}
+
+/// An explicit conversion between ordinal types. Widening conversions that
+/// can't lose information use `From` (`i32::from(x)`), which Rust
+/// programmers prefer because it can never silently truncate; narrowing
+/// ones use `as`, which truncates exactly like Turbo Pascal does.
+pub(super) fn cast(code: Code, from: &Type, to: &Type) -> Code {
+    // `Char` and `Byte` are both `u8` in Rust: nothing to convert.
+    if from == to
+        || (matches!(from, Type::Char | Type::Int(_))
+            && matches!(to, Type::Char | Type::Int(_))
+            && from.rust() == to.rust())
+    {
+        return code;
+    }
+    let lossless = match (from, to) {
+        (Type::Int(a), Type::Int(b)) => {
+            let (alo, ahi) = a.range();
+            let (blo, bhi) = b.range();
+            blo <= alo && ahi <= bhi
+        }
+        (Type::Char | Type::Bool, Type::Int(b)) => b.contains(255) && *b != IntKind::ShortInt,
+        (Type::Bool, Type::Char) => true,
+        _ => false,
+    };
+    let rust = to.rust();
+    // `Boolean(n)` is true for any nonzero value; Rust has no `as bool`.
+    if *to == Type::Bool {
+        return (format!("{} != 0", paren(code, prec::CMP + 1)), prec::CMP);
+    }
+    if let Type::Enum(_) = to {
+        return (format!("{rust}::from_ord({})", code.0), prec::POSTFIX);
+    }
+    if lossless {
+        (format!("{rust}::from({})", code.0), prec::POSTFIX)
+    } else {
+        (format!("{} as {rust}", paren(code, prec::AS)), prec::AS)
+    }
+}
+
+/// A Rust float literal: always with a `.` or exponent, so that `5.0`
+/// doesn't come out as the integer `5`.
+pub(super) fn real_literal(x: f64) -> String {
+    // `{:?}` on an f64 prints the shortest text that reads back as the same
+    // number, and always includes `.0` for whole numbers.
+    format!("{x:?}")
+}
+
+/// A Rust string literal for Pascal string bytes. Plain ASCII becomes a
+/// normal `"..."` string; anything else (code page 437 box drawing, for
+/// instance) becomes a byte string `b"..."`, since Rust strings must be UTF-8.
+pub(super) fn str_literal(bytes: &[u8]) -> String {
+    let prefix = if bytes.iter().all(|b| b.is_ascii()) { "" } else { "b" };
+    let mut s = format!("{prefix}\"");
+    for &b in bytes {
+        match b {
+            b'"' => s.push_str("\\\""),
+            b'\\' => s.push_str("\\\\"),
+            b'\n' => s.push_str("\\n"),
+            b'\r' => s.push_str("\\r"),
+            b'\t' => s.push_str("\\t"),
+            0x20..=0x7e => s.push(b as char),
+            _ => s.push_str(&format!("\\x{b:02x}")),
+        }
+    }
+    s.push('"');
+    s
+}
+
+/// A Rust byte literal for a Pascal `Char`: `b'A'`, `b'\''`, `b'\x07'`.
+pub(super) fn char_literal(b: u8) -> String {
+    match b {
+        b'\'' => "b'\\''".to_string(),
+        b'\\' => "b'\\\\'".to_string(),
+        b'\n' => "b'\\n'".to_string(),
+        b'\r' => "b'\\r'".to_string(),
+        b'\t' => "b'\\t'".to_string(),
+        0x20..=0x7e => format!("b'{}'", b as char),
+        _ => format!("b'\\x{b:02x}'"),
+    }
+}
+
+/// Does `e` read through a pointer itself, outside any call? (A call's
+/// arguments that read through a pointer are put into `let`s by the call.)
+fn reads_pointer(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Deref(_) => true,
+        ExprKind::Field(base, _) => reads_pointer(base),
+        ExprKind::Index(base, indexes) => reads_pointer(base) || indexes.iter().any(reads_pointer),
+        ExprKind::Unary { operand, .. } => reads_pointer(operand),
+        ExprKind::Binary { lhs, rhs, .. } => reads_pointer(lhs) || reads_pointer(rhs),
+        _ => false,
+    }
+}
+
+/// What [`Codegen::type_limit`] found: a Rust name of the given type
+/// (`i16::MAX`), or a subrange type's bound as written in Pascal.
+pub(super) enum Limit {
+    Named(String, Type),
+    Bound(Expr),
+}
