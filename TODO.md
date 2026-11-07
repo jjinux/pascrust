@@ -20,18 +20,28 @@ Turbo Pascal. These need you; tell Claude what you find, and it fixes it.
   - [x] Text mode (Crt). Done: `database/filesys.pas` (the user, 2026-11-06: "working"), `airport/airport4.pas` (the user, 2026-11-06: "works fine"), `blkjack.pas` (the user, 2026-11-05: "It's great!"), `life.pas` ("Life works"), `gmscode.pas` ("works"), `paper.pas` ("works :)"), `magic_square.pas` (works), `menu.pas` ("menu works", with its games built into `A:\SHANNON` as the README's Examples section shows).
   - [x] Graphics (a window opens). Done: `clock/` (the user, 2026-11-06: "works"), a whole game of `tictac/` against the computer ("tictac works").
   - [x] PascRust's own examples in `examples/pascrust/`. Done: `rust_calls_pascal/` (the user, 2026-11-06: works, but what it does wasn't clear; the README says now), `calls_rust.pas` (the user, 2026-11-06: "works"), `turtles.pas` (the user, 2026-11-06: "works. Nice job!").
-- [ ] If you still have Turbo Pascal 7 (in DOSBox, say), settle what Free Pascal can't tell us, since it works in 32/64 bits:
-  - [ ] `w + 1` with `w: Word = 65535`: 0 (PascRust) or 65536?
-  - [ ] With `{$Q+}`, is `Inc(b)` at 255 for a Byte (or `w + 1` at 65535 for a Word) error 215, as PascRust says, or 0? (TP's `INTO` tests the signed overflow flag, so it may only catch `Inc(b)` at 127, says Fable.)
-  - [ ] `s := s + Bump` where the function `Bump` changes `s`: which runs first?
-  - [ ] `type Small = 0..10; const X = Small(300);`: an error, or 44 (PascRust)?
-  - [ ] Graph: does `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners?
 - [ ] Read README.md and docs/ as a newcomer would, and say what's confusing or missing.
 - [ ] Decide whether to do the `SizeOf` plan (you asked, 2026-11-06, and left it for later; Fable reviewed it the same day). Today `SizeOf(r)` is a bare number in the Rust (`13`), and constant folding flattens it further (`K = SizeOf(Rec) * 3` is `const K: i16 = 39`), so someone who keeps editing the Rust can't tell where it came from or update it. The first idea, a `TP_SIZE_OF` constant on the runtime's `FileRecord` trait summed by the `file_record!` macro, doesn't work: only records stored in files get `file_record!`; the macro sees field names, not their types or array lengths, so it can't add them up; and `Text`/file fields, the runtime's unit records (`DateTime`, `Registers`) and some variant records can't implement the trait at all. The revised plan (Fable's): codegen gives each record or object that `SizeOf` is used on an inherent constant built from sema's `tp_size`, one term per field: `impl Rec { pub const TP_SIZE_OF: usize = 2 + tp_string_size(10) + 3 * Point::TP_SIZE_OF; }` (an object adds its parent's and the VMT's 2 bytes). `SizeOf(r)` is `Rec::TP_SIZE_OF` (cast where an Integer is wanted), kept through constant folding the way `High(a)` and named constants are, so it works in array bounds (`{ Rec::TP_SIZE_OF * 2 }`) and constants too. Strings use a runtime `const fn tp_string_size(capacity)`: `SizeOf(fooBar)` for a `string[10]` is `tp_string_size(10)`, or `tp_string_size(NAME_LEN)` (a Rust type alias wouldn't help: it's the same type as `PString`). Basic types stay numbers (`SizeOf(Integer)` is `2`), as do small sets, file types and the runtime's unit records. `FileRecord::record_size()` and typed files' `record_size(&self)` stay as they are: they're right for `file of array[1..2] of string[5]`, which a "hint, else the constant" rule would get wrong. About 250-350 lines; the sizes it must match are right now (the VMT field and >256-value enums are fixed).
 - [x] An object with a constructor, destructor or virtual method takes 2 more bytes, TP's VMT field (you decided, 2026-11-07: be as accurate to TP's file format as possible). The TP 7 Language Guide and Free Pascal agree: the field follows the fields of the first type in the line with a constructor, destructor or virtual method, and descendants' fields come after it. `SizeOf` and `file of` count it (PascRust writes zeros there and reads past it); `to-json` now reads such objects, and `from-json` refuses them, since it can't know the address TP stored. The database example's files hold only records, so they were never affected.
 
 - [ ] Rename the project "Ruscal" per Julie's suggestion. Julie's artwork for it: https://chatgpt.com/s/m_6aeea40a95dc8191bdc0e0822d186814
 - [ ] Announce PascRust to the Pascal community (the user, 2026-11-06: theirs to do): find which Pascal compiler projects are still alive (Free Pascal, Lazarus, and others), their mailing lists or forums and what each allows for announcements, and send a short announcement to each (what PascRust is, that it's MIT, a link to the repository). Claude can help draft them if asked.
+
+## Check with a real Turbo Pascal
+
+Free Pascal (`fpc -Mtp`) gives most expected outputs, but it works in 32 or
+64 bits, pads records, and differs from TP 7 in some corners. If you still
+have Turbo Pascal 7 (in DOSBox, say), these settle what it can't. Tell
+Claude what TP does, and it makes PascRust match.
+
+- [ ] `w + 1` with `w: Word = 65535`: 0 (PascRust) or 65536?
+- [ ] With `{$Q+}`, is `Inc(b)` at 255 for a Byte (or `w + 1` at 65535 for a Word) error 215, as PascRust says, or 0? (TP's `INTO` tests the signed overflow flag, so it may only catch `Inc(b)` at 127, says Fable.)
+- [ ] `s := s + Bump` where the function `Bump` changes `s`: which runs first?
+- [ ] `type Small = 0..10; const X = Small(300);`: an error, or 44 (PascRust)?
+- [ ] Graph: does `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners?
+- [ ] `SizeOf` of a subrange of an enum of more than 256 values (`V10..V20`): PascRust says 2 (the host enum's), FPC -Mtp says 1 (the bounds fit a byte). What TP 7 does is unknown; it matters for such a field in a typed file.
+- [ ] `const W = Word(-1)`, then `i := W` (an Integer) is a compile error, "the constant 65535 is out of range for Integer" (also `i := K - W`). Free Pascal accepts it (-1). What did TP 7 do?
+- [ ] An object with a constructor but no virtual methods: does TP 7 give it the 2-byte VMT field (`SizeOf` 6, not 4, for X, Y: Integer and `constructor Init`)? PascRust does, as Free Pascal does and the TP 7 Language Guide says as far as Claude remembers it (it couldn't read the Guide to check).
 
 ## Original TODOs
 
@@ -295,7 +305,7 @@ Graph, the rest
 Last: raw bytes and C strings
 - [x] PUNT: From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to f29ca45 (batches A-T). Not yet reviewed: `f29ca45..HEAD`. Keep this range up to date.
-- [ ] Findings of review batch T (d0b1780..f29ca45):
+- [x] Findings of review batch T (d0b1780..f29ca45):
   - [x] An object's field as an untyped argument (`Move(C.R, W, 2)`, `BlockWrite(f, C.R, 2)`) started at the object's first byte: only records' field offsets were counted. Objects have `ObjectType::field_offset` now (the parent's part, with its VMT field, first).
   - [x] `for i := 1 to p^.Count` (a bound read through a pointer) with a body that changes `p^` was runtime error 204: Rust keeps the range's `p.get()` borrowed for the whole loop. Batch S's `Low(p^.Items)..High(p^.Items)` bounds hit it too. Such a bound goes into a `let` before the loop now (TP works out the bounds once anyway).
   - [x] `const TopLet = High(Letter)` (a Char subrange) and `High(Char)` were Integer constants (`WriteLn` printed 122, `c := TopLet` was an error); they're Chars (`b'z'`, `u8::MAX`). `const TopW = High(Word)` is a Word (`u16::MAX`), not `i32 = 65535`, likewise `High(Byte)`, `Low(ShortInt)`.
@@ -303,13 +313,11 @@ Last: raw bytes and C strings
   - [x] A method called on a typecast untyped parameter (`TCounter(Data).Bump`) ran on a copy, so its changes were lost (and `let mut data` drew an `unused_mut` warning); it runs on a view written back after the call.
   - [x] `notes/file_json.md` still said `to-json` refuses objects with virtual methods.
   - [x] PUNT: `High(a)`/`Low(a)` of `a: array[Boolean] of Integer` print `1`/`0` (TP: TRUE/FALSE), and `for b := False to True` (or `Low(a) to High(a)`) doesn't compile (`false..=true` isn't a Rust iterator). Rare in real programs: fix, or document? The user (2026-11-07): punt; no fix or docs needed.
-  - [ ] Question for the user: `SizeOf` of a subrange of an enum of more than 256 values (`V10..V20`): PascRust says 2 (the host enum's), FPC -Mtp says 1 (the bounds fit a byte). What TP 7 does is unknown; it matters for such a field in a typed file.
-- [ ] Findings of review batch S (721ee55..d0b1780):
+- [x] Findings of review batch S (721ee55..d0b1780):
   - [x] A `for` loop over `Low(a)..High(a)` (or a subrange's, or `Low(Integer)`) whose variable is used only in the loop didn't compile: the type suffix went on `a.low() as i16` (`i16_i16`). It goes only on a bare number now.
   - [x] A constant expression that doesn't fit its operands' type (`C + 1`, `C = 32767`) was cut back to an Integer (-32768); TP types it by its value, a LongInt, and so the arithmetic around it: `i * (C + 1)` is 98304 for `i = 3`.
   - [x] `High`/`Low` of a field (`High(r.Items)`, `High(Items)` in a method or a `with`) stayed a number; it's `r.items.high()`. `High(Letter)` for a Char or enum subrange gave the whole type's bound (chr 255); it's the subrange's.
   - [x] `const Top = High(Integer)` and a `case` label `High(Integer)` are `i16::MAX`; `array[-K..K]` reads `K + K + 1`, not `K - -K + 1`; `{ N as usize }`, not `{ N as i16 as usize }`; the sets section of the architecture contradicted the named-constants rule.
-  - [ ] Question for the user: `const W = Word(-1)`, then `i := W` (an Integer) is a compile error, "the constant 65535 is out of range for Integer" (also `i := K - W`). Free Pascal accepts it (-1). What did TP 7 do?
   - [x] PUNT: `Cnt = Ord(Last) - Ord(Mon) + 1` (enum constants) gets no `// Pascal` comment, where other worked-out constants do; constant `x / Z` with `Z = 0` is runtime error 200 (TP may have refused it when compiling).
 - [ ] Findings of review batch R (b89b0fe..721ee55):
   - [x] `Inc(i, 32768)` on an Integer (`Inc(s, 128)` on a ShortInt) was an out-of-range literal that rustc refused; it wraps to -32768 now, as in TP.
