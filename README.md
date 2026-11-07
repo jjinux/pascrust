@@ -62,6 +62,57 @@ Or install the tools once with `cargo install --path crates/ruscal`, which
 puts `ruscal` and `tpc` (below) on your `PATH`, and use
 `ruscal run foo.pas`.
 
+### Examples
+
+`examples/` holds the Turbo Pascal programs this project was built to run,
+written in 1996-97.
+Run them from the repository root:
+
+```sh
+# Text-mode programs (Crt)
+cargo run -p ruscal -- run examples/blkjack.pas        # Blackjack
+cargo run -p ruscal -- run examples/paper.pas          # Paper, scissors, rock
+cargo run -p ruscal -- run examples/life.pas           # The Game of Life
+cargo run -p ruscal -- run examples/magic_square.pas   # Solves a 4x4 magic square puzzle
+cargo run -p ruscal -- run examples/gmscode.pas        # Encodes what you type as you type it
+# A DOS menu, whose games ran from A:\SHANNON: build them there with tpc,
+# then map drive A: to out/a. (Exec of GAME.EXE runs the program `game`.)
+for g in life gmscode paper blkjack airport/airport4; do cargo run -p ruscal --bin tpc -- -Eout/a/shannon examples/$g.pas; done
+RUSCAL_DRIVE_A=out/a cargo run -p ruscal -- run examples/menu.pas
+
+# Multi-file programs: run the main file, and its units come along
+cargo run -p ruscal -- run examples/airport/airport4.pas   # An airport runway simulation
+
+# A record filing system. Drive C: is mapped to its directory, so when it
+# asks which file to open, type `mark` to load the sample data (mark.dat, mark.key).
+RUSCAL_DRIVE_C=examples/database cargo run -p ruscal -- run examples/database/filesys.pas
+
+# Graphics (Graph): these open a window
+cargo run -p ruscal -- run examples/clock/tester.pas   # A clock whose hands run backwards
+# Tic-tac-toe expects to live in A:\TICTAC, so map drive A: to examples/.
+RUSCAL_DRIVE_A=examples cargo run -p ruscal -- run examples/tictac/tictac.pas
+```
+
+`examples/ruscal/` holds examples written for Ruscal:
+
+```sh
+# Turtle graphics with PRTurtle: a Koch snowflake, a tree and a spiral
+cargo run -p ruscal -- run examples/ruscal/turtles.pas
+
+# Turbo Pascal calling Rust: calls_rust.pas links calls_rust.rs with {$L},
+# and the Rust calls a Pascal function back to sort
+cargo run -p ruscal -- run examples/ruscal/calls_rust.pas
+
+# Rust calling Turbo Pascal: a Rust project whose build.rs translates
+# examples/database/bstunit.pas (from 1997) as part of `cargo build`, then
+# uses its binary search tree: it inserts four IDs, searches for one and
+# deletes one, printing each result (src/main.rs is the Rust side)
+cargo run --manifest-path examples/ruscal/rust_calls_pascal/Cargo.toml
+```
+
+The environment variable goes before `cargo`, so it applies to the whole
+command (and to the program it runs).
+
 ### Formatting Pascal sources: `ruscal fmt`
 
 `fmt` tidies up old sources without changing what they mean. It re-indents
@@ -203,57 +254,6 @@ or `GetMem` works), and interrupts (`SetIntVec` keeps a handler, with a
 warning, but never calls it). See the [language spec](docs/language_spec.md)
 for the details and [`TODO.md`](TODO.md) for what's next. Runtime errors
 print Turbo Pascal's message and exit code (e.g. `Runtime error 201: Range check error ...`).
-
-## Examples
-
-`examples/` holds the Turbo Pascal programs this project was built to run,
-written in 1996-97.
-Run them from the repository root:
-
-```sh
-# Text-mode programs (Crt)
-cargo run -p ruscal -- run examples/blkjack.pas        # Blackjack
-cargo run -p ruscal -- run examples/paper.pas          # Paper, scissors, rock
-cargo run -p ruscal -- run examples/life.pas           # The Game of Life
-cargo run -p ruscal -- run examples/magic_square.pas   # Solves a 4x4 magic square puzzle
-cargo run -p ruscal -- run examples/gmscode.pas        # Encodes what you type as you type it
-# A DOS menu, whose games ran from A:\SHANNON: build them there with tpc,
-# then map drive A: to out/a. (Exec of GAME.EXE runs the program `game`.)
-for g in life gmscode paper blkjack airport/airport4; do cargo run -p ruscal --bin tpc -- -Eout/a/shannon examples/$g.pas; done
-RUSCAL_DRIVE_A=out/a cargo run -p ruscal -- run examples/menu.pas
-
-# Multi-file programs: run the main file, and its units come along
-cargo run -p ruscal -- run examples/airport/airport4.pas   # An airport runway simulation
-
-# A record filing system. Drive C: is mapped to its directory, so when it
-# asks which file to open, type `mark` to load the sample data (mark.dat, mark.key).
-RUSCAL_DRIVE_C=examples/database cargo run -p ruscal -- run examples/database/filesys.pas
-
-# Graphics (Graph): these open a window
-cargo run -p ruscal -- run examples/clock/tester.pas   # A clock whose hands run backwards
-# Tic-tac-toe expects to live in A:\TICTAC, so map drive A: to examples/.
-RUSCAL_DRIVE_A=examples cargo run -p ruscal -- run examples/tictac/tictac.pas
-```
-
-`examples/ruscal/` holds examples written for Ruscal:
-
-```sh
-# Turtle graphics with PRTurtle: a Koch snowflake, a tree and a spiral
-cargo run -p ruscal -- run examples/ruscal/turtles.pas
-
-# Turbo Pascal calling Rust: calls_rust.pas links calls_rust.rs with {$L},
-# and the Rust calls a Pascal function back to sort
-cargo run -p ruscal -- run examples/ruscal/calls_rust.pas
-
-# Rust calling Turbo Pascal: a Rust project whose build.rs translates
-# examples/database/bstunit.pas (from 1997) as part of `cargo build`, then
-# uses its binary search tree: it inserts four IDs, searches for one and
-# deletes one, printing each result (src/main.rs is the Rust side)
-cargo run --manifest-path examples/ruscal/rust_calls_pascal/Cargo.toml
-```
-
-The environment variable goes before `cargo`, so it applies to the whole
-command (and to the program it runs).
 
 ## Developing
 
