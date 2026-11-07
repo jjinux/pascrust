@@ -105,22 +105,21 @@ fn pascal_main() {
     check(
         &mut checks,
         &mut failures,
-        i32::from(get_pixel(100, 50)) == i32::from(i16::from(RED) | i16::from(LIGHT_BLUE)),
+        i32::from(get_pixel(100, 50)) == i32::from(RED) | i32::from(LIGHT_BLUE),
         pstr("OrPut"),
     );
     put_image(100, 50, &p.bytes().to_bytes(), AND_PUT);
     check(
         &mut checks,
         &mut failures,
-        i32::from(get_pixel(100, 50)) == i32::from((i16::from(RED) | i16::from(LIGHT_BLUE)) & i16::from(LIGHT_BLUE)),
+        i32::from(get_pixel(100, 50)) == (i32::from(RED) | i32::from(LIGHT_BLUE)) & i32::from(LIGHT_BLUE),
         pstr("AndPut"),
     );
     put_image(100, 50, &p.bytes().to_bytes(), NOT_PUT);
     check(
         &mut checks,
         &mut failures,
-        i32::from(get_pixel(100, 50)) == i32::from(15 - i16::from(LIGHT_BLUE))
-            && get_pixel(101, 50) == u16::from(WHITE),
+        i32::from(get_pixel(100, 50)) == 15 - i32::from(LIGHT_BLUE) && get_pixel(101, 50) == u16::from(WHITE),
         pstr("NotPut"),
     );
     // The planes: LightBlue is 1001, so pixel 0 is in planes 3 and 0.

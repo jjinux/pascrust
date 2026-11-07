@@ -66,7 +66,7 @@ fn pascal_main() {
     check(
         &mut checks,
         &mut failures,
-        i32::from(flags) == i32::from(i16::from(FC_DIRECTORY) | i16::from(FC_FILE_NAME) | i16::from(FC_EXTENSION)),
+        i32::from(flags) == i32::from(FC_DIRECTORY) | i32::from(FC_FILE_NAME) | i32::from(FC_EXTENSION),
         pstr("FileSplit flags"),
     );
     let dir_chars = PChar::copy_of(dir.as_slice());
@@ -90,7 +90,7 @@ fn pascal_main() {
     check(
         &mut checks,
         &mut failures,
-        i32::from(flags) == i32::from(i16::from(FC_FILE_NAME) | i16::from(FC_EXTENSION) | i16::from(FC_WILDCARDS)) && {
+        i32::from(flags) == i32::from(FC_FILE_NAME) | i32::from(FC_EXTENSION) | i32::from(FC_WILDCARDS) && {
             let name_chars = PChar::copy_of(name.as_slice());
             str_comp(&name_chars, &PChar::literal("*")) == 0
         },

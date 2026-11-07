@@ -26,7 +26,7 @@ const LEN: i16 = 4;
 const ODD_NEG: bool = true;
 const SWAP_TWICE: i32 = 65280;
 const HIGH_WORD: i32 = 65280;
-const SWAP_NAMED: i16 = 255;
+const SWAP_NAMED: i16 = 255; // Swap(HighWord)
 
 // TP 7's constant functions, worked out when the program is translated,
 // agree with the same calls at run time; Swap works in the type Free

@@ -101,8 +101,7 @@ fn pascal_main() {
     check(
         &mut checks,
         &mut failures,
-        i32::from(attr) & i32::from(i16::from(HIDDEN) + i16::from(SYS_FILE))
-            == i32::from(i16::from(HIDDEN) + i16::from(SYS_FILE)),
+        i32::from(attr) & (i32::from(HIDDEN) + i32::from(SYS_FILE)) == i32::from(HIDDEN) + i32::from(SYS_FILE),
         pstr("attributes go with the file through Rename"),
     );
     set_f_attr(&mut f, READ_ONLY);

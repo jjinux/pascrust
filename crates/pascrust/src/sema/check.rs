@@ -634,12 +634,20 @@ impl Checker {
                 }
                 _ => Type::Int(IntKind::for_literal(*v)),
             },
-            ConstVal::Real(_) => Type::REAL,
-            ConstVal::Bool(_) => Type::Bool,
-            ConstVal::Str(s) if s.len() == 1 => Type::Char,
-            ConstVal::Str(s) => Type::StrLit(s.len()),
             // The literal's type says what the elements are.
             ConstVal::Set(_) => self.expr(e),
+            // (`expr` records the names used, for codegen: a constant worked
+            // out from another names it in a comment.)
+            other => {
+                self.expr(e);
+                match other {
+                    ConstVal::Real(_) => Type::REAL,
+                    ConstVal::Bool(_) => Type::Bool,
+                    ConstVal::Str(s) if s.len() == 1 => Type::Char,
+                    ConstVal::Str(s) => Type::StrLit(s.len()),
+                    ConstVal::Int(_) | ConstVal::Set(_) => unreachable!("matched above"),
+                }
+            }
         };
         let rust_name = Self::unique_in(&mut self.used_const_names, screaming_snake_case(&c.name.name));
         let sym = self.add_symbol(&c.name.name, rust_name, SymKind::Const { value, ty });

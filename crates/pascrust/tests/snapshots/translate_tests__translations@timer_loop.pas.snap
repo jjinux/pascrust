@@ -63,7 +63,7 @@ fn pascal_main() {
         }
         // Delay may wait longer than asked, so look at the clock again.
         current = now_ms();
-        if current < last_tick || current - last_tick >= i32::from(2 * TICK_MS) {
+        if current < last_tick || current - last_tick >= 2 * i32::from(TICK_MS) {
             last_tick = current; // past midnight, or a tick behind: start again
         } else {
             last_tick += i32::from(TICK_MS); // on time: keep a steady 18.2 a second

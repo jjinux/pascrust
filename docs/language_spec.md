@@ -89,7 +89,9 @@ Expressions
   boolean literals; `nil`
 - Typecasts between ordinal types `Integer(c)`, `Char(65)`, `Ord`, `Chr`
 - Constant expressions in `const` sections, array bounds and `case` labels,
-  with TP 7's constant functions: `Abs`, `Chr`, `Hi`, `High`, `Length`,
+  worked out in 32 bits as in TP (`C + 1` with `C = 32767` is 32768), and
+  kept in the Rust with their constants' names (`const M = K * 2 + 1` is
+  `const M: i16 = K * 2 + 1;`), with TP 7's constant functions: `Abs`, `Chr`, `Hi`, `High`, `Length`,
   `Lo`, `Low`, `Odd`, `Ord`, `Pred`, `Round`, `SizeOf`, `Succ`, `Swap`,
   `Trunc`. A constant that is an enum value (`const Last = Sun`) has the
   enum's type, and `Succ`/`Pred` of one must stay in the enum. A call

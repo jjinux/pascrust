@@ -57,7 +57,7 @@ fn pascal_main() {
         i16::from(text_attr()) == i16::from(YELLOW) + i16::from(BLUE) * 16,
         pstr("TextAttr from TextColor and TextBackground"),
     );
-    set_text_attr((i16::from(WHITE) + i16::from(RED) * 16) as u8);
+    set_text_attr(WHITE + RED * 16);
     check(&mut checks, &mut failures, i16::from(text_attr()) == 79, pstr("TextAttr :="));
     norm_video();
     check(

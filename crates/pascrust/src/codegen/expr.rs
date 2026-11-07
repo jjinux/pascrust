@@ -370,6 +370,79 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// An integer constant expression written in `to`, keeping its
+    /// constants' names: `C + 1` as a LongInt is `i32::from(C) + 1`. TP
+    /// works constants out in 32 bits, so when a value along the way
+    /// doesn't fit `to` the expression is worked out in `i32` and the
+    /// result cut down to `to` with `as`, which keeps the low bits as TP
+    /// does: `i * (C + 1)` (`C = 32767`) is `i * (C as i32 + 1) as i16`. In
+    /// a `const` item (`in_const`) a conversion is always `as`, as
+    /// `i32::from` can't be called there. `None` for an expression this
+    /// can't write (`Ord`, a typecast, ...).
+    pub(super) fn const_expr(&mut self, e: &Expr, to: IntKind, in_const: bool) -> Option<Code> {
+        if self.intermediates_fit(e, to) {
+            return self.const_expr_in(e, to, in_const);
+        }
+        if !self.intermediates_fit(e, IntKind::LongInt) {
+            return None;
+        }
+        let code = self.const_expr_in(e, IntKind::LongInt, in_const)?;
+        Some((format!("{} as {}", paren(code, prec::AS), to.rust()), prec::AS))
+    }
+
+    /// Does every value along the way in the constant expression `e`
+    /// (each operand, as sema worked it out) fit `kind`?
+    pub(super) fn intermediates_fit(&self, e: &Expr, kind: IntKind) -> bool {
+        let fits = matches!(self.a.consts.get(&e.id), Some(ConstVal::Int(n)) if kind.contains(*n));
+        fits && match &e.kind {
+            ExprKind::Unary { operand, .. } => self.intermediates_fit(operand, kind),
+            ExprKind::Binary { lhs, rhs, .. } => self.intermediates_fit(lhs, kind) && self.intermediates_fit(rhs, kind),
+            _ => true,
+        }
+    }
+
+    /// [`Self::const_expr`] in `kind`, where everything fits.
+    fn const_expr_in(&mut self, e: &Expr, kind: IntKind, in_const: bool) -> Option<Code> {
+        use BinaryOp::*;
+        match &e.kind {
+            ExprKind::Int(n) => Some((n.to_string(), if *n < 0 { prec::UNARY } else { prec::ATOM })),
+            ExprKind::Name(_) => {
+                let sym = *self.a.refs.get(&e.id)?;
+                let SymKind::Const { ty: Type::Int(own), .. } = self.a.sym(sym).kind else { return None };
+                let name = self.expr(e).0;
+                Some(if own == kind {
+                    (name, prec::ATOM)
+                } else if in_const || !kind.holds(own) {
+                    (format!("{name} as {}", kind.rust()), prec::AS)
+                } else {
+                    (format!("{}::from({name})", kind.rust()), prec::POSTFIX)
+                })
+            }
+            ExprKind::Unary { op: UnaryOp::Plus, operand } => self.const_expr_in(operand, kind, in_const),
+            ExprKind::Unary { op: UnaryOp::Neg, operand } => {
+                let inner = self.const_expr_in(operand, kind, in_const)?;
+                Some((format!("-{}", paren(inner, prec::UNARY)), prec::UNARY))
+            }
+            ExprKind::Binary { op, lhs, rhs } => {
+                let (rust_op, p) = match op {
+                    Add => ("+", prec::ADD),
+                    Sub => ("-", prec::ADD),
+                    Mul => ("*", prec::MUL),
+                    Div => ("/", prec::MUL),
+                    Mod => ("%", prec::MUL),
+                    And => ("&", prec::BIT_AND),
+                    Or => ("|", prec::BIT_OR),
+                    Xor => ("^", prec::BIT_XOR),
+                    _ => return None,
+                };
+                let l = self.const_expr_in(lhs, kind, in_const)?;
+                let r = self.const_expr_in(rhs, kind, in_const)?;
+                Some((format!("{} {rust_op} {}", paren(l, p), paren(r, p + 1)), p))
+            }
+            _ => None,
+        }
+    }
+
     /// Does `e` use a named constant (`K`, `MaxInt`)? Then the Rust should
     /// say so, rather than write the value it comes to. (An enum value or
     /// `True` is like a literal.)
@@ -499,6 +572,23 @@ impl<'a> Codegen<'a> {
             };
             let part = format!("{base}{}", ".base".repeat(depth));
             return if to.is_copy() { (part, prec::POSTFIX) } else { (format!("{part}.clone()"), prec::POSTFIX) };
+        }
+        // An integer constant expression: worked out as TP does (in 32
+        // bits), keeping its constants' names (see `const_expr`); one of
+        // literals whose sum along the way doesn't fit is written as its
+        // value (`30000 + 30000 - 40000` in an Integer is `20000`).
+        if let Type::Int(kind) = to.concrete()
+            && matches!(e.kind, ExprKind::Binary { .. } | ExprKind::Unary { .. })
+            && let Some(ConstVal::Int(n)) = self.a.consts.get(&e.id).cloned()
+            && !(self.intermediates_fit(e, kind) && from.concrete() == Type::Int(kind))
+        {
+            if self.names_constant(e) {
+                if let Some(code) = self.const_expr(e, kind, false) {
+                    return code;
+                }
+            } else if !self.intermediates_fit(e, kind) && kind.contains(n) {
+                return (n.to_string(), if n < 0 { prec::UNARY } else { prec::ATOM });
+            }
         }
         // `Ord(c)` of a Char (or of a Byte) used as a Byte is the same byte:
         // `b = c` and `b.checked_add(b'A')`, not `i16::from(c) as u8`.
@@ -645,6 +735,24 @@ impl<'a> Codegen<'a> {
     fn binary(&mut self, e: &Expr, op: BinaryOp, lhs: &Expr, rhs: &Expr) -> Code {
         use BinaryOp::*;
         let ty = self.a.type_of(e.id).clone();
+        // A constant expression whose value along the way doesn't fit its
+        // type (`C + 1` with `C = 32767`, an Integer): TP works it out in 32
+        // bits, so `WriteLn(C + 1)` prints 32768 (see `const_expr`).
+        // (A literal's type, `IntLit`, adapts to where it's used, as Rust's
+        // literals do, so it's left alone.)
+        if !matches!(ty, Type::IntLit(_))
+            && let Type::Int(kind) = ty.concrete()
+            && let Some(ConstVal::Int(n)) = self.a.consts.get(&e.id).cloned()
+            && !self.intermediates_fit(e, kind)
+        {
+            let to = if kind.contains(n) { kind } else { IntKind::LongInt };
+            if !self.names_constant(e) {
+                return (n.to_string(), if n < 0 { prec::UNARY } else { prec::ATOM });
+            }
+            if let Some(code) = self.const_expr(e, to, false) {
+                return code;
+            }
+        }
         let (lt, rt) = (self.a.type_of(lhs.id).clone(), self.a.type_of(rhs.id).clone());
         // `PChar` arithmetic: `P + 1`, `1 + P`, `P - 1`, and `P - Q`.
         if ty == Type::PChar {

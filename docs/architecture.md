@@ -288,7 +288,15 @@ says where the number comes from and editing the `const` carries
 through; one made of literals only (`2 + 3`, `Succ(Mon)`) may be written
 as its value, as nothing is lost (`names_constant` tells them apart). TP
 works constants out in 32 bits and keeps the low bits when a typecast
-narrows them, which Rust's `as` does too. Where Rust takes only a
+narrows them, which Rust's `as` does too: `const_expr` writes an integer
+constant expression in its context's type when every value along the way
+fits it (sema recorded them all), and otherwise in `i32`, cut down with
+`as`: `i * (C as i32 + 1) as i16`, `const WIDE: i32 = C as i32 + 1;` (in a
+`const` item every conversion is `as`, since `i32::from` can't be called
+there). A literal-only one that doesn't fit is its value
+(`30000 + 30000 - 40000` in an Integer is `20000`), and a constant
+declaration that can't be written as an expression (`Chr(Ord('A') + K)`)
+is its value with the Pascal in a comment. Where Rust takes only a
 pattern, a constant's name is one (`case c of Esc:` is `ESC =>`, and a
 Byte compared with Integer constants is widened, `match i16::from(b)`); a
 set element worked out from a constant isn't, so `i in [K + 1..K * 2]`

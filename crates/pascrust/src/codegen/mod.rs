@@ -735,10 +735,24 @@ impl<'a> Codegen<'a> {
                 }
                 other => other.rust(),
             };
-            let value = self.const_value(value, ty);
+            // Worked out from other constants (`C = K * 2 + 1`): written as
+            // that expression, so the Rust still says where it comes from;
+            // where it can't be (`Chr(Ord('A') + K)`), its value, with the
+            // Pascal in a comment.
+            let (value, from) = match (&c.value, ty) {
+                (crate::ast::ConstValue::Expr(e), _) if !self.names_constant(e) => (self.const_value(value, ty), None),
+                (crate::ast::ConstValue::Expr(e), Type::Int(kind)) if self.const_expr(e, *kind, true).is_some() => {
+                    (self.const_expr(e, *kind, true).unwrap().0, None)
+                }
+                (crate::ast::ConstValue::Expr(e), _) => (self.const_value(value, ty), Some(self.pascal_text(e.span))),
+                _ => (self.const_value(value, ty), None),
+            };
             let name = &self.a.sym(sym).rust_name;
             self.leading_comments(c.name.span.start);
             self.line(format!("{}const {name}: {rust_ty} = {value};", self.vis));
+            if let Some(pascal) = from {
+                self.append_comment(&format!("// {pascal}"));
+            }
             self.trailing_comment(c.name.span.start);
         }
     }
