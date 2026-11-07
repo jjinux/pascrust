@@ -3,10 +3,11 @@ PascRust
 
 [![CI](https://github.com/jjinux/pascrust/actions/workflows/ci.yml/badge.svg)](https://github.com/jjinux/pascrust/actions/workflows/ci.yml)
 
-PascRust is a Turbo Pascal to Rust transpiler, so that you can more easily
-run your old Turbo Pascal programs on modern computers. It writes a small
-Cargo project for each program, so you can build and run your old Pascal code
-natively, and read the Rust it turned into.
+PascRust is a fairly-complete and well-tested Turbo Pascal to Rust
+transpiler, so that you can more easily run your old Turbo Pascal programs
+on modern computers. It writes a small Cargo project for each program, so
+you can build and run your old Pascal code natively, and read the Rust it
+turned into.
 
 PascRust was written by Claude Code Opus with help from Claude Code Fable and
 JJ Behrens.
