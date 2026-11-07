@@ -8,7 +8,8 @@ ends with something runnable, and the examples in `examples/` are the
 acceptance test for the whole project.
 
 An item marked "PUNT:" won't be done in the short term (the user, 2026-11-06):
-it's kept for the record, not planned.
+it's kept for the record and checked off, so the open boxes count only what's
+planned. The goal is to get to done.
 
 ## For the user (things Claude can't do)
 
@@ -26,7 +27,7 @@ Turbo Pascal. These need you; tell Claude what you find, and it fixes it.
   - [ ] `type Small = 0..10; const X = Small(300);`: an error, or 44 (PascRust)?
   - [ ] Graph: does `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners?
 - [ ] Read README.md and docs/ as a newcomer would, and say what's confusing or missing.
-- [ ] PUNT: Send the announcements to the Pascal community, once Claude has drafted them (Phase 6).
+- [ ] Announce PascRust to the Pascal community (the user, 2026-11-06: theirs to do): find which Pascal compiler projects are still alive (Free Pascal, Lazarus, and others), their mailing lists or forums and what each allows for announcements, and send a short announcement to each (what PascRust is, that it's MIT, a link to the repository). Claude can help draft them if asked.
 
 ## Original TODOs
 
@@ -104,12 +105,12 @@ chosen so each step is testable with the previous ones.
 - [x] Globals lifted into `pascal_main` and threaded to procedures (same analysis). Test: a procedure that reads a global and is called from another procedure.
 - [x] Alias detection in sema: same lvalue root passed twice (`Swap(x, x)`, `F(a, a[1])`, global passed by `var` to a procedure that uses it); report a transpile error with the Pascal position. Tests for each.
   - [x] Alias *unification*: when every call passes the same outer variable for a `var` parameter that the callee also captures (`life.pas`'s `Pause`), use the parameter for both instead of rejecting the program.
-  - [ ] PUNT: Copy-in/copy-out for `Swap(a[i], a[j])` on arrays of `Copy` elements (currently rejected because both roots are `a`).
+  - [x] PUNT: Copy-in/copy-out for `Swap(a[i], a[j])` on arrays of `Copy` elements (currently rejected because both roots are `a`).
 - [x] `PString`: runtime type (`[u8; 255]` + `len` + `cap`), `Index<i32>`, concatenation, comparison, `assign` with truncation, `pstr!` literal macro; string vs char coercions in sema. `Length`, `Copy`, `Pos`, `Delete`, `Insert`, `Concat`, `UpCase`, `Str`, `Val`.
 - [x] Enumerated types and `Ordinal` trait (generated impl per enum; runtime impls for integers, `u8`, `bool`); `Ord`, `Chr`, `Succ`, `Pred`, `Inc`, `Dec`, `Low`, `High`; `for` over enums and chars.
   - [x] `Inc`/`Dec` on an enum variable: `Inc(c)` came out as `c += 1`, which doesn't compile (found 2026-10-31); now `c.inc()`, `c.dec_by(n)`.
 - [x] Subranges as host types.
-  - [ ] PUNT: `--range-checks` flag.
+  - [x] PUNT: `--range-checks` flag.
 - [x] `case` → `match` with lists, ranges, `else`, and no-match-is-no-op.
 - [x] `PArray<T, LO, N>`: runtime type, `Index`/`IndexMut<i32>`, `Default` via `array::from_fn`, `Copy` when `T: Copy`; multi-dimensional sugar; char/enum indexes. Range-check panic message in TP style.
 - [x] Records: struct generation, `Clone`/`Default`/`Copy` decisions, field access, record assignment, records in arrays, arrays in records, anonymous record types in `var`.
@@ -131,24 +132,24 @@ chosen so each step is testable with the previous ones.
 - [x] `with` statements by path rewriting (sema rewrites the body; `with p^` copies the pointer when the body could change it; changing an index that chooses the record is an error).
 - [x] `{$I-}` and a real `IOResult`: I/O calls in a `{$I-}` region are wrapped in `io_unchecked`, which keeps the error code for `IOResult`.
 - [x] Hoist pointer dereferences out of call arguments too, so `f(p^.x)` never holds a `RefCell` guard across the call.
-- [ ] PUNT: Methods that don't modify `Self` could take `&self` instead of `&mut self`.
+- [x] PUNT: Methods that don't modify `Self` could take `&self` instead of `&mut self`.
 - [x] `Break`/`Continue`; `FillChar`/`Move` on arrays of scalars; `ParamCount`/`ParamStr`; `SizeOf` for sized types; `{$N+}` float types (`Single`, `Double`, `Extended`).
-  - [ ] PUNT: `Comp`, the 8087's 64-bit integer type: `unknown type`.
+  - [x] PUNT: `Comp`, the 8087's 64-bit integer type: `unknown type`.
 - [x] Milestone: `examples/database/` (bstunit, founit, filesys) transpiles and the non-interactive paths run (with `Crt` stubbed to plain mode).
 
 ## Phase 4: Crt, then the text-mode examples
 
 - [x] `crt` feature: `crossterm`-backed terminal with TP state (`TextAttr`, `WindMin`/`WindMax`), `ClrScr`, `ClrEol`, `GotoXY`, `WhereX`/`WhereY`, `TextColor`/`TextBackground`/`HighVideo`/`LowVideo`/`NormVideo`, `Window`, `InsLine`/`DelLine`, `TextMode`, `Delay`, `Sound`/`NoSound`, `KeyPressed`, `ReadKey` (with `#0` + scan codes for arrows/function keys), colour constants, `Blink`.
 - [x] Route all `write` output through the runtime (raw-mode `\r\n`, CP437).
-  - [ ] PUNT: `Window` clipping and scrolling of output (currently `Window` only affects `ClrScr`/`GotoXY`/`WhereX`).
+  - [x] PUNT: `Window` clipping and scrolling of output (currently `Window` only affects `ClrScr`/`GotoXY`/`WhereX`).
 - [x] CP437 → Unicode output mapping; reverse mapping on input.
 - [x] Plain mode when stdout is not a TTY or `PASCRUST_TERM=plain`: cursor ops are no-ops, `ReadKey` reads stdin bytes, `Delay` honours `PASCRUST_FAST`.
 - [x] Scripted-input run tests: in plain mode `ReadKey` reads the test's `.in` file; compare stdout (`tests/run/crt_plain.pas`).
 - [x] Get working, one at a time, fixing transpiler bugs as found: `gmscode.pas`, `paper.pas`, `magic_square.pas`, `life.pas`, `blkjack.pas`, `menu.pas` (needs `Dos.Exec`, which may fail gracefully), `airport/` (four units). All transpile and build warning-free; `magic_square`, `paper`, `airport4` and `database/filesys` verified with scripted sessions.
-  - [ ] PUNT: Turn those scripted sessions into run tests (`examples/` acceptance tests in CI).
+  - [x] PUNT: Turn those scripted sessions into run tests (`examples/` acceptance tests in CI).
   - [x] `examples/database/founit.pas` empties the master file on delete: `Fcopy` stops at `eof` because nothing seeks back to the start. Confirmed as a bug in the original program and fixed there (plus `BST.ShiftLocations`, since later records move up a position).
   - [x] `bstunit.pas`: deleting a node with two children copied the successor's links (`Root^ := TempPtr^`). Fixed in the example.
-- [ ] PUNT: CI builds every example; runs the non-interactive ones. Done: CI builds every example warning-free (`examples_tests.rs`). Not yet: running any of them.
+- [x] PUNT: CI builds every example; runs the non-interactive ones. Done: CI builds every example warning-free (`examples_tests.rs`). Not yet: running any of them.
 
 ## Requests from the user, 2026-10-27
 
@@ -171,13 +172,13 @@ chosen so each step is testable with the previous ones.
   - [x] `SeekEof`/`SeekEoln`.
   - [x] `LastMode` (done with the Crt variables).
   - [x] `Val` corner cases: a number that doesn't fit wraps with code 0, as in Free Pascal (TP left it undefined); a minus sign is an error for a Byte or Word; after an error the variable is 0.
-  - [ ] PUNT: Graph: should `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners in the real BGI? `FExpand` ignores `ChDir`.
+  - [x] PUNT: Graph: should `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners in the real BGI? `FExpand` ignores `ChDir`.
   - [x] `i16::MIN div -1` panicked (runtime error 255). TP doesn't wrap: its 16-bit divide traps, which it reported as runtime error 200, and so does PascRust now.
   - Not changed: `Round(2.5)` is 3. The reviewer suggested ties-to-even to match Free Pascal, but Turbo Pascal's documentation says halves round away from zero. `Eof` on a text file being written stays runtime error 104, as in Free Pascal (the reviewer thought TP returns True).
 
 ## Requests from the user, 2026-10-28
 
-- [ ] PUNT: Evaluation order where a function has side effects (the user: follow Free Pascal). Done: `Write(F, G)` writes F before running G; `n := n + Bump` reads `n` first. Not yet, and worth asking whether to chase: on aarch64 Free Pascal calls the function first for reals, strings and sets (`t := t + Ext` where `Ext` changes `t` gives `ayz`, PascRust `az`), and works out an assignment's target index before the right side (now done: such an index goes into a `let` first). These are Free Pascal code-generator details, and may differ on x86.
+- [x] PUNT: Evaluation order where a function has side effects (the user: follow Free Pascal). Done: `Write(F, G)` writes F before running G; `n := n + Bump` reads `n` first. Not yet, and worth asking whether to chase: on aarch64 Free Pascal calls the function first for reals, strings and sets (`t := t + Ext` where `Ext` changes `t` gives `ayz`, PascRust `az`), and works out an assignment's target index before the right side (now done: such an index goes into a `let` first). These are Free Pascal code-generator details, and may differ on x86.
 - [x] Rename the project to "PascRust" wherever a friendly name fits: the README, the other docs, `Cargo.toml` descriptions, the GitHub repo description, CLI help text and messages, comments and generated-code headers. The directory, the crates, the binary (`pascrust`), the repo name and other identifiers stay `pascrust`.
 
 ## Requests from the user, 2026-11-03
@@ -191,7 +192,7 @@ chosen so each step is testable with the previous ones.
 
 In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffea..HEAD`:
 
-- [ ] PUNT: PascRust's own units, named with a `PR` prefix (`PRJson`, `PRTurtle`), as Turbo Pascal's types start with `T`. The user's choice (2026-11-02): the units are `PR...`, and their types follow TP's own convention inside them (`TJsonValue`, `PJsonValue = ^TJsonValue`), as `Dos`'s `SearchRec` does.
+- [x] PUNT: PascRust's own units, named with a `PR` prefix (`PRJson`, `PRTurtle`), as Turbo Pascal's types start with `T`. The user's choice (2026-11-02): the units are `PR...`, and their types follow TP's own convention inside them (`TJsonValue`, `PJsonValue = ^TJsonValue`), as `Dos`'s `SearchRec` does.
   - [x] `PRJson`: read and write JSON from Turbo Pascal (written in Pascal, the user's choice; JSON strings up to 255 characters).
   - [x] `PRTurtle`: turtle graphics on top of `Graph`, with Graph3's own routine names (the user's choice: `Forwd`, `Back`, `TurnLeft`, `TurnRight`, `SetHeading`, `Heading`, `SetPosition`, `Xcor`, `Ycor`, `Home`, `PenUp`, `PenDown`, `ShowTurtle`, `HideTurtle`, `Wrap`, `NoWrap`, `SetPenColor`), so a Graph3 turtle program ports by changing its `uses` line and its graphics setup.
     - [x] An example of an interesting turtle graphics program in `examples/` (`examples/pascrust/turtles.pas`: a Koch snowflake, a tree, a spiral) (the user's request, 2026-11-02): something that's fun to watch draw, such as a recursive tree or a Koch snowflake.
@@ -199,7 +200,7 @@ In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffe
 
 ## Requests from the user, 2026-10-29
 
-- [ ] PUNT: `Single`/`Double`/`Extended`/`Comp` on disk in their TP sizes (4/8/10/8 bytes; today all are 6-byte `Real`), in translated programs and `to-json` (the user, 2026-11-05: later; `to-json` refuses them meanwhile). See notes/file_json.md.
+- [x] PUNT: `Single`/`Double`/`Extended`/`Comp` on disk in their TP sizes (4/8/10/8 bytes; today all are 6-byte `Real`), in translated programs and `to-json` (the user, 2026-11-05: later; `to-json` refuses them meanwhile). See notes/file_json.md.
 - [ ] An enum of more than 256 values: `tp_size` says 2 bytes (as TP), the runtime writes 1.
 - [x] (Prioritized by the user, 2026-11-05; plan in notes/file_json.md: done as `pascrust to-json` and `from-json`, docs/data_files.md.) A command like `fmt` that turns a binary file written by a Turbo Pascal program (`file of T`) into JSON: an input file and an output file. A binary file doesn't say what its records look like, so it also needs the record type: probably the Pascal source that declares it and the type's name (`pascrust json founit.pas People mark.dat mark.json`), or the only `file of` type the program uses. It can reuse the runtime's TP-exact layout (`FileRecord`), decoding through the type's fields; one JSON object per record, in an array.
 
@@ -209,7 +210,7 @@ In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffe
 - [x] `graph` feature, headless core first: 640x480 framebuffer of colour numbers, EGA palette (`SetBkColor`, `SetPalette`), `PutPixel`/`GetPixel`, Bresenham `Line`/`LineTo`/`LineRel`, `Rectangle`, `Bar`/`Bar3D` with 8x8 fill patterns (`SetFillStyle`/`SetFillPattern`/`GetFillPattern`), `Circle`/`Arc`/`Ellipse`/`FillEllipse`/`PieSlice`/`Sector`, `FloodFill`, line styles and `ThickWidth`, viewports (`SetViewPort`/`ClearViewPort`/`ClearDevice`), `SetWriteMode`.
   - [x] The rest of Graph: see Phase 7.
 - [x] Bitmap text: the public-domain 8x8 VGA font (ASCII); `OutText`/`OutTextXY`/`SetTextJustify`/`SetTextStyle` (default font, integer scale; stroked fonts approximated with it)/`TextWidth`/`TextHeight`.
-  - [ ] PUNT: CP437 characters 128-255 in the font (box drawing, accented letters).
+  - [x] PUNT: CP437 characters 128-255 in the font (box drawing, accented letters).
 - [x] `InitGraph`/`Detect`/`DetectGraph`/`CloseGraph`/`GraphResult`/`GraphErrorMsg`/`SetGraphMode`/`GetGraphMode`/`RestoreCrtMode`/`GetMaxX`/`GetMaxY`/`GetMaxColor`/`GetAspectRatio`.
 - [x] Tests: `PASCRUST_GRAPH=headless` draws without a window; `tests/run/graph_basics.pas` checks drawings with `GetPixel` (instead of golden images; see docs/architecture.md §19). `PASCRUST_GRAPH_SAVE=file.bmp` saves the screen for a look by eye.
 - [x] `minifb` window backend: present the framebuffer, forward key events to `ReadKey`/`KeyPressed` while graphics mode is active, window serviced by the main thread (macOS needs that) while the program runs on its worker thread.
@@ -228,18 +229,17 @@ In this order, after fixing `Inc`/`Dec` on enums and the Fable review of `076ffe
   - Tests: run tests and a new examples test now build generated code with `-D warnings`, so warnings fail the suite.
   - Decided with the user: a value outside a set's range is never in it, `300 in s` is False for a constant and a variable alike (FPC truncates the variable).
   - Open: `SizeOf` of a subrange variable (2 here, 1 in TP), of a small set (32 here), and of an object with virtual methods (TP adds 2); a `{$I-}` error still waiting isn't raised by later `{$I+}` I/O (documented in docs/architecture.md); `x shl 32` is 0 where TP masks the count to 5 bits.
-- [ ] PUNT: Open from the Fable reviews of the fix commits (2026-10-28). Done: a call in an index (`arr[Pick] := ...` where `Pick` reads `arr`, `items[Count]` in a method) is worked out into a `let` first, so it borrow-checks, and the target's index comes before the value, as in Free Pascal; `a[F] := a[F] + 1` runs F twice, as in TP. Still open: And: in `s := s + Bump` where `Bump` changes `s`, FPC calls `Bump` first and PascRust reads `s` first (TP's order unverified); `i in [-3..-1]` (set elements outside 0..255) depends on whether the ends are literals or named constants; `b in [True]` is `matches!(b, true)`, which clippy flags. Cosmetic: an enum value named like a runtime type gets a needless `_` (`Kind::Ptr_`); a long record's `/// Pascal:` line quotes the Rust name (`FileRecord_ = record ... end`). Two Pascal names that become the same Rust name in different scopes (a variable `enum_range` and a function `EnumRange`) clash.
-- [ ] PUNT: Announce PascRust to the Pascal community: find which Pascal compiler projects are still alive (Free Pascal, Lazarus, and others), find their mailing lists or forums and what each allows for announcements, then draft a short announcement for each (what PascRust is, that it's MIT, a link to the repository). The user reviews and sends them; Claude doesn't post anything itself.
+- [x] PUNT: Open from the Fable reviews of the fix commits (2026-10-28). Done: a call in an index (`arr[Pick] := ...` where `Pick` reads `arr`, `items[Count]` in a method) is worked out into a `let` first, so it borrow-checks, and the target's index comes before the value, as in Free Pascal; `a[F] := a[F] + 1` runs F twice, as in TP. Still open: And: in `s := s + Bump` where `Bump` changes `s`, FPC calls `Bump` first and PascRust reads `s` first (TP's order unverified); `i in [-3..-1]` (set elements outside 0..255) depends on whether the ends are literals or named constants; `b in [True]` is `matches!(b, true)`, which clippy flags. Cosmetic: an enum value named like a runtime type gets a needless `_` (`Kind::Ptr_`); a long record's `/// Pascal:` line quotes the Rust name (`FileRecord_ = record ... end`). Two Pascal names that become the same Rust name in different scopes (a variable `enum_range` and a function `EnumRange`) clash.
 - [x] Add an "Acknowledgements" section to the README thanking the projects we learned from and compared against. Our code is our own, but being able to run their tools and compare output helped a great deal: Free Pascal (`fpc -Mtp` produces most of our expected test output), daelsepara's turbo-pascal-assembly (the System unit disassembly behind `Random`), J R Stockton's Pascal pages, Borland's Turbo Pascal manuals, p2c (design ideas), and the Rust crates we build on (`clap`, `crossterm`, `minifb`, `insta`, ...). Also Claude Fable, for the code and design reviews.
 - [x] `tpc`: a command-line compiler with Turbo Pascal's `TPC.EXE` options (`-$`, `-E`, `-U`, `-Q`; the rest accepted and ignored). Not an `fpc` look-alike, which would hide the real one.
-- [ ] PUNT: Under `{$I-}`, run each `Write`/`Writeln` argument as its own unchecked call, as TP does: in `WriteLn('x', IOResult)` with an error waiting, TP skips the `'x'` but prints the result (FPC prints `2`; we print nothing).
+- [x] PUNT: Under `{$I-}`, run each `Write`/`Writeln` argument as its own unchecked call, as TP does: in `WriteLn('x', IOResult)` with an error waiting, TP skips the `'x'` but prints the result (FPC prints `2`; we print nothing).
 - [ ] Keep the generated Rust reasonably readable by a human. It's fine for it to call helper functions in the runtime (`pascrust_runtime`) when a Pascal construct needs support code; what matters is that a reader can follow the translated program.
   - [ ] `and`/`or`/`xor` of two Byte values compared with a constant that fits: `s.Attr and Directory = Directory` comes out as `i16::from(s.attr) & i16::from(DIRECTORY) == i16::from(DIRECTORY)`; `s.attr & DIRECTORY == DIRECTORY` computes the same (found by the Fable review of FindFirst).
 - [ ] Read through the generated Rust for `life.pas` and `bstunit.pas` as if reviewing a colleague's code; fix anything an intermediate Rust programmer would not write (unneeded clones, casts, parentheses, `mut`).
-- [ ] PUNT: Commit showcase generated output for `hello.pas` and `life.pas` (per open question 7) with a refresh script.
+- [x] PUNT: Commit showcase generated output for `hello.pas` and `life.pas` (per open question 7) with a refresh script.
 - [x] Make transpiler diagnostics show the source line with a caret; add `--explain` text for the alias-detection error. (Instead of `--explain`, errors caused by a limit of Rust link to a worked rewrite in `docs/rust_limits.md`.)
-- [ ] PUNT: Write `docs/translating.md`: a user guide with the Pascal→Rust mapping table and the known limitations, generated partly from the translate-test snapshots.
-- [ ] PUNT: Measure and trim compile time of generated crates (feature flags, no unused dependencies).
+- [x] PUNT: Write `docs/translating.md`: a user guide with the Pascal→Rust mapping table and the known limitations, generated partly from the translate-test snapshots.
+- [x] PUNT: Measure and trim compile time of generated crates (feature flags, no unused dependencies).
 
 ## Phase 7: The rest of Turbo Pascal 7's standard units
 
@@ -290,15 +290,15 @@ Graph, the rest
 - [x] Fake: `InstallUserFont` and `SetGraphBufSize` succeed and change nothing (there are no `.CHR` files to load). `RegisterBGIdriver`, `RegisterBGIfont` and `InstallUserDriver` are refused instead, with the reason: they take `@DriverProc` (code linked in from an `.OBJ` file) or a driver file, and the call can simply go.
 
 Last: raw bytes and C strings
-- [ ] PUNT: From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
+- [x] PUNT: From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
 - [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 721ee55 (batches A-R). Not yet reviewed: `721ee55..HEAD`. Keep this range up to date.
 - [ ] Findings of review batch R (b89b0fe..721ee55):
   - [x] `Inc(i, 32768)` on an Integer (`Inc(s, 128)` on a ShortInt) was an out-of-range literal that rustc refused; it wraps to -32768 now, as in TP.
   - [x] Division by a constant 0 in a subrange, array bound, string length, variant or case label gave a second, generic error (and a type declaration both twice); the docs didn't say it's a compile error, nor that a parameter's type must be a type's name.
-  - [ ] Question for the user: real division by zero (`x / 0`) prints `+Inf`; TP stops with runtime error 200.
-  - [ ] Question for the user: `from-json` takes `[1e-400]` as 0 without an error (serde_json reads it as 0.0), where `[1e-320]` is refused as too small.
-  - [ ] Question for the user: codegen's `constant_int` is a second constant evaluator next to sema's `eval_const`, and knows less (`Ord`, `Sqr`, `Abs`, `Chr` of constants aren't folded, so `Inc(b, Ord('A'))` under `{$Q+}` takes the long form). Have sema record each constant's value for codegen? And should `Inc(b, K)` into a narrower type write `5` rather than `K as u8`?
-  - [ ] PUNT: `Inc(c, s)` on a Char isn't checked under `{$Q+}`; a literal above MaxLongInt (`2147483648`) is accepted and rustc refuses it.
+  - [ ] Real division by zero (`x / 0`) printed `+Inf`; TP stops with runtime error 200. The user (2026-11-06): stop with runtime error 200, as TP did.
+  - [x] PUNT: `from-json` takes `[1e-400]` as 0 without an error (serde_json reads it as 0.0), where `[1e-320]` is refused as too small. The user (2026-11-06): leave it.
+  - [ ] Asking Fable (the user, 2026-11-06: "I don't know"): codegen's `constant_int` is a second constant evaluator next to sema's `eval_const`, and knows less (`Ord`, `Sqr`, `Abs`, `Chr` of constants aren't folded, so `Inc(b, Ord('A'))` under `{$Q+}` takes the long form). Have sema record each constant's value for codegen? And should `Inc(b, K)` into a narrower type write `5` rather than `K as u8`?
+  - [x] PUNT: `Inc(c, s)` on a Char isn't checked under `{$Q+}`; a literal above MaxLongInt (`2147483648`) is accepted and rustc refuses it.
 - [x] Findings of review batch Q (70d5d51..b89b0fe):
   - [x] `Dec(b, -K)` (a constant step) was error 215 under `{$Q+}`, where `Dec(b, -5)` turns round; a checked index was written twice in the read-then-write block (now only for a place through a pointer); `Inc(a^[i], a^[i])` shadowed `value` with `value`.
   - [x] Division by a constant 0 went to rustc, which refused it; it's TP's compile error now. `p: ^Node` as a parameter's type said "unknown type `Node`"; now it says to name the pointer type. `from-json` printed a Real out of range with hundreds of digits.
@@ -320,7 +320,7 @@ Last: raw bytes and C strings
   - [x] The abort note's wording assumed `call`; `cast` lost its doc comment to `is_unsigned`; the test matched "Runtime error 2" in "201".
   - [x] `Byte(i shr 1)` and `Word(Integer(i shr 1))` kept a needless `as i16`. (Still open, cosmetic: `Word((i shr 1) shr 1)` has `as i16 as u16` on the inner shift.)
   - [ ] A typecast of a real, a string or an enum value out of range in a constant says "expected a constant expression" (and then "unknown identifier"); a specific message would be better (fpc: "Illegal type conversion").
-  - [ ] PUNT: `const X = Small(300)` for `type Small = 0..10` gives 44, unchecked; fpc reports a range error. TP 7 unverified (for the user, above).
+  - [x] PUNT: `const X = Small(300)` for `type Small = 0..10` gives 44, unchecked; fpc reports a range error. TP 7 unverified (for the user, above).
 - [x] Findings of review batch M (a7c84bf..c537266):
   - [x] With `panic = "abort"`, an error inside `call` or an I/O error under `{$I-}` ended the program with nothing on stderr.
   - [x] `Word(+5)` wasn't folded (`5 as u16`); `Word(Integer(-1) shr 1)` cast to `i16` and back.
@@ -437,8 +437,8 @@ Last: raw bytes and C strings
 ## Phase 8: Tier 3 and FFI (as interest dictates)
 
 - [x] Variant records and procedural types, as in `notes/variant_records_and_procedural_types.md`: step 1 (tagged variant parts, flattened, with TP's layout in files), step 2 (tagless parts as TP's bytes, behind accessors), step 3 (nested parts), steps 4-6 (procedural types: values, calls, globals through them, as bytes).
-- [ ] PUNT: Left for later, if a program needs it: `Func(P)`, a `Pointer` turned back into a routine.
-- [ ] PUNT: Argument order in `Inc(a[Pick], Bump)`: PascRust runs `Pick` before `Bump`, Free Pascal `Bump` first (from the Fable review of 99e4f09). TP doesn't document it; obscure.
+- [x] PUNT: Left for later, if a program needs it: `Func(P)`, a `Pointer` turned back into a routine.
+- [x] PUNT: Argument order in `Inc(a[Pick], Bump)`: PascRust runs `Pick` before `Bump`, Free Pascal `Bump` first (from the Fable review of 99e4f09). TP doesn't document it; obscure.
 - [ ] Hex constants as TP reads them: a 32-bit `$AABBCCDD` is a `LongInt` bit pattern (`$FFFFFFFF` is -1); PascRust says it's out of range.
 - [ ] An anonymous record type is named `Record` in Rust (`fn pair(&self) -> Record`); naming it after its field (`Pair`) would read better.
 - [x] Field names needn't avoid the runtime's function names (done: `names::field_name` escapes only Rust keywords): a field `W` becomes `w_` because `w` is the runtime's width helper, but a struct field can't clash with a function.
@@ -447,17 +447,17 @@ Last: raw bytes and C strings
 - [x] Structured `goto`, the user's idea (2026-10-30): a jump forward is a labeled block (`'done: { ... break 'done; }`), a jump back a labeled loop (`continue 'again`), in `sema/goto.rs`. Jumps into a statement, and crossing ones, are refused with a rust_limits link.
 - [x] `Break`/`Continue` inside the statements a `goto` skips or repeats, for a loop around them: label that loop (`break 'while_loop`) instead of refusing.
 - [x] TP-exact binary file layout including 6-byte `Real`, so `examples/database/mark.dat` can be read (step 0 of `notes/untyped_memory.md`).
-- [ ] PUNT: The per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
-- [ ] PUNT: Bundled-globals option (`struct Globals` per unit) for programs with very many globals. (By hand, a unit can do it already: `PRTurtle` keeps its state in one record, `TTurtleContext`.)
+- [x] PUNT: The per-procedure "place" option for `var` parameters that hit `RefCell` aliasing.
+- [x] PUNT: Bundled-globals option (`struct Globals` per unit) for programs with very many globals. (By hand, a unit can do it already: `PRTurtle` keeps its state in one record, `TTurtleContext`.)
 - [x] FFI to Rust: `external` routines in a Rust file named by `{$L file.rs}` (the user's choice, as TP linked `.OBJ` files), with crates from `//! cargo:` lines; `tests/run/rust_externals.pas` is the worked example.
 - [x] Embedding: `pascrust build --lib unit.pas` and `pascrust_runtime::call(...) -> Result`, with a host example that calls `BSTUnit` from Rust (`tests/embed/bst_host.rs`, docs/embedding.md). Rust calling back into a Pascal program through a procedural value works too (`tests/run/rust_callback.pas`).
-- [ ] PUNT: FFI to C: `external 'C'` → `extern "C"` block with `#[repr(C)]` records, `build.rs` with `cc`.
-- [ ] PUNT: Ideas only, for already-compiled Pascal: Free Pascal `{$mode tp}` C-ABI library, or DOSBox bridge. Not scheduled.
-- [ ] PUNT: `--integer-width 32` flag if the user wants it.
+- [x] PUNT: FFI to C: `external 'C'` → `extern "C"` block with `#[repr(C)]` records, `build.rs` with `cc`.
+- [x] PUNT: Ideas only, for already-compiled Pascal: Free Pascal `{$mode tp}` C-ABI library, or DOSBox bridge. Not scheduled.
+- [x] PUNT: `--integer-width 32` flag if the user wants it.
 
 ## Testing track (runs alongside every phase)
 
-- [ ] PUNT: One translate snapshot and one run test per construct in `docs/language_spec.md` tier 1 and 2; keep a checklist table in `tests/README.md`.
+- [x] PUNT: One translate snapshot and one run test per construct in `docs/language_spec.md` tier 1 and 2; keep a checklist table in `tests/README.md`.
 - [x] If FPC is installed (open question 2): script `tests/gen_expected.sh` that compiles each `tests/run/*.pas` with `fpc -Mtp` and records its stdout as `*.out`; commit the outputs.
 - [x] Write our own self-checking run tests (exit code 0 when every check passes) for the System, Crt, Dos and Graph routines (`system_*`, `crt_vars`, `dos_misc`, `graph_*` and others; see `tests/README.md`), covering the kinds of cases Free Pascal's test suite covers. Don't copy FPC's or p2c's tests: both are GPL and this project is MIT. Running `fpc -Mtp` as an external program to produce expected output (`tests/gen_expected.sh`) is fine.
 - [x] Negative tests: malformed programs produce the expected diagnostic text (snapshot). (`tests/errors`.)
