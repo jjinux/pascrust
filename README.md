@@ -10,7 +10,7 @@ transpiler, so that you can more easily run your old Turbo Pascal programs
 on modern computers.
 
 Ruscal writes a small Cargo project for each program so you can build and run
-your old Pascal code natively.
+your old Turbo Pascal code natively.
 
  * You can continue editing the Turbo Pascal code and transpile it every time.
  * You can transpile your Turbo Pascal code to Rust once and then edit the Rust going forward.
