@@ -349,10 +349,13 @@ macro_rules! freadln {
 /// into bytes and back. Records get an implementation from the
 /// [`file_record!`](crate::file_record) macro.
 ///
-/// The byte layout is our own (little-endian numbers, 256 bytes per string),
-/// not Turbo Pascal's, so files written by the original DOS programs can't be
-/// read. Every value of a type must encode to the same number of bytes, so
-/// that `Seek` can find record `n` at byte `n * size`.
+/// The byte layout is Turbo Pascal's, so files written by the original DOS
+/// programs can be read: little-endian numbers, a `Real` in TP's 6 bytes
+/// ([`real48`]), a `string[n]` in n+1 bytes (its length, then the
+/// characters), a set in the bytes TP kept it in. (`Single`, `Double` and
+/// the other real types are stored as a 6-byte `Real` for now.) Every value
+/// of a type encodes to the same number of bytes, so that `Seek` can find
+/// record `n` at byte `n * size`.
 pub trait FileRecord: Default {
     fn encode(&self, out: &mut Vec<u8>);
     /// Decode a value from the front of `input`, advancing it past the bytes
