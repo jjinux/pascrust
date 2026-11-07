@@ -1,3 +1,5 @@
+![Ruscal: a Rust-powered time machine for Turbo Pascal](docs/images/ruscal.png)
+
 Ruscal
 ========
 
