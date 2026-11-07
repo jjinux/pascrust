@@ -480,6 +480,45 @@ impl<'a> Codegen<'a> {
         })
     }
 
+    /// `High(T)` or `Low(T)` of an integer type or `Char` (or of a variable
+    /// of one) by name: Rust's `i16::MAX`, `u8::MIN`, or a subrange type's
+    /// bound as written.
+    fn type_limit(&self, e: &Expr) -> Option<Limit> {
+        let ExprKind::Call { callee, args } = &e.kind else { return None };
+        let [arg] = args.as_slice() else { return None };
+        let high = match self.a.sym(*self.a.refs.get(&callee.id)?).kind {
+            SymKind::Builtin(Builtin::High) => true,
+            SymKind::Builtin(Builtin::Low) => false,
+            _ => return None,
+        };
+        let ExprKind::Name(_) = arg.kind else { return None };
+        let sym_id = *self.a.refs.get(&arg.id)?;
+        if let Some((lo, hi)) = self.a.subrange_exprs.get(&sym_id) {
+            return Some(Limit::Bound(if high { hi.clone() } else { lo.clone() }));
+        }
+        let ty = match &self.a.sym(sym_id).kind {
+            SymKind::TypeName(ty) => ty.concrete(),
+            SymKind::Var(v) => v.ty.concrete(),
+            _ => return None,
+        };
+        let Some(ConstVal::Int(value)) = self.a.folded.get(&e.id) else { return None };
+        // (A variable of a subrange type has other bounds: its number stays.)
+        let (lo, hi) = match &ty {
+            Type::Int(kind) => kind.range(),
+            Type::Char => (0, 255),
+            _ => return None,
+        };
+        let rust = match &ty {
+            Type::Int(kind) => kind.rust(),
+            _ => "u8",
+        };
+        match (high, *value) {
+            (true, v) if v == hi => Some(Limit::Named(format!("{rust}::MAX"), ty)),
+            (false, v) if v == lo => Some(Limit::Named(format!("{rust}::MIN"), ty)),
+            _ => None,
+        }
+    }
+
     /// Does `e` use `High` or `Low` of an array ([`Self::array_bound`])?
     fn uses_array_bound(&mut self, e: &Expr) -> bool {
         match &e.kind {
@@ -630,6 +669,19 @@ impl<'a> Codegen<'a> {
         {
             let code = self.expr(e);
             return (format!("{} as {}", paren(code, prec::AS), kind.rust()), prec::AS);
+        }
+        // `High(Integer)` is `i16::MAX`, and `High(Index)` (`Index = 1..N`)
+        // is `N`: names rather than numbers. (Only where the type is known:
+        // inside a sum typed like a literal, `High(Integer) + 1`, the
+        // number stays, as `i16::MAX + 1` would overflow.)
+        if !matches!(to, Type::IntLit(_))
+            && matches!(to.concrete(), Type::Int(_) | Type::Char)
+            && let Some(limit) = self.type_limit(e)
+        {
+            return match limit {
+                Limit::Bound(bound) => self.coerce(&bound, to),
+                Limit::Named(code, from) => convert((code, prec::POSTFIX), &from, to),
+            };
         }
         // An integer constant expression: worked out as TP does (in 32
         // bits), keeping its constants' names (see `const_expr`); one of
@@ -2140,4 +2192,11 @@ fn reads_pointer(e: &Expr) -> bool {
         ExprKind::Binary { lhs, rhs, .. } => reads_pointer(lhs) || reads_pointer(rhs),
         _ => false,
     }
+}
+
+/// What [`Codegen::type_limit`] found: a Rust name of the given type
+/// (`i16::MAX`), or a subrange type's bound as written in Pascal.
+enum Limit {
+    Named(String, Type),
+    Bound(Expr),
 }

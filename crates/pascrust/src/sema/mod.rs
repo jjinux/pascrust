@@ -191,6 +191,10 @@ pub struct Analysis {
     /// `Word(-1)`), by the expression's id: sema's `eval_const` works them
     /// out, and codegen reads them here rather than evaluating again.
     pub consts: HashMap<NodeId, ConstVal>,
+    /// The bounds of each subrange type as written (`1..MaxItems`), so the
+    /// Rust can keep the constants they name: an array indexed by it
+    /// (`bounds_rust`), `High(Index)` (`MAX_ITEMS`).
+    pub subrange_exprs: HashMap<SymId, (crate::ast::Expr, crate::ast::Expr)>,
     /// Calls sema worked out, by the call's id: `SizeOf`, `High`, `Low`.
     pub folded: HashMap<NodeId, ConstVal>,
     /// `external` routines, written in Rust (`{$L sound.rs}`): each one's

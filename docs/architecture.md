@@ -303,7 +303,7 @@ a constant keeps it (`Dec(i, Neg)` is `i -= NEG`, `Dec(b, -K)` is
 negative one on a Byte or Word is added in a wider type, as a variable
 step is. `High`/`Low` of an array with an integer index are its bounds,
 `a.high()` or `TArr::HIGH` (`PArray`'s), so they follow the declaration;
-`High(Integer)` stays `32767`, as no name is lost. An array's bounds keep
+`High(Integer)` is Rust's `i16::MAX` (`High(Char)` `u8::MAX`), and `High(Index)` of a subrange type `Index = 1..N` is `N`, wherever the type they're used as is known (inside a sum typed like a literal, `High(Integer) + 1`, the number stays, as `i16::MAX + 1` would overflow). `SizeOf` stays a number: it's TP's layout, which the Rust types don't determine (a TODO for the user). An array's bounds keep
 their constants too (sema's `bounds_rust`, kept in `ArrayType` but not
 part of its equality): `array[1..N]` is `PArray<i16, 1, { N as usize }>`,
 `array[0..N - 1]` the same, and `array[Lo..Hi]` is

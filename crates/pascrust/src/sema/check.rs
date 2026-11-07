@@ -76,9 +76,6 @@ pub(super) struct Checker {
     declaring_type: bool,
     /// Bounds of type names declared as subranges (`Index = 1..10`).
     subrange_types: HashMap<SymId, (Type, i64, i64)>,
-    /// The bounds of each subrange type as written (`1..MaxItems`), for an
-    /// array indexed by it to keep the names in Rust (see `bounds_rust`).
-    subrange_exprs: HashMap<SymId, (Expr, Expr)>,
     /// Bounds of variables and parameters declared with a subrange type
     /// (`i: 1..10`), which are stored as their host type: for `High(i)`.
     var_bounds: HashMap<SymId, (i64, i64)>,
@@ -162,7 +159,6 @@ impl Checker {
             pending_pointers: Vec::new(),
             method_scopes: Vec::new(),
             subrange_types: HashMap::new(),
-            subrange_exprs: HashMap::new(),
             var_bounds: HashMap::new(),
             with_records: Vec::new(),
             with_selectors: Vec::new(),
@@ -545,7 +541,7 @@ impl Checker {
                     if let Some(bounds) = bounds {
                         self.subrange_types.insert(sym, bounds);
                         if let TypeExpr::Subrange { lo, hi, .. } = &t.ty {
-                            self.subrange_exprs.insert(sym, ((**lo).clone(), (**hi).clone()));
+                            self.a.subrange_exprs.insert(sym, ((**lo).clone(), (**hi).clone()));
                         }
                     }
                 }
@@ -1422,7 +1418,7 @@ impl Checker {
     fn index_exprs(&self, t: &TypeExpr) -> Option<(Expr, Expr)> {
         match t {
             TypeExpr::Subrange { lo, hi, .. } => Some(((**lo).clone(), (**hi).clone())),
-            TypeExpr::Named(ident) => self.subrange_exprs.get(&self.lookup(&ident.key())?).cloned(),
+            TypeExpr::Named(ident) => self.a.subrange_exprs.get(&self.lookup(&ident.key())?).cloned(),
             _ => None,
         }
     }

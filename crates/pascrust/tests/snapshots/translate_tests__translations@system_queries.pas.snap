@@ -129,10 +129,10 @@ fn pascal_main() {
     check(&mut checks, &mut failures, b'z' == b'z', pstr("High(array of char index)"));
     check(&mut checks, &mut failures, Color::Blue == Color::Blue, pstr("High(enum-indexed array)"));
     check(&mut checks, &mut failures, Color::Red == Color::Red, pstr("Low(Color)"));
-    check(&mut checks, &mut failures, 32767 == 32767, pstr("High(Integer)"));
-    check(&mut checks, &mut failures, -32768 == -32768, pstr("Low(Integer)"));
-    check(&mut checks, &mut failures, 255 == 255, pstr("High(Byte)"));
-    check(&mut checks, &mut failures, b'\xff' == b'\xff', pstr("High(Char)"));
+    check(&mut checks, &mut failures, i16::MAX == 32767, pstr("High(Integer)"));
+    check(&mut checks, &mut failures, i16::MIN == -32768, pstr("Low(Integer)"));
+    check(&mut checks, &mut failures, i16::from(u8::MAX) == 255, pstr("High(Byte)"));
+    check(&mut checks, &mut failures, u8::MAX == b'\xff', pstr("High(Char)"));
     check(&mut checks, &mut failures, true, pstr("High(Boolean)"));
     check(&mut checks, &mut failures, 9 == 9, pstr("High(subrange)"));
     check(&mut checks, &mut failures, small.high() as i16 == 9, pstr("array bound from High"));
