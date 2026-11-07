@@ -457,14 +457,19 @@ impl<'a> Codegen<'a> {
             SymKind::Builtin(Builtin::Low) => false,
             _ => return None,
         };
-        // (Sema answered `High` without checking its argument as a value,
-        // so the argument's type comes from its name: a variable's or a
-        // type's.)
-        let ExprKind::Name(_) = arg.kind else { return None };
-        let sym = self.a.sym(*self.a.refs.get(&arg.id)?);
-        let (arg_ty, type_name) = match &sym.kind {
-            SymKind::TypeName(ty) => (ty.concrete(), Some(sym.rust_name.clone())),
-            SymKind::Var(v) => (v.ty.concrete(), None),
+        // (Sema answered `High(a)` without checking `a` as a value, so a
+        // name's type comes from its symbol: a variable's or a type's. A
+        // field, `High(r.Items)`, it did check.)
+        let (arg_ty, type_name) = match (&arg.kind, self.a.refs.get(&arg.id)) {
+            (ExprKind::Name(_), Some(&sym)) if !self.a.self_fields.contains_key(&arg.id) => {
+                let sym = self.a.sym(sym);
+                match &sym.kind {
+                    SymKind::TypeName(ty) => (ty.concrete(), Some(sym.rust_name.clone())),
+                    SymKind::Var(v) => (v.ty.concrete(), None),
+                    _ => return None,
+                }
+            }
+            _ if self.a.types.contains_key(&arg.id) => (self.a.type_of(arg.id).concrete(), None),
             _ => return None,
         };
         let Type::Array(array) = &arg_ty else { return None };
@@ -483,7 +488,7 @@ impl<'a> Codegen<'a> {
     /// `High(T)` or `Low(T)` of an integer type or `Char` (or of a variable
     /// of one) by name: Rust's `i16::MAX`, `u8::MIN`, or a subrange type's
     /// bound as written.
-    fn type_limit(&self, e: &Expr) -> Option<Limit> {
+    pub(super) fn type_limit(&self, e: &Expr) -> Option<Limit> {
         let ExprKind::Call { callee, args } = &e.kind else { return None };
         let [arg] = args.as_slice() else { return None };
         let high = match self.a.sym(*self.a.refs.get(&callee.id)?).kind {
@@ -2196,7 +2201,7 @@ fn reads_pointer(e: &Expr) -> bool {
 
 /// What [`Codegen::type_limit`] found: a Rust name of the given type
 /// (`i16::MAX`), or a subrange type's bound as written in Pascal.
-enum Limit {
+pub(super) enum Limit {
     Named(String, Type),
     Bound(Expr),
 }

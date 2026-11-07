@@ -739,7 +739,16 @@ impl<'a> Codegen<'a> {
             // that expression, so the Rust still says where it comes from;
             // where it can't be (`Chr(Ord('A') + K)`), its value, with the
             // Pascal in a comment.
+            let limit = match &c.value {
+                crate::ast::ConstValue::Expr(e) => match self.type_limit(e) {
+                    // `const Top = High(Integer)` is `i16::MAX`.
+                    Some(expr::Limit::Named(code, from)) if from.rust() == ty.rust() => Some(code),
+                    _ => None,
+                },
+                _ => None,
+            };
             let (value, from) = match (&c.value, ty) {
+                _ if let Some(code) = limit => (code, None),
                 (crate::ast::ConstValue::Expr(e), _) if !self.names_constant(e) => (self.const_value(value, ty), None),
                 (crate::ast::ConstValue::Expr(e), Type::Int(kind)) if self.const_expr(e, *kind, true).is_some() => {
                     (self.const_expr(e, *kind, true).unwrap().0, None)
@@ -2431,6 +2440,12 @@ impl<'a> Codegen<'a> {
     /// A `case` label end that names a constant whose Rust type is
     /// `rust_ty`: the constant's name, which a pattern can use as it is.
     fn named_label(&self, e: &Expr, rust_ty: &str) -> Option<String> {
+        // `case i of High(Integer):` is `i16::MAX =>`.
+        if let Some(expr::Limit::Named(code, from)) = self.type_limit(e)
+            && from.rust() == rust_ty
+        {
+            return Some(code);
+        }
         let ExprKind::Name(_) = e.kind else { return None };
         let sym = self.a.sym(*self.a.refs.get(&e.id)?);
         match &sym.kind {
@@ -2648,8 +2663,10 @@ impl<'a> Codegen<'a> {
         };
         let lo_hi = |g: &mut Self| {
             let (start, end) = (g.coerce(start, &ty).0, g.coerce(end, &ty).0);
-            // The suffix goes on whichever bound comes first in the range.
-            let (start, end) = if down { (start, format!("{end}{suffix}")) } else { (format!("{start}{suffix}"), end) };
+            // The suffix goes on whichever bound comes first in the range, if
+            // it's a number there (`a.low() as i16` has its type already).
+            let suffixed = |code: String| if is_literal(&code) { format!("{code}{suffix}") } else { code };
+            let (start, end) = if down { (start, suffixed(end)) } else { (suffixed(start), end) };
             match (&ty, down) {
                 // Rust ranges only work for numbers (and `u8` chars); the
                 // runtime's `enum_range` steps through enum values instead.

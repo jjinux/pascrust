@@ -23,6 +23,10 @@ begin
    i := i * (30000 + 30000 - 40000);
    WriteLn(i);
    i := 3;
+   { C + 1 is a LongInt constant, so the arithmetic around it is too. }
+   WriteLn(i * (C + 1), ' ', (C + 1) div i);
+   if i < C + 1 then
+      WriteLn('less');
    i := i * (C + 1);
    WriteLn(i);
    l := C + 1;

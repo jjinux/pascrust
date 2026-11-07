@@ -287,13 +287,16 @@ constant (`K + 1`, `Lo + K`) is written as that expression, so the Rust
 says where the number comes from and editing the `const` carries
 through; one made of literals only (`2 + 3`, `Succ(Mon)`) may be written
 as its value, as nothing is lost (`names_constant` tells them apart). TP
-works constants out in 32 bits and keeps the low bits when a typecast
-narrows them, which Rust's `as` does too: `const_expr` writes an integer
-constant expression in its context's type when every value along the way
-fits it (sema recorded them all), and otherwise in `i32`, cut down with
-`as`: `i * (C as i32 + 1) as i16`, `const WIDE: i32 = C as i32 + 1;` (in a
-`const` item every conversion is `as`, since `i32::from` can't be called
-there). A literal-only one that doesn't fit is its value
+works constants out in 32 bits, gives a constant the smallest type that
+holds its value, and keeps the low bits when a typecast narrows one,
+which Rust's `as` does too. So sema types `C + 1` (`C = 32767`, an
+Integer) as a LongInt (`binary_type`), and the arithmetic around it is
+LongInt: `i * (C + 1)` is `i32::from(i) * (i32::from(C) + 1)`, 98304 for
+`i = 3`. `const_expr` writes an integer constant expression in its
+context's type when every value along the way fits it (sema recorded them
+all), and otherwise in `i32`, cut down with `as` only where the context
+narrows it: `const WIDE: i32 = C as i32 + 1;` (in a `const` item every
+conversion is `as`, since `i32::from` can't be called there). A literal-only one that doesn't fit is its value
 (`30000 + 30000 - 40000` in an Integer is `20000`), and a constant
 declaration that can't be written as an expression (`Chr(Ord('A') + K)`)
 is its value with the Pascal in a comment. An `Inc`/`Dec` step that names
@@ -663,9 +666,10 @@ rather than wrapping to a byte. Set literals `[1, 3..5, x]` become
 the `SetItems` trait), and `x in [...]` with only constants in the list
 becomes `matches!(x, 1 | 3..=5)`, which is what a Rust programmer would
 write (an enum range lists its values there: Rust range patterns are for
-numbers and chars). A constant expression there is written as its value,
-from sema's `consts` (`[K + 1..K * 2]` is `6..=10`, `Succ(Mon)` is
-`Day::Tue`), as a pattern takes only literals and constants' names. With other items, `x in [Mon..Wed, y]` tests a set
+numbers and chars). A constant expression of literals there is written
+as its value, from sema's `consts` (`Succ(Mon)` is `Day::Tue`), as a
+pattern takes only literals and constants' names; one that names a
+constant (`[K + 1..K * 2]`) keeps it, in a set built on the spot. With other items, `x in [Mon..Wed, y]` tests a set
 built on the spot, and as nothing else says what that set holds, the
 literal says it: `pset![set of Day; Day::Mon..=Day::Wed, y].contains(x)`. Set constants are Rust `const`s, built by the `const fn`s
 `PSet::of(&[...])` and `PSet::from_ranges(&[...])` from `u8` ordinals,

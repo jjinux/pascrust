@@ -292,7 +292,14 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [x] PUNT: From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to 721ee55 (batches A-R). Not yet reviewed: `721ee55..HEAD`. Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to d0b1780 (batches A-S). Not yet reviewed: `d0b1780..HEAD`. Keep this range up to date.
+- [ ] Findings of review batch S (721ee55..d0b1780):
+  - [x] A `for` loop over `Low(a)..High(a)` (or a subrange's, or `Low(Integer)`) whose variable is used only in the loop didn't compile: the type suffix went on `a.low() as i16` (`i16_i16`). It goes only on a bare number now.
+  - [x] A constant expression that doesn't fit its operands' type (`C + 1`, `C = 32767`) was cut back to an Integer (-32768); TP types it by its value, a LongInt, and so the arithmetic around it: `i * (C + 1)` is 98304 for `i = 3`.
+  - [x] `High`/`Low` of a field (`High(r.Items)`, `High(Items)` in a method or a `with`) stayed a number; it's `r.items.high()`. `High(Letter)` for a Char or enum subrange gave the whole type's bound (chr 255); it's the subrange's.
+  - [x] `const Top = High(Integer)` and a `case` label `High(Integer)` are `i16::MAX`; `array[-K..K]` reads `K + K + 1`, not `K - -K + 1`; `{ N as usize }`, not `{ N as i16 as usize }`; the sets section of the architecture contradicted the named-constants rule.
+  - [ ] Question for the user: `const W = Word(-1)`, then `i := W` (an Integer) is a compile error, "the constant 65535 is out of range for Integer" (also `i := K - W`). Free Pascal accepts it (-1). What did TP 7 do?
+  - [x] PUNT: `Cnt = Ord(Last) - Ord(Mon) + 1` (enum constants) gets no `// Pascal` comment, where other worked-out constants do; constant `x / Z` with `Z = 0` is runtime error 200 (TP may have refused it when compiling).
 - [ ] Findings of review batch R (b89b0fe..721ee55):
   - [x] `Inc(i, 32768)` on an Integer (`Inc(s, 128)` on a ShortInt) was an out-of-range literal that rustc refused; it wraps to -32768 now, as in TP.
   - [x] Division by a constant 0 in a subrange, array bound, string length, variant or case label gave a second, generic error (and a type declaration both twice); the docs didn't say it's a compile error, nor that a parameter's type must be a type's name.

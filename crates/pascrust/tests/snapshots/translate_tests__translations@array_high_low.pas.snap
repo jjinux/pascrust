@@ -23,6 +23,12 @@ const N: i16 = 10;
 /// Pascal: `array[1..N] of Integer`
 type TArr = PArray<i16, 1, { N as usize }>;
 
+/// Pascal: `record Items: array[0..N - 1] of Integer; end`
+#[derive(Clone, Copy, Debug, Default)]
+struct TRec {
+    items: PArray<i16, 0, { N as usize }>,
+}
+
 /// Pascal: `procedure Last;`
 ///
 /// The global variables this procedure uses are passed in as parameters,
@@ -31,10 +37,30 @@ fn last(a: TArr) {
     pwriteln!(a[a.high()]);
 }
 
+// A loop variable used only in the loop, over a field's bounds.
+/// Pascal: `procedure Fields;`
+///
+/// Uses globals, which are passed in as parameters.
+fn fields(a: TArr, r: &mut TRec) {
+    for k in a.low() as i16..=a.high() as i16 {
+        pwrite!(a[k]);
+    }
+    pwriteln!();
+    for j in r.items.low() as i16..=r.items.high() as i16 {
+        r.items[j] = j * 10;
+    }
+    // Pascal `with`: Rust has no equivalent, so each field is written out in full.
+    for j in (r.items.low() as i16..=r.items.high() as i16).rev() {
+        pwrite!(r.items[j], " ");
+    }
+    pwriteln!();
+}
+
 /// The main program: the `begin ... end.` block of `ArrayHighLow`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
     let mut a: TArr = TArr::default();
+    let mut r: TRec = TRec::default();
     let mut i: i16 = 0;
     let mut total: i16 = 0;
     let mut l: i32 = 0;
@@ -56,6 +82,7 @@ fn pascal_main() {
         pwriteln!("less");
     }
     last(a);
+    fields(a, &mut r);
 }
 
 fn main() {

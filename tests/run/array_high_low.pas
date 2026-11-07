@@ -5,14 +5,34 @@ const
    N = 10;
 type
    TArr = array[1..N] of Integer;
+   TRec = record
+      Items: array[0..N - 1] of Integer;
+   end;
 var
    a: TArr;
+   r: TRec;
    i, total: Integer;
    l: LongInt;
 
 procedure Last;
    begin
       WriteLn(a[High(a)]);
+   end;
+
+{ A loop variable used only in the loop, over a field's bounds. }
+procedure Fields;
+   var
+      j, k: Integer;
+   begin
+      for k := Low(a) to High(a) do
+         Write(a[k]);
+      WriteLn;
+      for j := Low(r.Items) to High(r.Items) do
+         r.Items[j] := j * 10;
+      with r do
+         for j := High(Items) downto Low(Items) do
+            Write(Items[j], ' ');
+      WriteLn;
    end;
 
 begin
@@ -26,4 +46,5 @@ begin
    if i < High(a) then
       WriteLn('less');
    Last;
+   Fields;
 end.

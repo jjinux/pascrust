@@ -41,7 +41,12 @@ fn pascal_main() {
     i *= 20000;
     pwriteln!(i);
     i = 3;
-    i *= (i32::from(C) + 1) as i16;
+    // C + 1 is a LongInt constant, so the arithmetic around it is too.
+    pwriteln!(i32::from(i) * (i32::from(C) + 1), " ", (i32::from(C) + 1) / i32::from(i));
+    if i32::from(i) < i32::from(C) + 1 {
+        pwriteln!("less");
+    }
+    i = (i32::from(i) * (i32::from(C) + 1)) as i16;
     pwriteln!(i);
     l = i32::from(C) + 1;
     pwriteln!(l, " ", i32::from(C) + 1);

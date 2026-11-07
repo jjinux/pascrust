@@ -1456,10 +1456,15 @@ impl Checker {
         // The count, `hi - lo + 1`, said as simply as it can be:
         // `array[1..N]` has `N`, `array[0..N - 1]` too.
         let count = match &hi.kind {
+            // (`array[-K..K]` has `K + K + 1`, not `K - -K + 1`.)
             _ if lo_named => {
                 let hi = self.const_rust(hi, kind, ADD_LEFT)?;
-                let lo = self.const_rust(lo, kind, ADD_RIGHT)?;
-                format!("({hi} - {lo} + 1)")
+                match &lo.kind {
+                    ExprKind::Unary { op: UnaryOp::Neg, operand } => {
+                        format!("({hi} + {} + 1)", self.const_rust(operand, kind, ADD_RIGHT)?)
+                    }
+                    _ => format!("({hi} - {} + 1)", self.const_rust(lo, kind, ADD_RIGHT)?),
+                }
             }
             ExprKind::Binary { op: BinaryOp::Sub, lhs, rhs }
                 if self.eval_const(rhs) == Some(ConstVal::Int(1 - lo_value)) =>
@@ -1532,6 +1537,9 @@ impl Checker {
                 let sym = &self.a.symbols[*self.a.refs.get(&e.id)?];
                 match &sym.kind {
                     SymKind::Const { ty: Type::Int(own), .. } if *own == kind => (sym.rust_name.clone(), ATOM),
+                    // A name about to be cast anyway needs no cast to `kind`
+                    // first: `{ N as usize }`, not `{ N as i16 as usize }`.
+                    _ if context == AS_OPERAND => (sym.rust_name.clone(), ATOM),
                     _ => (format!("{} as {}", sym.rust_name, kind.rust()), CAST),
                 }
             }
@@ -2241,9 +2249,16 @@ impl Checker {
                 let (lo, hi) = bounds.unwrap_or(kind.range());
                 (lo, hi, ty.clone())
             }
-            Type::Char => (0, 255, Type::Char),
+            // (A subrange of them, `'a'..'z'` or `Mon..Fri`, has its own bounds.)
+            Type::Char => {
+                let (lo, hi) = bounds.unwrap_or((0, 255));
+                (lo, hi, Type::Char)
+            }
             Type::Bool => return Some((ConstVal::Bool(b == Builtin::High), Type::Bool)),
-            Type::Enum(e) => (0, e.variants.len() as i64 - 1, ty.clone()),
+            Type::Enum(e) => {
+                let (lo, hi) = bounds.unwrap_or((0, e.variants.len() as i64 - 1));
+                (lo, hi, ty.clone())
+            }
             _ => return None,
         };
         let value = if b == Builtin::High { hi } else { lo };
@@ -2699,6 +2714,16 @@ impl Checker {
             }
             _ => None,
         };
+        // A constant's type is the smallest that holds its value (TP), so
+        // `C + 1` with `C = 32767` (an Integer) is a LongInt, 32768, and so
+        // is the arithmetic around it: `i * (C + 1)` doesn't wrap.
+        if let (Add | Sub | Mul, Some(Type::Int(kind))) = (op, numeric_common(l, r))
+            && let Some(ConstVal::Int(v)) = self.eval_const(e)
+            && !kind.contains(v)
+            && IntKind::LongInt.contains(v)
+        {
+            return Type::Int(IntKind::LongInt);
+        }
         let result = result.or_else(|| match op {
             Add if l.is_text() && r.is_text() => Some(Type::Str { cap: 255 }),
             Add | Sub | Mul => numeric_common(l, r),
@@ -3977,6 +4002,11 @@ impl Checker {
                             if let SymKind::Var(_) = self.a.symbols[sym].kind {
                                 self.use_var(sym, false);
                             }
+                        } else if b != SizeOf && matches!(ty, Type::IntLit(_)) {
+                            // A field (`High(r.Items)`, `High(Items)` in a
+                            // method or a `with`): checked as a value, so
+                            // codegen can write `r.items.high()`.
+                            self.expr(&args[0]);
                         }
                         ty
                     }
