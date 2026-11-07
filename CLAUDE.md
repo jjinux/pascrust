@@ -58,6 +58,26 @@ PascRust is MIT. Don't copy code or tests from GPL projects (Free Pascal,
 p2c, GNU Pascal): read them for ideas only. Running `fpc` as an external
 program to produce expected output (`tests/gen_expected.sh`) is fine.
 
+## Who it's for
+
+PascRust balances six uses; a change for one shouldn't cost another without
+a good reason (docs/architecture.md, "Who PascRust is for"):
+
+1. Running an old Turbo Pascal program on a modern computer, not caring
+   about the Rust in between.
+2. Translating a program to Rust once, and working on the Rust from then on.
+3. A Pascal program calling Rust code.
+4. A Rust program calling Pascal code.
+5. Reading and writing data that Turbo Pascal programs made long ago
+   (`to-json`, `from-json`).
+6. Improving the Pascal code itself (`pascrust fmt`).
+
+So the generated Rust must stay readable by a human (use 2). Calling
+helper functions in `pascrust_runtime` is fine when a Pascal construct
+needs support code; what matters is that a reader can follow the
+translated program, and can go on editing it: a named Pascal constant
+stays a name, not a number worked out ahead of time.
+
 ## Style rules
 
 - Write Rust the way an intermediate Rust programmer would: clear over clever.

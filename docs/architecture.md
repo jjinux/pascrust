@@ -18,6 +18,32 @@ Guiding priorities, in order (from the opening prompt, in `README.md` as of comm
 3. **Learning value.** When two options are close, prefer the one that teaches
    more about compilers or Rust.
 
+### Who PascRust is for
+
+The user's six uses (2026-11-06), which the design balances:
+
+1. **Just run it.** Someone wants an old Turbo Pascal program to run on a
+   modern computer and doesn't care about the Rust in between: `pascrust
+   run`, `tpc`, and the runtime's faithful `Crt`/`Dos`/`Graph`.
+2. **Translate once, keep the Rust.** Someone translates a program and
+   works on the Rust from then on. This is why readable output (priority 2)
+   matters beyond teaching: the Rust has to be maintainable by hand, so
+   names stay names (a Pascal constant is a Rust `const`, used by name),
+   and anything worked out at compile time says where it came from.
+3. **Pascal calls Rust**: `external` routines in a Rust file next to the
+   program (docs/calling_rust.md).
+4. **Rust calls Pascal**: a translated unit or program as a library, with
+   `call` turning runtime errors into `Err` (docs/embedding.md).
+5. **Old data**: files written by Turbo Pascal programs long ago, read and
+   written byte for byte (TP's sizes and `Real48`), and `to-json` /
+   `from-json` to move them in and out of other tools.
+6. **Better Pascal**: improving the Pascal itself, with `pascrust fmt` and
+   with PascRust's error messages, which say what TP would have said.
+
+A change that helps one use shouldn't cost another without a good reason;
+when they pull apart, prefer correctness (use 1), then maintainable Rust
+(use 2).
+
 The examples in `examples/` (about 5,000 lines) are the acceptance test. They
 use: units, Turbo Pascal `object` types with static methods and single
 inheritance, pointers with `New`/`Dispose`, `file of record` and `Text` files,
