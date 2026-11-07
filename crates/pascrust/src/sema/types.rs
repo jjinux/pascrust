@@ -406,6 +406,14 @@ pub struct ObjectType {
     pub parent: Option<Rc<ObjectType>>,
     /// The fields declared by this type itself (not the inherited ones).
     pub fields: Vec<Field>,
+    /// Does this type add TP's hidden VMT field? Turbo Pascal gives an
+    /// object with a constructor, a destructor or a virtual method a 2-byte
+    /// field holding the address of its table of virtual methods. It comes
+    /// right after the fields of the first type in the line to need it;
+    /// that type's descendants inherit it (their own fields come after it)
+    /// rather than adding another. It's only in TP's layout (`SizeOf`, typed
+    /// files); the Rust struct has no such field.
+    pub adds_vmt: bool,
 }
 
 /// Object types are equal when they're the same declaration.
@@ -444,6 +452,11 @@ impl ObjectType {
 
     pub fn is_copy(&self) -> bool {
         self.fields.iter().all(|f| f.ty.is_copy()) && self.parent.as_ref().is_none_or(|p| p.is_copy())
+    }
+
+    /// Does this type, or one it inherits from, have TP's VMT field?
+    pub fn has_vmt(&self) -> bool {
+        self.adds_vmt || self.parent.as_ref().is_some_and(|p| p.has_vmt())
     }
 }
 
@@ -742,7 +755,8 @@ pub fn tp_size(ty: &Type) -> Option<i64> {
         Type::Record(r) => r.fixed_fields().iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()? + r.variant_area()?,
         Type::Object(o) => {
             let own = o.fields.iter().map(|f| tp_size(&f.ty)).sum::<Option<i64>>()?;
-            own + o.parent.as_ref().map_or(Some(0), |p| tp_size(&Type::Object(p.clone())))?
+            let vmt = if o.adds_vmt { 2 } else { 0 };
+            own + vmt + o.parent.as_ref().map_or(Some(0), |p| tp_size(&Type::Object(p.clone())))?
         }
         // A procedural value was a 4-byte far address in TP.
         Type::Pointer(_) | Type::AnyPointer | Type::PChar | Type::Proc(_) => 4,

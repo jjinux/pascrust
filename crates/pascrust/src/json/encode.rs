@@ -6,7 +6,6 @@ use pascrust_runtime::cp437;
 use pascrust_runtime::io::real48;
 use serde_json::{Map, Value};
 
-use super::decode::has_virtual_methods;
 use crate::sema::types::{Field, ObjectType, RealKind, RecordType, VariantPart, set_bytes, tp_size};
 use crate::sema::{Analysis, IntKind, Type};
 
@@ -160,8 +159,13 @@ fn value(analysis: &Analysis, ty: &Type, json: &Value, out: &mut Out, path: &str
             keys.done()?;
         }
         Type::Object(object) => {
-            if has_virtual_methods(analysis, object) {
-                return Err(format!("{path} is an object with virtual methods, which PascRust can't write to a file"));
+            // TP's VMT field holds the address of the type's table of virtual
+            // methods in the program that wrote it, which PascRust can't know.
+            if object.has_vmt() {
+                return Err(format!(
+                    "{path} is an object with a constructor, destructor or virtual methods, \
+                     whose hidden VMT field PascRust can't fill in"
+                ));
             }
             let fields = self::object(json, path)?;
             let mut keys = Keys::new(fields, path);

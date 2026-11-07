@@ -52,7 +52,7 @@ type:
 | `set of T` | a bit per possible element | an array of the elements (`["Red", "Blue"]`, `["a", "z"]`) |
 | `array[lo..hi] of T` | the elements | an array, in index order (an array of arrays for `[1..2, 1..3]`) |
 | a record | its fields, in order | an object, its keys spelled as in the source |
-| an `object` without virtual methods | its parent's fields, then its own | an object |
+| an `object` | its parent's fields, then its own; an object with a constructor, destructor or virtual method has TP's 2-byte VMT field after the fields of the first type in its line to need one | an object (the VMT field is left out) |
 | a pointer, `Pointer`, `PChar`, a procedural value, `Text`, `file` | 4, 4, 4, 4, 256, 128 bytes | `null`: an address or a file handle means nothing outside the run that wrote it |
 
 A `file of Integer` is an array of numbers (`[1, 2, 3]`), and so on.
@@ -109,7 +109,10 @@ bytes after the name), and `from-json` then `to-json` gives back the JSON.
   bytes.
 - Subranges (`Month: 1..12`) are checked against their host type only
   (`Byte`), so `from-json` accepts 13.
-- An `object` with virtual methods: in TP its bytes start with a pointer
-  to the type's method table, which PascRust doesn't model.
+- An `object` with a constructor, destructor or virtual method:
+  `to-json` skips its VMT field, but `from-json` refuses it. TP stored
+  there the address of the type's table of virtual methods in the program
+  that wrote the file, which PascRust can't know, and a wrong one would
+  crash the TP program at its next virtual call.
 - An enumeration value past the type's last one: an error naming the
   record and field, since it has no name.

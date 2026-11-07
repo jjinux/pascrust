@@ -47,11 +47,6 @@ pub fn value(analysis: &Analysis, ty: &Type, bytes: &[u8], path: &str) -> Result
         }
         Type::Record(record) => Value::Object(self::record(analysis, record, bytes, path)?),
         Type::Object(object) => {
-            if has_virtual_methods(analysis, object) {
-                return Err(format!(
-                    "{path} is an object with virtual methods, whose bytes in TP start with a pointer PascRust doesn't know"
-                ));
-            }
             let mut map = Map::new();
             self::object(analysis, object, bytes, path, &mut map)?;
             Value::Object(map)
@@ -196,6 +191,8 @@ fn ordinal(ty: &Type, bytes: &[u8]) -> i64 {
 }
 
 /// An object's fields: its parent's first, then its own, as TP lays it out.
+/// TP's hidden VMT field, if this type adds it, comes after them, so there's
+/// nothing more to read: `tp_size` counts its 2 bytes.
 fn object(
     analysis: &Analysis,
     object: &ObjectType,
@@ -215,21 +212,6 @@ fn object(
         offset += size;
     }
     Ok(())
-}
-
-/// Does the object type, or one it inherits from, have virtual methods?
-pub fn has_virtual_methods(analysis: &Analysis, object: &ObjectType) -> bool {
-    analysis.virtuals.iter().any(|&pid| {
-        let Some((owner, _)) = &analysis.procs[pid].self_param else { return false };
-        let mut ancestor = Some(object);
-        while let Some(o) = ancestor {
-            if **owner == *o {
-                return true;
-            }
-            ancestor = o.parent.as_deref();
-        }
-        false
-    })
 }
 
 #[cfg(test)]

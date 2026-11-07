@@ -197,3 +197,26 @@ fn more_kinds_of_files() {
     let tiny = bytes("tests/json/more.pas", "tiny.json", "[1e-39]", Some("Real")).unwrap_err();
     assert!(tiny.contains("too small for a Real"), "{tiny}");
 }
+
+/// An object with a constructor or virtual method has TP's 2-byte VMT field
+/// after the fields of the first type in its line to need one: `to-json`
+/// skips it, `from-json` refuses it (it can't know the address TP put there).
+#[test]
+fn objects_with_a_vmt_field() {
+    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("json_vmt");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let source = "program Shapes;\ntype\n   TShape = object\n      X, Y: Integer;\n      constructor Init;\n      \
+                  procedure Draw; virtual;\n   end;\n   TCircle = object(TShape)\n      R: Integer;\n   end;\n\
+                  constructor TShape.Init;\nbegin\nend;\n\nprocedure TShape.Draw;\nbegin\nend;\n\n\
+                  var\n   F: file of TCircle;\nbegin\nend.\n";
+    std::fs::write(scratch.join("shapes.pas"), source).unwrap();
+    // X = 1, Y = 2, the VMT field (an address in TP's data segment), R = 3.
+    std::fs::write(scratch.join("shapes.dat"), [1, 0, 2, 0, 0x34, 0x12, 3, 0]).unwrap();
+    let text = to_json(&scratch.join("shapes.pas"), &scratch.join("shapes.dat"), None, &Options::default()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(value, serde_json::json!([{"X": 1, "Y": 2, "R": 3}]));
+    std::fs::write(scratch.join("shapes.json"), &text).unwrap();
+    let refused =
+        from_json(&scratch.join("shapes.pas"), &scratch.join("shapes.json"), None, &Options::default()).unwrap_err();
+    assert!(refused.contains("[0] is an object with a constructor, destructor or virtual methods"), "{refused}");
+}

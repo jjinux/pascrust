@@ -817,7 +817,9 @@ impl Checker {
                 resolved.push(Field { name: n.name.clone(), rust_name, ty: ty.clone() });
             }
         }
-        let object = Rc::new(ObjectType { rust_name: rust_name.clone(), parent, fields: resolved });
+        let needs_vmt = methods.iter().any(|m| m.is_virtual || m.role != MethodRole::Plain);
+        let adds_vmt = needs_vmt && !parent.as_ref().is_some_and(|p| p.has_vmt());
+        let object = Rc::new(ObjectType { rust_name: rust_name.clone(), parent, fields: resolved, adds_vmt });
         let ty = Type::Object(object.clone());
         // Bind the type's name before looking at the methods, whose
         // parameters may mention the type itself.

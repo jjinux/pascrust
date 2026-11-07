@@ -711,6 +711,23 @@ macro_rules! file_record {
         $( $value.$field = $crate::file_record!(@decode $input $(, $kind $size $(from $first)?)?); )*
         $( $crate::file_record!(@decode_case $value, $input, $($nested)*); )?
     };
+    // An object with Turbo Pascal's hidden VMT field after its fields (see
+    // `vmt` below): the fields, then the field's 2 bytes. TP wrote the
+    // address of the object type's table of virtual methods there, which
+    // means nothing to PascRust, so reading skips it and writing puts zeros.
+    ($ty:ident { $($field:ident $(: $kind:ident $size:literal $(from $first:literal)?)?),* ; vmt }) => {
+        impl $crate::io::FileRecord for $ty {
+            fn encode(&self, out: &mut ::std::vec::Vec<u8>) {
+                $( $crate::file_record!(@encode self.$field, out $(, $kind $size $(from $first)?)?); )*
+                out.extend_from_slice(&[0, 0]);
+            }
+            fn decode(input: &mut &[u8]) -> Self {
+                let value = $ty { $( $field: $crate::file_record!(@decode input $(, $kind $size $(from $first)?)?), )* };
+                *input = &input[2.min(input.len())..];
+                value
+            }
+        }
+    };
     ($ty:ident { $($field:ident $(: $kind:ident $size:literal $(from $first:literal)?)?),* $(,)? }) => {
         impl $crate::io::FileRecord for $ty {
             fn encode(&self, out: &mut ::std::vec::Vec<u8>) {

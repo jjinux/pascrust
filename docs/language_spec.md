@@ -133,7 +133,8 @@ Built-ins (System unit)
   `Random`, `Random(n)`, `Randomize` (the same sequence as TP; see
   References), `MaxInt`, `MaxLongInt`
 - `SizeOf` (TP's sizes: `Real` is 6 bytes, `string[n]` n+1, records
-  unpadded), `High`/`Low` (arrays, strings, ordinal types), all three
+  unpadded, objects with TP's 2-byte VMT field when they have a
+  constructor, destructor or virtual method), `High`/`Low` (arrays, strings, ordinal types), all three
   constants; `Swap` (TP 7 documents "X is an expression of type Integer
   or Word; result type same as parameter". As TP's compiler and Free
   Pascal do, a Byte swaps as a Word and a ShortInt as an Integer; a
@@ -311,7 +312,9 @@ Files
   `Seek`, `FilePos`, `FileSize`, `Eof`, `Erase`, `Truncate`; records are
   stored in Turbo Pascal's own layout, the size `SizeOf` gives: a
   `string[n]` takes n+1 bytes, a `Real` TP's 6-byte format, a set of an
-  enum or Boolean as few bytes as its values need, so files written by TP
+  enum or Boolean as few bytes as its values need, an object with a
+  constructor, destructor or virtual method TP's 2-byte VMT field after
+  the fields of the type that adds it (read past, written as zeros), so files written by TP
   programs (`examples/database/mark.dat`) can be read
 - File variables inside records and objects; `var` file parameters
 - `Input` / `Output` as explicit file arguments

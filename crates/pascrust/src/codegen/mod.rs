@@ -1130,7 +1130,9 @@ impl<'a> Codegen<'a> {
             Type::Object(o) => {
                 let mut fields: Vec<String> = o.parent.iter().map(|_| "base".to_string()).collect();
                 fields.extend(o.fields.iter().map(file_record_field));
-                self.line(format!("file_record!({} {{ {} }});", o.rust_name, fields.join(", ")));
+                // TP's hidden VMT field follows the fields of the type that adds it.
+                let vmt = if o.adds_vmt { "; vmt" } else { "" };
+                self.line(format!("file_record!({} {{ {}{vmt} }});", o.rust_name, fields.join(", ")));
             }
             _ => {}
         }

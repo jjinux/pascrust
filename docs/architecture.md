@@ -848,6 +848,15 @@ methods are supported too (below).
   table pointer along with the fields, so its copy kept calling the
   descendant's virtual methods on fields it didn't have; ours acts as the
   ancestor it now is.)
+- TP's hidden VMT field (2 bytes, the address of the type's table of
+  virtual methods) has no Rust field: a trait does its job. It exists only
+  in TP's layout, where `SizeOf` and `file of` need it to match TP's files.
+  As the TP 7 Language Guide describes and Free Pascal agrees, an object
+  type with a constructor, destructor or virtual method gets one, right
+  after its own fields, unless an ancestor already has one; descendants'
+  fields come after it. Sema marks that type (`ObjectType::adds_vmt`);
+  `tp_size` counts the 2 bytes, and `file_record!(T { x, y; vmt })` reads
+  past them and writes zeros.
 - Objects declared as variables and never "created" (`var Board: BoardType;
   Board.Create;`) are `let mut board = BoardType::default();` followed by
   `board.create();`, which is exactly what TP does.
