@@ -7,9 +7,9 @@ Ruscal
 
 Ruscal is a fairly-complete and well-tested Turbo Pascal to Rust
 transpiler, so that you can more easily run your old Turbo Pascal programs
-on modern computers. It writes a small Cargo project for each program, so
-you can build and run your old Pascal code natively, and read the Rust it
-turned into.
+on modern computers.
+
+It writes a small Cargo project for each program.
 
  * You can transpile your Turbo Pascal code to Rust once and then edit the Rust going forward.
  * You can continue editing the Turbo Pascal code and transpile it every time.
