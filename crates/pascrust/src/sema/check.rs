@@ -3823,6 +3823,17 @@ impl Checker {
                 match self.type_query(b, &args[0]) {
                     Some((value, ty)) => {
                         self.a.folded.insert(e.id, value);
+                        // Codegen writes `High(a)` as `a.high()`, so it needs
+                        // the name (and a nested procedure needs the variable).
+                        if b != SizeOf
+                            && let ExprKind::Name(id) = &args[0].kind
+                            && let Some(Resolved::Sym(sym)) = self.resolve(&id.key())
+                        {
+                            self.a.refs.insert(args[0].id, sym);
+                            if let SymKind::Var(_) = self.a.symbols[sym].kind {
+                                self.use_var(sym, false);
+                            }
+                        }
                         ty
                     }
                     None => {

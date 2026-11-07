@@ -296,7 +296,14 @@ fits it (sema recorded them all), and otherwise in `i32`, cut down with
 there). A literal-only one that doesn't fit is its value
 (`30000 + 30000 - 40000` in an Integer is `20000`), and a constant
 declaration that can't be written as an expression (`Chr(Ord('A') + K)`)
-is its value with the Pascal in a comment. Where Rust takes only a
+is its value with the Pascal in a comment. An `Inc`/`Dec` step that names
+a constant keeps it (`Dec(i, Neg)` is `i -= NEG`, `Dec(b, -K)` is
+`b += K as u8`), cut down with `as` when it doesn't fit, with a comment
+(`b += BIG as u8`, "300 is 44 in Byte arithmetic"); under `{$Q+}` a
+negative one on a Byte or Word is added in a wider type, as a variable
+step is. `High`/`Low` of an array with an integer index are its bounds,
+`a.high()` or `TArr::HIGH` (`PArray`'s), so they follow the declaration;
+`High(Integer)` stays `32767`, as no name is lost. Where Rust takes only a
 pattern, a constant's name is one (`case c of Esc:` is `ESC =>`, and a
 Byte compared with Integer constants is widened, `match i16::from(b)`); a
 set element worked out from a constant isn't, so `i in [K + 1..K * 2]`

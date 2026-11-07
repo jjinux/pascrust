@@ -27,6 +27,21 @@ impl<T, const LO: i64, const N: usize> PArray<T, LO, N> {
         PArray(elements)
     }
 
+    /// Pascal `Low(TArr)`, the first index: `TArr::LOW`.
+    pub const LOW: i64 = LO;
+    /// Pascal `High(TArr)`, the last index: `TArr::HIGH`.
+    pub const HIGH: i64 = LO + N as i64 - 1;
+
+    /// Pascal `Low(a)`, the first index.
+    pub const fn low(&self) -> i64 {
+        Self::LOW
+    }
+
+    /// Pascal `High(a)`, the last index.
+    pub const fn high(&self) -> i64 {
+        Self::HIGH
+    }
+
     /// Turn a Pascal index into a Rust index, or raise runtime error 201,
     /// Turbo Pascal's "Range check error".
     fn offset(index: i64) -> usize {

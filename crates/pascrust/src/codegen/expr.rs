@@ -118,6 +118,9 @@ impl<'a> Codegen<'a> {
                 }
             }
         }
+        if let Some(code) = self.array_bound(e) {
+            return code;
+        }
         if let Some(value) = self.a.folded.get(&e.id) {
             let ty = self.a.type_of(e.id).clone();
             // A folded `Hi(-1)` is a Byte: `255_u8`, so it converts like one.
@@ -443,6 +446,50 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// `High(a)` or `Low(a)` of an array with an integer index: the
+    /// array's bound, `a.high()` (or `TArr::HIGH` for a type), so it
+    /// follows the array's declaration rather than being a number.
+    fn array_bound(&mut self, e: &Expr) -> Option<Code> {
+        let ExprKind::Call { callee, args } = &e.kind else { return None };
+        let [arg] = args.as_slice() else { return None };
+        let high = match self.a.sym(*self.a.refs.get(&callee.id)?).kind {
+            SymKind::Builtin(Builtin::High) => true,
+            SymKind::Builtin(Builtin::Low) => false,
+            _ => return None,
+        };
+        // (Sema answered `High` without checking its argument as a value,
+        // so the argument's type comes from its name: a variable's or a
+        // type's.)
+        let ExprKind::Name(_) = arg.kind else { return None };
+        let sym = self.a.sym(*self.a.refs.get(&arg.id)?);
+        let (arg_ty, type_name) = match &sym.kind {
+            SymKind::TypeName(ty) => (ty.concrete(), Some(sym.rust_name.clone())),
+            SymKind::Var(v) => (v.ty.concrete(), None),
+            _ => return None,
+        };
+        let Type::Array(array) = &arg_ty else { return None };
+        if !array.index.is_integer() {
+            return None;
+        }
+        Some(match type_name {
+            Some(name) => (format!("{name}::{}", if high { "HIGH" } else { "LOW" }), prec::POSTFIX),
+            None => {
+                let base = self.selector_base(arg);
+                (format!("{base}.{}()", if high { "high" } else { "low" }), prec::POSTFIX)
+            }
+        })
+    }
+
+    /// Does `e` use `High` or `Low` of an array ([`Self::array_bound`])?
+    fn uses_array_bound(&mut self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Call { .. } => self.array_bound(e).is_some(),
+            ExprKind::Unary { operand, .. } => self.uses_array_bound(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.uses_array_bound(lhs) || self.uses_array_bound(rhs),
+            _ => false,
+        }
+    }
+
     /// Does `e` use a named constant (`K`, `MaxInt`)? Then the Rust should
     /// say so, rather than write the value it comes to. (An enum value or
     /// `True` is like a literal.)
@@ -572,6 +619,17 @@ impl<'a> Codegen<'a> {
             };
             let part = format!("{base}{}", ".base".repeat(depth));
             return if to.is_copy() { (part, prec::POSTFIX) } else { (format!("{part}.clone()"), prec::POSTFIX) };
+        }
+        // `High(a)` (an `i64`) in an integer context: `a.high() as i16`. Also
+        // a sum of them, `High(a) - Low(a) + 1`, typed like a literal.
+        // (Not inside such a sum, whose parts are typed like literals: the
+        // sum is cut down once.)
+        if !matches!(to, Type::IntLit(_))
+            && let Type::Int(kind) = to.concrete()
+            && (self.array_bound(e).is_some() || matches!(from, Type::IntLit(_)) && self.uses_array_bound(e))
+        {
+            let code = self.expr(e);
+            return (format!("{} as {}", paren(code, prec::AS), kind.rust()), prec::AS);
         }
         // An integer constant expression: worked out as TP does (in 32
         // bits), keeping its constants' names (see `const_expr`); one of

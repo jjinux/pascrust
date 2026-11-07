@@ -124,7 +124,7 @@ fn pascal_main() {
     check(&mut checks, &mut failures, 40 == 40, pstr("SizeOf(Grid)"));
     check(&mut checks, &mut failures, GRID_BYTES == 40, pstr("SizeOf in a constant"));
     check(&mut checks, &mut failures, 4 == 4, pstr("SizeOf(pointer)"));
-    check(&mut checks, &mut failures, 4 == 4, pstr("High(array)"));
+    check(&mut checks, &mut failures, g.high() as i16 == 4, pstr("High(array)"));
     check(&mut checks, &mut failures, b'a' == b'a', pstr("Low(array of char index)"));
     check(&mut checks, &mut failures, b'z' == b'z', pstr("High(array of char index)"));
     check(&mut checks, &mut failures, Color::Blue == Color::Blue, pstr("High(enum-indexed array)"));
@@ -135,7 +135,7 @@ fn pascal_main() {
     check(&mut checks, &mut failures, b'\xff' == b'\xff', pstr("High(Char)"));
     check(&mut checks, &mut failures, true, pstr("High(Boolean)"));
     check(&mut checks, &mut failures, 9 == 9, pstr("High(subrange)"));
-    check(&mut checks, &mut failures, 9 == 9, pstr("array bound from High"));
+    check(&mut checks, &mut failures, small.high() as i16 == 9, pstr("array bound from High"));
     check(&mut checks, &mut failures, 10 == 10 && 1 == 1, pstr("High and Low of a subrange variable"));
     check(&mut checks, &mut failures, 5 == 5 && -5 == -5, pstr("High and Low of a negative subrange variable"));
     check(&mut checks, &mut failures, 9 == 9, pstr("High of a variable of a subrange type"));

@@ -258,7 +258,45 @@ impl<'a> Codegen<'a> {
                     Type::Int(kind) => kind.contains(n),
                     _ => (0..=255).contains(&n),
                 };
+                // A step that names a constant (`Inc(b, Big)`) keeps the name:
+                // it's converted to the target's type with `as`, which keeps
+                // the low bits as TP does, rather than worked out here.
+                let named = args.get(1).is_some_and(|step| self.names_constant(step));
+                // `Dec(b, -K)` turns round with the name: `b += K`.
+                let negated = match args.get(1).map(|step| &step.kind) {
+                    Some(ExprKind::Unary { op: UnaryOp::Neg, operand })
+                        if named && number.is_some_and(|n| n < 0 && in_range(-n)) =>
+                    {
+                        Some(operand.as_ref())
+                    }
+                    _ => None,
+                };
+                if let (true, None, Some(n), Some(step)) = (named, negated, number, args.get(1))
+                    && !in_range(n)
+                {
+                    let checked = matches!(target_ty.concrete(), Type::Int(_)) && self.overflow_checked_at(span);
+                    if n < 0 && in_range(-n) && checked {
+                        // (`{$Q+}` on a Byte: `checked_sub(NEG as u8)` would
+                        // call -3 an overflow; it's added in a wider type,
+                        // as a variable step is.)
+                        number = None;
+                    } else {
+                        let amount = self.coerce(step, &target_ty).0;
+                        let wrapped = n & ((1_i64 << bits) - 1);
+                        let wrapped = if matches!(target_ty.concrete(), Type::Int(kind) if kind.contains(-1))
+                            && wrapped >= 1 << (bits - 1)
+                        {
+                            wrapped - (1 << bits)
+                        } else {
+                            wrapped
+                        };
+                        self.pending.push(format!(
+                            "// `{amount}` keeps the low bits: {n} is {wrapped} in {target_ty} arithmetic, as in Turbo Pascal."
+                        ));
+                    }
+                }
                 if let Some(n) = number
+                    && !named
                     && !in_range(n)
                     && !(n < 0 && in_range(-n))
                 {
@@ -284,15 +322,16 @@ impl<'a> Codegen<'a> {
                 // A negative step goes the other way: `Dec(b, -1)` is `b += 1`.
                 // (Not if the type can't hold the step turned round:
                 // `Inc(i, -32768)` stays `i += -32768`.)
-                let flip = number.is_some_and(|n| n < 0 && in_range(-n));
+                let flip = negated.is_some() || !named && number.is_some_and(|n| n < 0 && in_range(-n));
                 let up = (b == Inc) != flip;
                 // A step that wraps or turns round is written as its value;
                 // otherwise as written (`K` stays `K`, `2 + 3` too).
                 let amount = match (args.get(1), number) {
+                    _ if let Some(operand) = negated => self.coerce(operand, &target_ty).0,
                     (Some(_), Some(n)) if flip => (-n).to_string(),
                     (Some(_), Some(n)) if wraps => n.to_string(),
                     // (A literal needs no conversion, even into a `Char`.)
-                    (Some(step), Some(n)) if matches!(step.kind, ExprKind::Int(_)) => n.to_string(),
+                    (Some(step), Some(n)) if !named && matches!(step.kind, ExprKind::Int(_)) => n.to_string(),
                     (Some(n), _) => self.coerce(n, &target_ty).0,
                     (None, _) => "1".to_string(),
                 };

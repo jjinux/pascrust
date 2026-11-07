@@ -126,7 +126,7 @@ fn pascal_main() {
     );
     // A constant step that's negative turns round, as -5 does: up by 5.
     b = 250;
-    b = b.checked_add(5).unwrap_or_else(overflow);
+    b = b.checked_add(K as u8).unwrap_or_else(overflow);
     {
         let updated = p.get().n.checked_add(K).unwrap_or_else(overflow);
         p.get_mut().n = updated;
