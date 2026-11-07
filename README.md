@@ -62,7 +62,7 @@ Or install the tools once with `cargo install --path crates/ruscal`, which
 puts `ruscal` and `tpc` (below) on your `PATH`, and use
 `ruscal run foo.pas`.
 
-### Examples
+## Examples
 
 `examples/` holds the Turbo Pascal programs this project was built to run,
 written in 1996-97.
@@ -113,7 +113,7 @@ cargo run --manifest-path examples/ruscal/rust_calls_pascal/Cargo.toml
 The environment variable goes before `cargo`, so it applies to the whole
 command (and to the program it runs).
 
-### Formatting Pascal sources: `ruscal fmt`
+## Formatting Pascal sources: `ruscal fmt`
 
 `fmt` tidies up old sources without changing what they mean. It re-indents
 by the block structure (3 spaces a level, with a routine's `var` section,
@@ -133,7 +133,7 @@ cargo run -p ruscal -- fmt examples/database/*.pas
 cargo run -p ruscal -- fmt --check examples/*.pas examples/*/*.pas
 ```
 
-### Data files as JSON: `ruscal to-json` and `from-json`
+## Data files as JSON: `ruscal to-json` and `from-json`
 
 A typed file (`file of T`) written by a Turbo Pascal program is just its
 records' bytes. `to-json` reads them as a type the Pascal source declares,
@@ -149,7 +149,7 @@ cargo run -p ruscal -- to-json tests/json/records.pas tests/json/items.dat --typ
 cargo run -p ruscal -- from-json tests/json/records.pas items.json --type Item -o items.dat
 ```
 
-### A Turbo Pascal style compiler: `tpc`
+## A Turbo Pascal style compiler: `tpc`
 
 `tpc` takes the command line of Turbo Pascal's `TPC.EXE`, so old build
 scripts and habits carry over. `tpc game` compiles `game.pas` (the extension
@@ -183,7 +183,7 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 `Graph` programs open a 640x480 window, and keys typed into it go to
 `ReadKey`.
 
-### Environment variables
+## Environment variables
 
 | Variable | Effect |
 | --- | --- |
@@ -194,7 +194,7 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
 | `RUSCAL_DRIVE_C=/some/dir` | Where the DOS drive `C:` lives for file names like `C:\DATA\X.DAT`. Without it, `C:` is the file system's root, `/`, so `C:\DATA\X.DAT` is `/DATA/X.DAT` and `GetDir` shows where you really are. Any other drive letter (`RUSCAL_DRIVE_A=/Volumes/USB` for a stick standing in for a floppy) exists only if you set it; a file name on an unset drive isn't found. Names match files on disk ignoring case, `A:X` is relative to the current directory when `ChDir` went somewhere on drive A, and `..` stops at the drive's root, as in DOS. A file name without a drive is relative to the current directory. |
 | `RUSCAL_PRINTER=...` | Where the `Printer` unit's `Lst` prints: a file name (default `printer.txt`), or `\|command` to pipe to a command such as `\|lp`. See [Printing](docs/printing.md). |
 
-### More documentation
+## More documentation
 
 - [Language spec](docs/language_spec.md): exactly which Turbo Pascal
   constructs are supported, and how closely.
@@ -223,7 +223,7 @@ file. The standard units `Crt`, `Dos` and `Graph` are built into the runtime.
   [PRTurtle](docs/pr_turtle.md), turtle graphics on top of `Graph`, with
   Turbo Pascal 3.0's turtle routines ([an example](examples/ruscal/turtles.pas)).
 
-### What's supported
+## What's supported
 
 Most of Turbo Pascal 5.5/6.0 as students used it: the usual types, strings,
 arrays, records (variant records too), enums, sets, pointers, procedural
