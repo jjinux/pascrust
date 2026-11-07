@@ -27,6 +27,7 @@ Turbo Pascal. These need you; tell Claude what you find, and it fixes it.
   - [ ] `type Small = 0..10; const X = Small(300);`: an error, or 44 (PascRust)?
   - [ ] Graph: does `SetBkColor` use the current `SetPalette` entry? Do XOR-mode rectangles lose their corners?
 - [ ] Read README.md and docs/ as a newcomer would, and say what's confusing or missing.
+- [ ] Consider renaming PascRust to "Rustcal", which Julie suggested (2026-11-06).
 - [ ] Announce PascRust to the Pascal community (the user, 2026-11-06: theirs to do): find which Pascal compiler projects are still alive (Free Pascal, Lazarus, and others), their mailing lists or forums and what each allows for announcements, and send a short announcement to each (what PascRust is, that it's MIT, a link to the repository). Claude can help draft them if asked.
 
 ## Original TODOs
