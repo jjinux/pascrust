@@ -302,7 +302,7 @@ Last: raw bytes and C strings
   - [x] `array[-K..-1]` read `(-1 + K + 1)`; it's `K` (and `array[K..10]` is `11 - K`).
   - [x] A method called on a typecast untyped parameter (`TCounter(Data).Bump`) ran on a copy, so its changes were lost (and `let mut data` drew an `unused_mut` warning); it runs on a view written back after the call.
   - [x] `notes/file_json.md` still said `to-json` refuses objects with virtual methods.
-  - [ ] Question for the user: `High(a)`/`Low(a)` of `a: array[Boolean] of Integer` print `1`/`0` (TP: TRUE/FALSE), and `for b := False to True` (or `Low(a) to High(a)`) doesn't compile (`false..=true` isn't a Rust iterator). Rare in real programs: fix, or document?
+  - [x] PUNT: `High(a)`/`Low(a)` of `a: array[Boolean] of Integer` print `1`/`0` (TP: TRUE/FALSE), and `for b := False to True` (or `Low(a) to High(a)`) doesn't compile (`false..=true` isn't a Rust iterator). Rare in real programs: fix, or document? The user (2026-11-07): punt; no fix or docs needed.
   - [ ] Question for the user: `SizeOf` of a subrange of an enum of more than 256 values (`V10..V20`): PascRust says 2 (the host enum's), FPC -Mtp says 1 (the bounds fit a byte). What TP 7 does is unknown; it matters for such a field in a typed file.
 - [ ] Findings of review batch S (721ee55..d0b1780):
   - [x] A `for` loop over `Low(a)..High(a)` (or a subrange's, or `Low(Integer)`) whose variable is used only in the loop didn't compile: the type suffix went on `a.low() as i16` (`i16_i16`). It goes only on a bare number now.
