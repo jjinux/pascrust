@@ -207,7 +207,12 @@ impl Checker {
     }
 
     fn error(&mut self, span: Span, message: impl Into<String>) {
-        self.errors.push(Diagnostic::new(span, message));
+        let diagnostic = Diagnostic::new(span, message);
+        // A type declaration is checked more than once (when it's declared
+        // and again where it's used), so the same error can come twice.
+        if !self.errors.iter().any(|d| d.span == diagnostic.span && d.message == diagnostic.message) {
+            self.errors.push(diagnostic);
+        }
     }
 
     fn cur(&self) -> ProcId {
@@ -1000,10 +1005,16 @@ impl Checker {
             TypeExpr::String(None, _) => Type::Str { cap: 255 },
             TypeExpr::String(Some(len), span) => match self.eval_const(len) {
                 Some(ConstVal::Int(n)) if (1..=255).contains(&n) => Type::Str { cap: n as u8 },
-                _ => {
-                    self.error(*span, "a string's maximum length must be a constant from 1 to 255");
-                    Type::Error
-                }
+                _ => match self.division_by_zero(len) {
+                    Some(at) => {
+                        self.error(at, "division by zero");
+                        Type::Error
+                    }
+                    None => {
+                        self.error(*span, "a string's maximum length must be a constant from 1 to 255");
+                        Type::Error
+                    }
+                },
             },
             // A subrange variable is stored as its host type; the bounds only
             // matter when the subrange is used as an array index.
@@ -1248,7 +1259,9 @@ impl Checker {
                     Some(ConstVal::Bool(b)) => b as i64,
                     Some(ConstVal::Str(bytes)) if bytes.len() == 1 => bytes[0] as i64,
                     _ => {
-                        self.error(label.span, "a variant's labels must be constants");
+                        if self.division_by_zero(label).is_none() {
+                            self.error(label.span, "a variant's labels must be constants");
+                        }
                         continue;
                     }
                 };
@@ -1324,7 +1337,10 @@ impl Checker {
         let lo_ty = self.expr(lo);
         self.expr(hi);
         let (Some(ConstVal::Int(l)), Some(ConstVal::Int(h))) = (self.ordinal_const(lo), self.ordinal_const(hi)) else {
-            self.error(*span, "subrange bounds must be ordinal constants");
+            // (A division by a constant 0 was reported by `expr` already.)
+            if self.division_by_zero(lo).is_none() && self.division_by_zero(hi).is_none() {
+                self.error(*span, "subrange bounds must be ordinal constants");
+            }
             return None;
         };
         if l > h {
@@ -1682,7 +1698,7 @@ impl Checker {
                                     _ => None,
                                 });
                                 self.a.case_labels.insert(e.id, value);
-                            } else {
+                            } else if self.division_by_zero(e).is_none() {
                                 self.error(e.span, "`case` labels must be constants");
                             }
                             if !ty.accepts(&label_ty) {

@@ -255,8 +255,10 @@ comes back as an `Err` like any runtime error.
 
 Division: `/` always produces `f64` (codegen casts both operands); `div` and
 `mod` map to Rust `/` and `%`, whose truncating semantics match TP exactly.
-Division by zero is a Rust panic, which becomes Pascal runtime error 200
-(§17).
+Integer division by zero is a Rust panic, which becomes Pascal runtime
+error 200 (§17); `div` or `mod` by a constant 0 (`5 div 0`, `n mod Z`) is a
+compile error, as in TP (sema's `division_by_zero`, which also keeps a
+"must be a constant" error from following it).
 
 ## 8. Strings: `PString`, a 256-byte value type
 

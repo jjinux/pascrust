@@ -48,7 +48,8 @@ Program structure
   `Dec` stop with runtime error 215 when the result doesn't fit its type
   (`i.checked_add(1).unwrap_or_else(overflow)`); elsewhere they wrap, as in
   TP's default `{$Q-}`. A constant expression (`2 + 3`, `C * 2`) is never
-  checked: TP works it out when it compiles. `Inc(b, s)` with a variable
+  checked: TP works it out when it compiles. (`div` or `mod` by a
+  constant 0 is a compile error, as in TP.) `Inc(b, s)` with a variable
   step of a type the target can't hold (a ShortInt into a Byte) adds the
   two as numbers: 10 + -5 is 5, and only a result out of range is an
   error. The others are parsed and ignored, with a warning
@@ -112,6 +113,8 @@ Statements
   equal (300 for a `Byte`, a range like `5..1`) is an error
 - Procedure calls; `Exit`; `Halt` / `Halt(n)`
 - Value and `var` parameters; passing arrays, records and strings both ways.
+  A parameter's or result's type is a type's name, as in TP: `p: ^Node`
+  is an error that says to declare `PNode = ^Node` and use that.
   Different fields of one record may be passed as two `var` arguments
   (`Init(p.x, p.y)`, also through a pointer: `q^.x, q^.y`,
   `arr[i]^.x, arr[i]^.y`, `q^.a[1], q^.y`); the same place
