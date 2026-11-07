@@ -294,7 +294,16 @@ Graph, the rest
 
 Last: raw bytes and C strings
 - [x] PUNT: From the Fable review of 8172e5e..afba062, left for later: a pointer chain that comes back to the same record (`p^.next^.next^.x := ... * 2` with a cycle) panics with error 204 on the write (the place keeps every pointer on the path borrowed; clone the last handle first, as `with p^` does). (Not worth chasing, the user says: `Val`'s error positions differ from Free Pascal's by one for a too-long number into a Byte or Word and for `'1e'`.) TP 7 may have wrapped `MinLongInt div -1` (its LongInt division is a software routine) where PascRust gives error 200.
-- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to d0b1780 (batches A-S). Not yet reviewed: `d0b1780..HEAD`. Keep this range up to date.
+- [ ] Fable code reviews: resumed (the user, 2026-10-30). Reviewed: everything up to f29ca45 (batches A-T). Not yet reviewed: `f29ca45..HEAD`. Keep this range up to date.
+- [ ] Findings of review batch T (d0b1780..f29ca45):
+  - [x] An object's field as an untyped argument (`Move(C.R, W, 2)`, `BlockWrite(f, C.R, 2)`) started at the object's first byte: only records' field offsets were counted. Objects have `ObjectType::field_offset` now (the parent's part, with its VMT field, first).
+  - [x] `for i := 1 to p^.Count` (a bound read through a pointer) with a body that changes `p^` was runtime error 204: Rust keeps the range's `p.get()` borrowed for the whole loop. Batch S's `Low(p^.Items)..High(p^.Items)` bounds hit it too. Such a bound goes into a `let` before the loop now (TP works out the bounds once anyway).
+  - [x] `const TopLet = High(Letter)` (a Char subrange) and `High(Char)` were Integer constants (`WriteLn` printed 122, `c := TopLet` was an error); they're Chars (`b'z'`, `u8::MAX`). `const TopW = High(Word)` is a Word (`u16::MAX`), not `i32 = 65535`, likewise `High(Byte)`, `Low(ShortInt)`.
+  - [x] `array[-K..-1]` read `(-1 + K + 1)`; it's `K` (and `array[K..10]` is `11 - K`).
+  - [x] A method called on a typecast untyped parameter (`TCounter(Data).Bump`) ran on a copy, so its changes were lost (and `let mut data` drew an `unused_mut` warning); it runs on a view written back after the call.
+  - [x] `notes/file_json.md` still said `to-json` refuses objects with virtual methods.
+  - [ ] Question for the user: `High(a)`/`Low(a)` of `a: array[Boolean] of Integer` print `1`/`0` (TP: TRUE/FALSE), and `for b := False to True` (or `Low(a) to High(a)`) doesn't compile (`false..=true` isn't a Rust iterator). Rare in real programs: fix, or document?
+  - [ ] Question for the user: `SizeOf` of a subrange of an enum of more than 256 values (`V10..V20`): PascRust says 2 (the host enum's), FPC -Mtp says 1 (the bounds fit a byte). What TP 7 does is unknown; it matters for such a field in a typed file.
 - [ ] Findings of review batch S (721ee55..d0b1780):
   - [x] A `for` loop over `Low(a)..High(a)` (or a subrange's, or `Low(Integer)`) whose variable is used only in the loop didn't compile: the type suffix went on `a.low() as i16` (`i16_i16`). It goes only on a bare number now.
   - [x] A constant expression that doesn't fit its operands' type (`C + 1`, `C = 32767`) was cut back to an Integer (-32768); TP types it by its value, a LongInt, and so the arithmetic around it: `i * (C + 1)` is 98304 for `i = 3`.

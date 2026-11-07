@@ -454,6 +454,17 @@ impl ObjectType {
         self.fields.iter().all(|f| f.ty.is_copy()) && self.parent.as_ref().is_none_or(|p| p.is_copy())
     }
 
+    /// Where field `name` (own or inherited) starts in the object's bytes,
+    /// as TP laid it out: the parent's part (with its VMT field, if any)
+    /// comes first, then this type's own fields, then its VMT field.
+    pub fn field_offset(&self, name: &str) -> i64 {
+        let inherited = self.parent.as_ref().map_or(0, |p| tp_size(&Type::Object(p.clone())).unwrap_or(0));
+        match self.fields.iter().position(|f| f.name.eq_ignore_ascii_case(name)) {
+            Some(index) => inherited + self.fields[..index].iter().map(|f| tp_size(&f.ty).unwrap_or(0)).sum::<i64>(),
+            None => self.parent.as_ref().map_or(0, |p| p.field_offset(name)),
+        }
+    }
+
     /// Does this type, or one it inherits from, have TP's VMT field?
     pub fn has_vmt(&self) -> bool {
         self.adds_vmt || self.parent.as_ref().is_some_and(|p| p.has_vmt())

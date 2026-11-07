@@ -1392,8 +1392,10 @@ impl<'a> Codegen<'a> {
                     node = base;
                 }
                 ExprKind::Field(base, field) => {
-                    if let Type::Record(r) = self.a.type_of(base.id) {
-                        constant += r.field_offset(&field.name);
+                    match self.a.type_of(base.id) {
+                        Type::Record(r) => constant += r.field_offset(&field.name),
+                        Type::Object(o) => constant += o.field_offset(&field.name),
+                        _ => {}
                     }
                     node = base;
                 }
@@ -1702,6 +1704,9 @@ impl<'a> Codegen<'a> {
                 // The method takes `&mut self`, so borrow a record behind a
                 // pointer mutably.
                 _ => {
+                    // A method of a typecast untyped parameter (`TCircle(Data).Draw`)
+                    // runs on a view that's written back after the call.
+                    self.view_for_place(callee);
                     let saved = std::mem::replace(&mut self.mutable_place, true);
                     let code = self.selector_base(receiver);
                     self.mutable_place = saved;

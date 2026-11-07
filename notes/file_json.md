@@ -67,8 +67,8 @@ Pascal, variant fields included, so an object never repeats a key.
 
 - `Text` and `file` fields (a file variable inside a record holds an
   OS handle: meaningless on disk).
-- `object` types (they can't be in a typed file in TP if they have
-  virtual methods, and a plain one is rare; can come later).
+- `object` types (a plain one is rare; can come later). (Since done:
+  see item 9 below.)
 - `Single`, `Double`, `Extended`, `Comp`: PascRust maps them all to `Real`
   (6 bytes on disk), so a file written by the real TP with a `Double`
   field (8 bytes) doesn't read correctly, neither by a translated program
@@ -173,9 +173,11 @@ plan:
 8. **Nested variant parts**: the layout recurses (`VariantPart::offset_of`
    in a tagless part; in a tagged part, the active variant's fields, then
    its own nested tag and active variant).
-9. **Objects without virtual methods** are supported like records (parent
-   fields first, as `file_record!` does); with virtual methods, an error
-   (TP has a hidden VMT word PascRust doesn't model).
+9. **Objects** are supported like records (parent fields first, as
+   `file_record!` does). One with a constructor, destructor or virtual
+   method has TP's hidden 2-byte VMT field after the fields of the first
+   type in its line to need it: `to-json` skips it; `from-json` refuses
+   such an object, as it can't know the address TP stored there.
 10. **`Text`/`file` fields**: `null`, written back as zeros, like pointers.
 11. **Subranges** are checked only against their host type in `unjson`
     (the bounds aren't in `Analysis`); a known limit.

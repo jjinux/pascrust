@@ -15,6 +15,8 @@ type
    Grid = array[1..N, 0..N] of Byte;
    Wide = array[Big..Big + 2] of Byte;
    Plain = array[1..5] of Integer;
+   Neg = array[-N..-1] of Integer;
+   Tail = array[Lo..10] of Byte;
 var
    a: TArr;
    z: Zero;
@@ -23,6 +25,8 @@ var
    g: Grid;
    w: Wide;
    p: Plain;
+   n2: Neg;
+   t: Tail;
    v: array[2..N * 2] of Integer;
 begin
    a[N] := 1;
@@ -33,5 +37,8 @@ begin
    w[Big + 2] := 5;
    v[N * 2] := 6;
    p[5] := 7;
+   n2[-1] := 8;
+   t[10] := 9;
+   WriteLn(n2[-1], t[10], ' ', Low(n2), ' ', SizeOf(n2), ' ', Low(t), ' ', SizeOf(t));
    WriteLn(a[N], z[N - 1], m[Hi], b[N], g[N, N], w[Big + 2], v[N * 2], p[5], ' ', High(v), ' ', SizeOf(g));
 end.

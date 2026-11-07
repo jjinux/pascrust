@@ -44,6 +44,12 @@ type Wide = PArray<u8, { BIG as i64 }, { (BIG + 2 - BIG + 1) as usize }>;
 /// Pascal: `array[1..5] of Integer`
 type Plain = PArray<i16, 1, 5>;
 
+/// Pascal: `array[-N..-1] of Integer`
+type Neg = PArray<i16, { -N as i64 }, { N as usize }>;
+
+/// Pascal: `array[Lo..10] of Byte`
+type Tail = PArray<u8, { LO as i64 }, { (11 - LO) as usize }>;
+
 /// The main program: the `begin ... end.` block of `ArrayNamedBounds`.
 /// Its local variables are the Pascal program's global variables.
 fn pascal_main() {
@@ -54,6 +60,8 @@ fn pascal_main() {
     let mut g: Grid = Grid::default();
     let mut w_: Wide = Wide::default();
     let mut p: Plain = Plain::default();
+    let mut n2: Neg = Neg::default();
+    let mut t: Tail = Tail::default();
     let mut v: PArray<i16, 2, { (N * 2 - 1) as usize }> = PArray::default();
     a[N] = 1;
     z[N - 1] = 2;
@@ -63,6 +71,9 @@ fn pascal_main() {
     w_[BIG + 2] = 5;
     v[N * 2] = 6;
     p[5] = 7;
+    n2[-1] = 8;
+    t[10] = 9;
+    pwriteln!(n2[-1], i16::from(t[10]), " ", n2.low(), " ", 20, " ", t.low(), " ", 8);
     pwriteln!(
         a[N],
         i16::from(z[N - 1]),

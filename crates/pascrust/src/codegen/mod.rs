@@ -2664,7 +2664,9 @@ impl<'a> Codegen<'a> {
             _ => String::new(),
         };
         let lo_hi = |g: &mut Self| {
-            let (start, end) = (g.coerce(start, &ty).0, g.coerce(end, &ty).0);
+            let (start_code, end_code) = (g.coerce(start, &ty).0, g.coerce(end, &ty).0);
+            let start = g.bound_before_loop(start, start_code, "first");
+            let end = g.bound_before_loop(end, end_code, "last");
             // The suffix goes on whichever bound comes first in the range, if
             // it's a number there (`a.low() as i16` has its type already).
             let suffixed = |code: String| if is_literal(&code) { format!("{code}{suffix}") } else { code };
@@ -2704,6 +2706,27 @@ impl<'a> Codegen<'a> {
             self.block_body(body);
             self.line("}");
         }
+    }
+
+    /// A `for` bound that reads through a pointer (`for i := 1 to p^.Count`)
+    /// goes into a `let` before the loop: Rust keeps whatever a `for`'s range
+    /// borrows (here `p.get()`) borrowed for the whole loop, so a body that
+    /// changes `p^` would be runtime error 204. Pascal works out the bounds
+    /// once, before the loop, too.
+    fn bound_before_loop(&mut self, bound: &Expr, code: String, fallback: &str) -> String {
+        if !contains_deref(bound) {
+            return code;
+        }
+        let name = match &bound.kind {
+            ExprKind::Field(_, field) => self.temp_name(&crate::sema::names::snake_case(&field.name)),
+            _ => self.temp_name(fallback),
+        };
+        if self.first_time("bound_before_loop") {
+            self.line("// Worked out before the loop: a `for` range reading through a pointer");
+            self.line("// would keep it borrowed for the whole loop.");
+        }
+        self.line(format!("let {name} = {code};"));
+        name
     }
 
     /// An index in a place that's written (`a[Pick] := ...`, `Inc(a[Pick])`,

@@ -627,6 +627,12 @@ impl Checker {
             }
             return;
         };
+        // `High(Letter)` of a Char subrange is worked out as its ordinal; as
+        // a constant it's that character, like `const Z = 'z'`.
+        let value = match value {
+            ConstVal::Int(v) if (0..=255).contains(&v) && self.expr(e) == Type::Char => ConstVal::Str(vec![v as u8]),
+            other => other,
+        };
         let ty = match &value {
             // An enum value (`const Last = Sun`) keeps its enum type.
             // So does a typecast (`const W = Word(-1)` is a Word).
@@ -635,6 +641,9 @@ impl Checker {
                 ty @ Type::Int(_) if matches!(&e.kind, ExprKind::Call { callee, args } if self.typecast_target(callee, args).is_some()) => {
                     ty
                 }
+                // So does a type's limit: `const Top = High(Word)` is a Word,
+                // as in TP (and in Rust `u16::MAX`).
+                _ if let Some(ty) = self.limit_type(e) => ty,
                 _ => Type::Int(IntKind::for_literal(*v)),
             },
             // The literal's type says what the elements are.
@@ -1458,6 +1467,19 @@ impl Checker {
         // The count, `hi - lo + 1`, said as simply as it can be:
         // `array[1..N]` has `N`, `array[0..N - 1]` too.
         let count = match &hi.kind {
+            // A number for `hi`: `array[-K..-1]` has `K`, `array[-K..0]`
+            // `K + 1`, `array[K..10]` `11 - K`.
+            _ if lo_named && !hi_named => {
+                let after = hi_value + 1;
+                match &lo.kind {
+                    ExprKind::Unary { op: UnaryOp::Neg, operand } => match after {
+                        0 => self.const_rust(operand, kind, AS_OPERAND)?,
+                        1.. => format!("({} + {after})", self.const_rust(operand, kind, ADD_LEFT)?),
+                        _ => format!("({} - {})", self.const_rust(operand, kind, ADD_LEFT)?, -after),
+                    },
+                    _ => format!("({after} - {})", self.const_rust(lo, kind, ADD_RIGHT)?),
+                }
+            }
             // (`array[-K..K]` has `K + K + 1`, not `K - -K + 1`.)
             _ if lo_named => {
                 let hi = self.const_rust(hi, kind, ADD_LEFT)?;
@@ -2173,6 +2195,24 @@ impl Checker {
                     }
                 }
             }
+        }
+    }
+
+    /// If `e` is `High(T)` or `Low(T)` of an integer type `T`, that type:
+    /// `const Top = High(Word)` is a Word, as in TP, and `u16::MAX` in Rust.
+    /// (Elsewhere such a limit is typed like a literal, as is a subrange's,
+    /// `High(Digit)`, whose bound is just a number in the Rust.)
+    fn limit_type(&self, e: &Expr) -> Option<Type> {
+        let ExprKind::Call { callee, args } = &e.kind else { return None };
+        if !matches!(self.type_query_builtin(callee)?, Builtin::High | Builtin::Low) {
+            return None;
+        }
+        let [arg] = args.as_slice() else { return None };
+        let ExprKind::Name(id) = &arg.kind else { return None };
+        let Some(Resolved::Sym(sym)) = self.resolve(&id.key()) else { return None };
+        match &self.a.symbols[sym].kind {
+            SymKind::TypeName(ty @ Type::Int(_)) if !self.subrange_types.contains_key(&sym) => Some(ty.clone()),
+            _ => None,
         }
     }
 
