@@ -72,6 +72,14 @@ begin
    w := 3;
    Inc(w, s + 2);
    WriteLn(b, ' ', p^.N, ' ', w);
+   { Ord, Succ and typecasts of constants are constants too. }
+   b := 1;
+   Inc(b, Ord('A'));
+   Inc(b, Succ(K));
+   Inc(b, Word(3));
+   l := 1;
+   l := l + (Ord('A') + 1);
+   WriteLn(b, ' ', l);
    {$Q-}
    WriteLn(i + 1);
    {$Q+}

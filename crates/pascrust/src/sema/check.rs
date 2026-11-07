@@ -1440,6 +1440,11 @@ impl Checker {
 
     pub(super) fn eval_const(&self, e: &Expr) -> Option<ConstVal> {
         use ConstVal::*;
+        // `expr` checks the operands first and records their values, so a
+        // nested expression isn't worked out again at every level.
+        if let Some(value) = self.a.consts.get(&e.id) {
+            return Some(value.clone());
+        }
         match &e.kind {
             ExprKind::Int(n) => Some(Int(*n)),
             ExprKind::Real(x) => Some(Real(*x)),
@@ -2312,6 +2317,13 @@ impl Checker {
             (_, ty) => ty,
         };
         self.a.types.insert(e.id, ty.clone());
+        // A constant expression's value, for codegen: TP works it out when
+        // it compiles (so `{$Q+}` never checks it).
+        if ty != Type::Error
+            && let Some(value) = self.eval_const(e)
+        {
+            self.a.consts.insert(e.id, value);
+        }
         ty
     }
 

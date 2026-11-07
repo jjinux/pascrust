@@ -187,6 +187,10 @@ pub struct Analysis {
     pub random_word: HashSet<NodeId>,
     /// `FillChar` calls (by the callee's id) that fill with 0.
     pub fill_zero: HashSet<NodeId>,
+    /// The value of every constant expression (`5`, `K * 2`, `Ord('A')`,
+    /// `Word(-1)`), by the expression's id: sema's `eval_const` works them
+    /// out, and codegen reads them here rather than evaluating again.
+    pub consts: HashMap<NodeId, ConstVal>,
     /// Calls sema worked out, by the call's id: `SizeOf`, `High`, `Low`.
     pub folded: HashMap<NodeId, ConstVal>,
     /// `external` routines, written in Rust (`{$L sound.rs}`): each one's

@@ -146,6 +146,14 @@ fn pascal_main() {
     w_ = u16::try_from(i32::from(w_) + i32::from(i16::from(s).checked_add(2).unwrap_or_else(overflow)))
         .unwrap_or_else(|_| overflow());
     pwriteln!(i16::from(b), " ", p.get().n, " ", w_);
+    // Ord, Succ and typecasts of constants are constants too.
+    b = 1;
+    b = b.checked_add(i16::from(b'A') as u8).unwrap_or_else(overflow);
+    b = b.checked_add((K + 1) as u8).unwrap_or_else(overflow);
+    b = b.checked_add(3_u16 as u8).unwrap_or_else(overflow);
+    l = 1;
+    l = l.checked_add(i32::from(i16::from(b'A') + 1)).unwrap_or_else(overflow);
+    pwriteln!(i16::from(b), " ", l);
     pwriteln!(i + 1);
     i = i.checked_add(1).unwrap_or_else(overflow);
     pwriteln!("not reached");

@@ -241,8 +241,10 @@ like `{$I-}`: the driver works out which source ranges it covers
 `overflow()` raises error 215. The check is in the type PascRust computes
 in, which follows TP's (an `Integer` sum in 16 bits). Only the code that
 asks for checks pays for the longer form; `x := x + 1` isn't turned into
-`x += 1` there. A constant expression (`is_constant`: literals, named
-constants and arithmetic on them) is left unchecked, as TP computed it at
+`x += 1` there. A constant expression (`is_constant`: anything sema's
+`eval_const` can work out, such as `K * 2`, `Ord('A')` or `Word(3)`; sema
+records each one's value in `Analysis::consts`, so codegen doesn't
+evaluate constants again) is left unchecked, as TP computed it at
 compile time: `i * (2 + 3)` is `i.checked_mul(2 + 3)`, and a constant of
 literals as the receiver is written as its typed value, `5_i16.checked_mul(i)`.
 `Inc`/`Dec` with a variable step whose type holds values the target can't

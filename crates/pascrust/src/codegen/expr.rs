@@ -337,28 +337,11 @@ impl<'a> Codegen<'a> {
     }
 
     /// The value of an integer constant expression (see [`Self::is_constant`]),
-    /// worked out in 64 bits as TP works constants out in 32. `None` if it
-    /// isn't one (or divides by 0).
+    /// as sema worked it out (in 64 bits, as TP works constants out in 32).
+    /// `None` if it isn't one (or divides by 0).
     pub(super) fn constant_int(&self, e: &Expr) -> Option<i64> {
-        match &e.kind {
-            ExprKind::Int(n) => Some(*n),
-            ExprKind::Name(_) => match &self.a.sym(*self.a.refs.get(&e.id)?).kind {
-                SymKind::Const { value: ConstVal::Int(n), .. } => Some(*n),
-                _ => None,
-            },
-            ExprKind::Unary { op: UnaryOp::Neg, operand } => self.constant_int(operand)?.checked_neg(),
-            ExprKind::Unary { op: UnaryOp::Plus, operand } => self.constant_int(operand),
-            ExprKind::Binary { op, lhs, rhs } => {
-                let (l, r) = (self.constant_int(lhs)?, self.constant_int(rhs)?);
-                match op {
-                    BinaryOp::Add => l.checked_add(r),
-                    BinaryOp::Sub => l.checked_sub(r),
-                    BinaryOp::Mul => l.checked_mul(r),
-                    BinaryOp::Div => l.checked_div(r),
-                    BinaryOp::Mod => l.checked_rem(r),
-                    _ => None,
-                }
-            }
+        match self.a.consts.get(&e.id) {
+            Some(ConstVal::Int(n)) => Some(*n),
             _ => None,
         }
     }
@@ -779,14 +762,10 @@ impl<'a> Codegen<'a> {
     /// Is `e` a constant that isn't 0 (`2`, `2.5`, `C`, `2 * C`)? A real
     /// division by one needs no check.
     fn nonzero_constant(&self, e: &Expr) -> bool {
-        match &e.kind {
-            ExprKind::Real(x) => *x != 0.0,
-            ExprKind::Name(_) => match self.a.refs.get(&e.id).map(|&s| &self.a.sym(s).kind) {
-                Some(SymKind::Const { value: ConstVal::Real(x), .. }) => *x != 0.0,
-                _ => self.constant_int(e).is_some_and(|n| n != 0),
-            },
-            ExprKind::Unary { op: UnaryOp::Neg | UnaryOp::Plus, operand } => self.nonzero_constant(operand),
-            _ => self.constant_int(e).is_some_and(|n| n != 0),
+        match self.a.consts.get(&e.id) {
+            Some(ConstVal::Int(n)) => *n != 0,
+            Some(ConstVal::Real(x)) => *x != 0.0,
+            _ => false,
         }
     }
 
