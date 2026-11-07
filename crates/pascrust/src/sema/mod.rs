@@ -269,8 +269,6 @@ pub struct Analysis {
     pub file_types: Vec<Type>,
     /// The user units, in dependency order.
     pub units: Vec<UnitInfo>,
-    /// The value of every `case` label, computed at compile time.
-    pub case_labels: HashMap<NodeId, ConstVal>,
     /// Variables that need no `let` declaration because they're only used as
     /// scoped loop variables.
     pub elided_vars: HashSet<SymId>,

@@ -56,7 +56,7 @@ fn pascal_main() {
     let mut b: u8 = 0;
     let mut a: PArray<i16, 0, 3> = PArray::default();
     pwriteln!(W1, " ", i16::from(B1), " ", S1, " ", C1, " ", LAST as i16, " ", FLAG, " ", HALF, " ", CODE);
-    pwriteln!(W1 - 1, " ", 2, " ", pset![set of u8; b'@'..=b'F'].contains(C1));
+    pwriteln!(W1 - 1, " ", 2, " ", matches!(C1, b'@'..=b'F'));
     for i in 0_i16..=2 {
         a[i] = i * 10;
     }

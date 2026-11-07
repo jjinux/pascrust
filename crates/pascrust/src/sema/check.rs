@@ -1702,7 +1702,6 @@ impl Checker {
                                     ConstVal::Str(bytes) if bytes.len() == 1 => Some(bytes[0] as i64),
                                     _ => None,
                                 });
-                                self.a.case_labels.insert(e.id, value);
                             } else if self.division_by_zero(e).is_none() {
                                 self.error(e.span, "`case` labels must be constants");
                             }

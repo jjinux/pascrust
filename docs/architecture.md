@@ -598,7 +598,9 @@ rather than wrapping to a byte. Set literals `[1, 3..5, x]` become
 the `SetItems` trait), and `x in [...]` with only constants in the list
 becomes `matches!(x, 1 | 3..=5)`, which is what a Rust programmer would
 write (an enum range lists its values there: Rust range patterns are for
-numbers and chars). With other items, `x in [Mon..Wed, y]` tests a set
+numbers and chars). A constant expression there is written as its value,
+from sema's `consts` (`[K + 1..K * 2]` is `6..=10`, `Succ(Mon)` is
+`Day::Tue`), as a pattern takes only literals and constants' names. With other items, `x in [Mon..Wed, y]` tests a set
 built on the spot, and as nothing else says what that set holds, the
 literal says it: `pset![set of Day; Day::Mon..=Day::Wed, y].contains(x)`. Set constants are Rust `const`s, built by the `const fn`s
 `PSet::of(&[...])` and `PSet::from_ranges(&[...])` from `u8` ordinals,

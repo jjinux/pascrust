@@ -230,6 +230,7 @@ impl<'a> Codegen<'a> {
     /// pattern that tests `x in [...]` against constants.
     fn set_item(&mut self, elem: &SetElem, elem_ty: &Type, pattern: bool) -> String {
         match elem {
+            SetElem::Single(x) if pattern => self.pattern_value(x, elem_ty),
             SetElem::Single(x) => self.coerce(x, elem_ty).0,
             SetElem::Range(lo, hi) => {
                 // Rust range patterns are for numbers and chars: in
@@ -242,10 +243,28 @@ impl<'a> Codegen<'a> {
                 {
                     return self.ord_range_pattern(elem_ty, lo, hi);
                 }
+                if pattern {
+                    return format!("{}..={}", self.pattern_value(lo, elem_ty), self.pattern_value(hi, elem_ty));
+                }
                 let (lo, hi) = (self.coerce(lo, elem_ty), self.coerce(hi, elem_ty));
                 // Any binary operator binds tighter than `..=`.
                 format!("{}..={}", paren(lo, prec::OR), paren(hi, prec::OR))
             }
+        }
+    }
+
+    /// A constant in a `matches!` pattern. A pattern takes a literal or a
+    /// constant's name, not an expression, so `K + 1` is written as its
+    /// value, `6` (and `Succ(Mon)` as `Day::Tue`).
+    fn pattern_value(&mut self, e: &Expr, elem_ty: &Type) -> String {
+        let simple = match &e.kind {
+            ExprKind::Int(_) | ExprKind::Str(_) | ExprKind::Name(_) => true,
+            ExprKind::Unary { op: UnaryOp::Neg, operand } => matches!(operand.kind, ExprKind::Int(_)),
+            _ => false,
+        };
+        match self.const_ordinal(e) {
+            Some(n) if !simple => self.ord_range_pattern(elem_ty, n, n),
+            _ => self.coerce(e, elem_ty).0,
         }
     }
 
@@ -310,18 +329,10 @@ impl<'a> Codegen<'a> {
         (format!("{} {rust_op} {}", paren(l, left_min), paren(r, p + 1)), p)
     }
 
-    /// The ordinal of a literal or a named constant (`5`, `'a'`, an enum
-    /// value, `True`).
+    /// The ordinal of a constant (`5`, `'a'`, an enum value, `True`,
+    /// `K + 1`), as sema worked it out.
     fn const_ordinal(&self, e: &Expr) -> Option<i64> {
-        let value = match &e.kind {
-            ExprKind::Int(n) => return Some(*n),
-            ExprKind::Str(bytes) if bytes.len() == 1 => return Some(i64::from(bytes[0])),
-            _ => match &self.a.sym(*self.a.refs.get(&e.id)?).kind {
-                SymKind::Const { value, .. } => value,
-                _ => return None,
-            },
-        };
-        match value {
+        match self.a.consts.get(&e.id)? {
             ConstVal::Int(n) => Some(*n),
             ConstVal::Bool(b) => Some(*b as i64),
             ConstVal::Str(bytes) if bytes.len() == 1 => Some(i64::from(bytes[0])),
@@ -346,19 +357,11 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    /// Can this set element be a `match` pattern: a literal, a named
-    /// constant or an enum value?
+    /// Can this set element be a `match` pattern: is it a constant?
     fn constant_item(&self, elem: &SetElem) -> bool {
-        let constant = |e: &Expr| match &e.kind {
-            ExprKind::Int(_) | ExprKind::Str(_) => true,
-            ExprKind::Name(_) => {
-                self.a.refs.get(&e.id).is_some_and(|&s| matches!(self.a.sym(s).kind, SymKind::Const { .. }))
-            }
-            _ => false,
-        };
         match elem {
-            SetElem::Single(e) => constant(e),
-            SetElem::Range(lo, hi) => constant(lo) && constant(hi),
+            SetElem::Single(e) => self.const_ordinal(e).is_some(),
+            SetElem::Range(lo, hi) => self.const_ordinal(lo).is_some() && self.const_ordinal(hi).is_some(),
         }
     }
 
@@ -477,6 +480,17 @@ impl<'a> Codegen<'a> {
             let part = format!("{base}{}", ".base".repeat(depth));
             return if to.is_copy() { (part, prec::POSTFIX) } else { (format!("{part}.clone()"), prec::POSTFIX) };
         }
+        // `Ord(c)` of a Char (or of a Byte) used as a Byte is the same byte:
+        // `b = c` and `b.checked_add(b'A')`, not `i16::from(c) as u8`.
+        if matches!(to.concrete(), Type::Int(IntKind::Byte))
+            && let Some(arg) = self.ord_of_byte(e)
+        {
+            return if self.a.type_of(arg.id).is_integer() {
+                self.coerce(arg, to)
+            } else {
+                self.coerce(arg, &Type::Char)
+            };
+        }
         let code = self.expr(e);
         // Pascal copies records and pointers on assignment. For types that
         // aren't `Copy` in Rust (anything holding a `Ptr`), that copy has to
@@ -494,6 +508,16 @@ impl<'a> Codegen<'a> {
             return (format!("{receiver}.clone()"), prec::POSTFIX);
         }
         convert(code, &from, to)
+    }
+
+    /// If `e` is `Ord(x)` of a Char, a one-character literal or a Byte:
+    /// that `x`, whose value fits a Byte as it is.
+    pub(super) fn ord_of_byte<'e>(&self, e: &'e Expr) -> Option<&'e Expr> {
+        let ExprKind::Call { callee, args } = &e.kind else { return None };
+        let [arg] = args.as_slice() else { return None };
+        let sym = *self.a.refs.get(&callee.id)?;
+        let byte = matches!(self.a.type_of(arg.id).concrete(), Type::Char | Type::StrLit(1) | Type::Int(IntKind::Byte));
+        (matches!(self.a.sym(sym).kind, SymKind::Builtin(Builtin::Ord)) && byte).then_some(arg)
     }
 
     /// An expression used as the receiver of a method call (`x.abs()`):

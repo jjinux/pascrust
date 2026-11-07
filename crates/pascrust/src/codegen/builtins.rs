@@ -307,6 +307,8 @@ impl<'a> Codegen<'a> {
                     if let (Some(step), None) = (args.get(1), number)
                         && let Type::Int(from) = ty(self, step).concrete()
                         && !target.holds(from)
+                        // (`Ord(c)` of a Char is a Byte's value, though typed Integer.)
+                        && !(target.holds(IntKind::Byte) && self.ord_of_byte(step).is_some())
                     {
                         let wide = if target == IntKind::LongInt || from == IntKind::LongInt { "i64" } else { "i32" };
                         let op = if b == Inc { "+" } else { "-" };

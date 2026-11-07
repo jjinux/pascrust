@@ -148,7 +148,7 @@ fn pascal_main() {
     pwriteln!(i16::from(b), " ", p.get().n, " ", w_);
     // Ord, Succ and typecasts of constants are constants too.
     b = 1;
-    b = b.checked_add(i16::from(b'A') as u8).unwrap_or_else(overflow);
+    b = b.checked_add(b'A').unwrap_or_else(overflow);
     b = b.checked_add((K + 1) as u8).unwrap_or_else(overflow);
     b = b.checked_add(3_u16 as u8).unwrap_or_else(overflow);
     l = 1;

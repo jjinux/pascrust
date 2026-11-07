@@ -2412,9 +2412,10 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    /// A case label's ordinal value, for spotting duplicates.
+    /// A case label's ordinal value, for spotting duplicates. (Sema
+    /// checked that every label is a constant.)
     fn label_ord(&self, e: &Expr) -> i64 {
-        match &self.a.case_labels[&e.id] {
+        match &self.a.consts[&e.id] {
             crate::sema::ConstVal::Int(n) => *n,
             crate::sema::ConstVal::Str(s) => s.first().copied().unwrap_or(0) as i64,
             crate::sema::ConstVal::Bool(b) => *b as i64,
