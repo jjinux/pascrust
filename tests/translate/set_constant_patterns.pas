@@ -1,5 +1,7 @@
-{ x in [...] with constant elements is a match pattern; a constant
-  expression in it (K + 1, Succ(Mon)) is written as its value. }
+{ x in [...] with constant elements is a match pattern, and a constant
+  expression of literals in it (Succ(Mon)) is written as its value; one
+  that names a constant (K + 1) keeps the name, in a set built on the
+  spot. }
 program SetPat;
 type
    Day = (Mon, Tue, Wed, Thu, Fri, Sat, Sun);

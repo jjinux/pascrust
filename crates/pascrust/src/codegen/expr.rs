@@ -254,8 +254,8 @@ impl<'a> Codegen<'a> {
     }
 
     /// A constant in a `matches!` pattern. A pattern takes a literal or a
-    /// constant's name, not an expression, so `K + 1` is written as its
-    /// value, `6` (and `Succ(Mon)` as `Day::Tue`).
+    /// constant's name, not an expression, so one of literals is written
+    /// as its value: `2 + 3` as `5`, `Succ(Mon)` as `Day::Tue`.
     fn pattern_value(&mut self, e: &Expr, elem_ty: &Type) -> String {
         let simple = match &e.kind {
             ExprKind::Int(_) | ExprKind::Str(_) | ExprKind::Name(_) => true,
@@ -357,11 +357,31 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    /// Can this set element be a `match` pattern: is it a constant?
+    /// Can this set element be a `match` pattern? A constant can, as a
+    /// constant's name or as its value; but one worked out from a named
+    /// constant (`K + 1`) can't, as its value would lose the name.
     fn constant_item(&self, elem: &SetElem) -> bool {
+        let pattern = |e: &Expr| {
+            self.const_ordinal(e).is_some() && (matches!(e.kind, ExprKind::Name(_)) || !self.names_constant(e))
+        };
         match elem {
-            SetElem::Single(e) => self.const_ordinal(e).is_some(),
-            SetElem::Range(lo, hi) => self.const_ordinal(lo).is_some() && self.const_ordinal(hi).is_some(),
+            SetElem::Single(e) => pattern(e),
+            SetElem::Range(lo, hi) => pattern(lo) && pattern(hi),
+        }
+    }
+
+    /// Does `e` use a named constant (`K`, `MaxInt`)? Then the Rust should
+    /// say so, rather than write the value it comes to. (An enum value or
+    /// `True` is like a literal.)
+    pub(super) fn names_constant(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Name(_) => self.a.refs.get(&e.id).is_some_and(|&s| {
+                matches!(&self.a.sym(s).kind, SymKind::Const { ty, .. } if !matches!(ty, Type::Enum(_) | Type::Bool))
+            }),
+            ExprKind::Call { args, .. } => args.iter().any(|a| self.names_constant(a)),
+            ExprKind::Unary { operand, .. } => self.names_constant(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.names_constant(lhs) || self.names_constant(rhs),
+            _ => false,
         }
     }
 

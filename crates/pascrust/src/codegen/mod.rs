@@ -22,7 +22,7 @@ use crate::ast::*;
 use crate::diag::{SourceMap, Span};
 use crate::sema::goto::GotoBlock;
 use crate::sema::types::{ObjectType, RecordType, VariantPart, tp_size};
-use crate::sema::{Access, Analysis, Builtin, CaptureMode, MAIN, ProcId, SymId, SymKind, Type, VarRole};
+use crate::sema::{Access, Analysis, Builtin, CaptureMode, IntKind, MAIN, ProcId, SymId, SymKind, Type, VarRole};
 
 /// What [`generate`] writes Rust for: the program and its units, with what
 /// the driver learned about them.
@@ -2200,7 +2200,22 @@ impl<'a> Codegen<'a> {
     /// `case` becomes `match`.
     fn case(&mut self, span: Span, scrutinee: &Expr, arms: &[CaseArm], else_body: Option<&[Stmt]>) {
         let scrutinee_ty = self.a.type_of(scrutinee.id).concrete();
-        let scrutinee_code = self.expr(scrutinee).0;
+        // A label that names a constant stays its name (`ESC =>`, not
+        // `b'\x1b' =>`), so the Rust still says where the value comes from.
+        // A pattern's constant must have the scrutinee's type: a Byte
+        // compared with Integer constants is widened, as `in` does.
+        let widen_to = self.case_widening(&scrutinee_ty, arms);
+        let pattern_rust = match widen_to {
+            Some(kind) => kind.rust().to_string(),
+            None => scrutinee_ty.rust(),
+        };
+        let scrutinee_code = match widen_to {
+            Some(kind) => {
+                let code = self.coerce(scrutinee, &Type::Int(kind));
+                code.0
+            }
+            None => self.expr(scrutinee).0,
+        };
         let scrutinee_code = self.with_after(scrutinee_code);
         self.line(format!("match {scrutinee_code} {{"));
         self.indent += 1;
@@ -2227,8 +2242,28 @@ impl<'a> Codegen<'a> {
                 } else if pieces != [(lo, hi)] {
                     trimmed.push(self.ord_range_pattern(&scrutinee_ty, lo, hi));
                 }
-                for (start, end) in pieces {
-                    labels.push(self.ord_range_pattern(&scrutinee_ty, start, end));
+                // A label no earlier one trims keeps its constants' names.
+                let named = match label {
+                    _ if pieces != [(lo, hi)] => None,
+                    CaseLabel::Value(e) => self.named_label(e, &pattern_rust),
+                    CaseLabel::Range(l, h) => {
+                        match (self.named_label(l, &pattern_rust), self.named_label(h, &pattern_rust)) {
+                            (None, None) => None,
+                            (l_name, h_name) => {
+                                let l_code = l_name.unwrap_or_else(|| self.ord_range_pattern(&scrutinee_ty, lo, lo));
+                                let h_code = h_name.unwrap_or_else(|| self.ord_range_pattern(&scrutinee_ty, hi, hi));
+                                Some(format!("{l_code}..={h_code}"))
+                            }
+                        }
+                    }
+                };
+                match named {
+                    Some(pattern) => labels.push(pattern),
+                    None => {
+                        for (start, end) in pieces {
+                            labels.push(self.ord_range_pattern(&scrutinee_ty, start, end));
+                        }
+                    }
                 }
                 seen.add(lo, hi);
             }
@@ -2251,6 +2286,8 @@ impl<'a> Codegen<'a> {
         // Rust knows when a `match` covers every value of the type, and then
         // warns about a `_` arm.
         let domain = match &scrutinee_ty {
+            // (A widened scrutinee's type is the wider one.)
+            _ if widen_to.is_some() => widen_to.map(IntKind::range),
             Type::Enum(e) => Some((0, e.variants.len() as i64 - 1)),
             Type::Bool => Some((0, 1)),
             Type::Char => Some((0, 255)),
@@ -2323,6 +2360,49 @@ impl<'a> Codegen<'a> {
         if let Some(comment) = end_comment {
             self.append_comment(&comment);
         }
+    }
+
+    /// A `case` label end that names a constant whose Rust type is
+    /// `rust_ty`: the constant's name, which a pattern can use as it is.
+    fn named_label(&self, e: &Expr, rust_ty: &str) -> Option<String> {
+        let ExprKind::Name(_) = e.kind else { return None };
+        let sym = self.a.sym(*self.a.refs.get(&e.id)?);
+        match &sym.kind {
+            SymKind::Const { ty: ty @ (Type::Int(_) | Type::Char), .. } if ty.rust() == rust_ty => {
+                Some(sym.rust_name.clone())
+            }
+            _ => None,
+        }
+    }
+
+    /// The integer type a `case` on a narrower integer is widened to, so
+    /// its labels can name constants (`case b of K:`, `K` an Integer
+    /// constant: `match i16::from(b) { K => ...`). `None` if no label
+    /// names a constant of a wider type, or they don't agree on one.
+    fn case_widening(&self, scrutinee_ty: &Type, arms: &[CaseArm]) -> Option<IntKind> {
+        let Type::Int(kind) = scrutinee_ty else { return None };
+        let mut wider = None;
+        for arm in arms {
+            for label in &arm.labels {
+                let ends = match label {
+                    CaseLabel::Value(e) => vec![e],
+                    CaseLabel::Range(lo, hi) => vec![lo, hi],
+                };
+                for e in ends {
+                    let ExprKind::Name(_) = e.kind else { continue };
+                    let Some(&sym) = self.a.refs.get(&e.id) else { continue };
+                    let SymKind::Const { ty: Type::Int(k), .. } = &self.a.sym(sym).kind else { continue };
+                    if k == kind {
+                        continue;
+                    }
+                    if !k.holds(*kind) || wider.is_some_and(|w| w != *k) {
+                        return None;
+                    }
+                    wider = Some(*k);
+                }
+            }
+        }
+        wider
     }
 
     /// The pattern for the ordinals `lo..=hi` of a `case` on `ty`. Rust

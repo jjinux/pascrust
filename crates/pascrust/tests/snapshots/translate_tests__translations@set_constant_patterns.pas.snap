@@ -15,8 +15,10 @@ input_file: tests/translate/set_constant_patterns.pas
 
 use pascrust_runtime::prelude::*;
 
-// x in [...] with constant elements is a match pattern; a constant
-// expression in it (K + 1, Succ(Mon)) is written as its value.
+// x in [...] with constant elements is a match pattern, and a constant
+// expression of literals in it (Succ(Mon)) is written as its value; one
+// that names a constant (K + 1) keeps the name, in a set built on the
+// spot.
 
 const K: i16 = 5;
 const FIRST: u8 = b'a';
@@ -59,10 +61,20 @@ fn pascal_main() {
     b = 6;
     c = b'c';
     d = Day::Sun;
-    pwriteln!(matches!(i, 6..=10), " ", matches!(i16::from(b), K | 6), " ", matches!(i, -5..=-1 | 10));
-    pwriteln!(matches!(c, FIRST..=b'c'), " ", matches!(c, b'b'));
+    pwriteln!(
+        pset![set of i16; K + 1..=K * 2].contains(i),
+        " ",
+        pset![set of i16; K, K + 1].contains(b),
+        " ",
+        pset![set of i16; -K..=-1, 2 * K].contains(i)
+    );
+    pwriteln!(
+        pset![set of u8; FIRST..=FIRST + 1 + 1].contains(c),
+        " ",
+        pset![set of u8; (i16::from(FIRST) + 1) as u8].contains(c)
+    );
     pwriteln!(matches!(d, Day::Tue | Day::Sat | Day::Sun), " ", matches!(d, Day::Sat));
-    pwriteln!(matches!(i16::from(b), K..=10), " ", matches!(i, K));
+    pwriteln!(pset![set of i16; K..=2 * K].contains(b), " ", matches!(i, K));
 }
 
 fn main() {

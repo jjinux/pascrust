@@ -281,6 +281,19 @@ choice, 2026-11-06; TP 7's behaviour there is untested).
 Inside `call` (a Rust program calling Pascal) the error
 comes back as an `Err` like any runtime error.
 
+**Named constants stay names** (the user, 2026-11-06, for someone who
+translates once and keeps the Rust): a constant expression that names a
+constant (`K + 1`, `Lo + K`) is written as that expression, so the Rust
+says where the number comes from and editing the `const` carries
+through; one made of literals only (`2 + 3`, `Succ(Mon)`) may be written
+as its value, as nothing is lost (`names_constant` tells them apart). TP
+works constants out in 32 bits and keeps the low bits when a typecast
+narrows them, which Rust's `as` does too. Where Rust takes only a
+pattern, a constant's name is one (`case c of Esc:` is `ESC =>`, and a
+Byte compared with Integer constants is widened, `match i16::from(b)`); a
+set element worked out from a constant isn't, so `i in [K + 1..K * 2]`
+tests a set built on the spot rather than `matches!(i, 6..=10)`.
+
 Division: `/` always produces `f64` (codegen casts both operands); `div` and
 `mod` map to Rust `/` and `%`, whose truncating semantics match TP exactly.
 Integer division by zero is a Rust panic, which becomes Pascal runtime
