@@ -14,6 +14,7 @@ your old Turbo Pascal code natively.
 
  * You can continue editing the Turbo Pascal code and transpile it every time.
  * You can transpile your Turbo Pascal code to Rust once and then edit the Rust going forward.
+ * You can run your old Turbo Pascal programs even if they use graphics, including turtle graphics.
  * You can call out to Rust from a Turbo Pascal program.
  * You can call into Turbo Pascal from a Rust program.
  * You can read old binary data files written by Turbo Pascal.
