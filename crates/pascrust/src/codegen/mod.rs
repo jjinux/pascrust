@@ -2232,6 +2232,15 @@ impl<'a> Codegen<'a> {
         };
         let scrutinee_code = self.with_after(scrutinee_code);
         self.line(format!("match {scrutinee_code} {{"));
+        // A label worked out from a constant (`K + 1`) can't be a pattern;
+        // its arm tests it in a guard, `value if value == K + 1`, keeping
+        // the name. (The type the guard compares in is the scrutinee's.)
+        let guard_ty = match widen_to {
+            Some(kind) => Type::Int(kind),
+            None => scrutinee_ty.clone(),
+        };
+        let binding = self.temp_name("value");
+        let mut guarded = false;
         self.indent += 1;
         // Turbo Pascal doesn't object to a label appearing twice; the first
         // arm wins. Rust warns about the unreachable second one, so drop it.
@@ -2241,6 +2250,7 @@ impl<'a> Codegen<'a> {
         let (mut all_dropped, mut all_trimmed): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
         for arm in arms {
             let mut labels = Vec::new();
+            let mut guards = Vec::new();
             let mut dropped = Vec::new();
             let mut trimmed = Vec::new();
             for label in &arm.labels {
@@ -2257,8 +2267,30 @@ impl<'a> Codegen<'a> {
                     trimmed.push(self.ord_range_pattern(&scrutinee_ty, lo, hi));
                 }
                 // A label no earlier one trims keeps its constants' names.
-                let named = match label {
+                // (Not if its Rust is just a number anyway: `Length(Word4)`
+                // with a string constant is `4`.)
+                let needs_guard = |cg: &mut Self, e: &Expr| {
+                    cg.names_constant(e)
+                        && cg.named_label(e, &pattern_rust).is_none()
+                        && !is_literal(&cg.coerce(e, &guard_ty).0)
+                };
+                let guard = match label {
                     _ if pieces != [(lo, hi)] => None,
+                    CaseLabel::Value(e) if needs_guard(self, e) => {
+                        Some(format!("{binding} == {}", self.coerce(e, &guard_ty).0))
+                    }
+                    CaseLabel::Range(l, h) if needs_guard(self, l) || needs_guard(self, h) => {
+                        let (l, h) = (self.coerce(l, &guard_ty), self.coerce(h, &guard_ty));
+                        Some(format!(
+                            "({}..={}).contains(&{binding})",
+                            expr::paren(l, expr::prec::OR),
+                            expr::paren(h, expr::prec::OR)
+                        ))
+                    }
+                    _ => None,
+                };
+                let named = match label {
+                    _ if pieces != [(lo, hi)] || guard.is_some() => None,
                     CaseLabel::Value(e) => self.named_label(e, &pattern_rust),
                     CaseLabel::Range(l, h) => {
                         match (self.named_label(l, &pattern_rust), self.named_label(h, &pattern_rust)) {
@@ -2271,9 +2303,10 @@ impl<'a> Codegen<'a> {
                         }
                     }
                 };
-                match named {
-                    Some(pattern) => labels.push(pattern),
-                    None => {
+                match (guard, named) {
+                    (Some(guard), _) => guards.push(guard),
+                    (None, Some(pattern)) => labels.push(pattern),
+                    (None, None) => {
                         for (start, end) in pieces {
                             labels.push(self.ord_range_pattern(&scrutinee_ty, start, end));
                         }
@@ -2287,13 +2320,31 @@ impl<'a> Codegen<'a> {
                 }
             }
             all_trimmed.extend(trimmed);
-            if labels.is_empty() {
+            if labels.is_empty() && guards.is_empty() {
                 continue;
             }
             for note in label_notes(&mut all_dropped, &mut all_trimmed) {
                 self.line(note);
             }
-            self.line(format!("{} => {{", labels.join(" | ")));
+            if guards.is_empty() {
+                self.line(format!("{} => {{", labels.join(" | ")));
+            } else {
+                // The arm's other labels join the guard: `value == 1`,
+                // `matches!(value, 3..=5)`.
+                guarded = true;
+                let mut tests: Vec<String> = labels
+                    .iter()
+                    .map(|p| {
+                        if p.contains("..=") || p.contains(" | ") {
+                            format!("matches!({binding}, {p})")
+                        } else {
+                            format!("{binding} == {p}")
+                        }
+                    })
+                    .collect();
+                tests.extend(guards);
+                self.line(format!("{binding} if {} => {{", tests.join(" || ")));
+            }
             self.block_body(&arm.body);
             self.line("}");
         }
@@ -2308,7 +2359,8 @@ impl<'a> Codegen<'a> {
             Type::Int(kind) => Some(kind.range()),
             _ => None,
         };
-        let exhaustive = domain.is_some_and(|(lo, hi)| seen.covers(lo, hi));
+        // (Rust doesn't count an arm with a guard toward covering every value.)
+        let exhaustive = !guarded && domain.is_some_and(|(lo, hi)| seen.covers(lo, hi));
         // Comments before the case's `end` can't go after the last arm, where
         // rustfmt would take them for that arm's: they go at the end of the
         // `else` arm, or before the `_ => {}` that stands for no `else`.
@@ -3184,4 +3236,9 @@ fn variant_name(object: &ObjectType) -> String {
 /// `AnyShape` for `TShape`.
 pub(super) fn enum_name(root: &ObjectType) -> String {
     format!("Any{}", variant_name(root))
+}
+
+/// Is this Rust code just a number or a byte literal (`4`, `-1`, `b'a'`)?
+fn is_literal(code: &str) -> bool {
+    code.parse::<i64>().is_ok() || code.starts_with("b'") && code.ends_with('\'')
 }

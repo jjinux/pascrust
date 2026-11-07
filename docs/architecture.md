@@ -311,9 +311,14 @@ part of its equality): `array[1..N]` is `PArray<i16, 1, { N as usize }>`,
 named subrange type, so changing `N` in the Rust resizes the array.
 (`string[K]` stays a number: a reader rarely edits one.) Where Rust takes only a
 pattern, a constant's name is one (`case c of Esc:` is `ESC =>`, and a
-Byte compared with Integer constants is widened, `match i16::from(b)`); a
-set element worked out from a constant isn't, so `i in [K + 1..K * 2]`
-tests a set built on the spot rather than `matches!(i, 6..=10)`.
+Byte compared with Integer constants is widened, `match i16::from(b)`);
+a `case` label worked out from one (`K + 1`, or a LongInt compared with
+an Integer constant) is tested in a guard, `value if value == K + 1 =>`,
+with the arm's other labels joining it (Rust then needs the `_` arm, as
+it doesn't count guarded arms toward covering every value). A set
+element worked out from a constant isn't a pattern either, so
+`i in [K + 1..K * 2]` tests a set built on the spot rather than
+`matches!(i, 6..=10)`.
 
 Division: `/` always produces `f64` (codegen casts both operands); `div` and
 `mod` map to Rust `/` and `%`, whose truncating semantics match TP exactly.

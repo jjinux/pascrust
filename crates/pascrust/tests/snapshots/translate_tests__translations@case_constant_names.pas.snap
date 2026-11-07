@@ -76,7 +76,7 @@ fn pascal_main() {
         6..=L => {
             pwriteln!("6..L");
         }
-        15 => {
+        value if value == K + 10 => {
             pwriteln!("K + 10");
         }
         _ => {}
@@ -109,10 +109,10 @@ fn pascal_main() {
         _ => {}
     }
     match n {
-        1000 => {
+        value if value == i32::from(BIG) => {
             pwriteln!("Big");
         }
-        5 => {
+        value if value == i32::from(K) => {
             pwriteln!("n K");
         }
         _ => {}
